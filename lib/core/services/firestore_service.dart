@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import '../models/coupon_model.dart';
 import '../models/user_model.dart';
 import '../models/restaurant_model.dart';
 import '../models/menu_item_model.dart';
@@ -291,6 +292,117 @@ class FirestoreService {
     } catch (e) {
       debugPrint('[FirestoreService] Error getting storefront banners: $e');
       return [];
+    }
+  }
+
+  /// Save or update coupons list in Firestore for multi-device synchronization
+  Future<void> saveCoupons({
+    required String restaurantId,
+    required List<CouponModel> coupons,
+  }) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return;
+    try {
+      final db = _db;
+      if (db == null) return;
+
+      final storeDoc = db.collection('storefronts').doc(restaurantId);
+      await storeDoc.set(
+        {
+          'coupons': coupons.map((c) => c.toJson()).toList(),
+          'couponCount': coupons.length,
+          'couponsUpdatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint('[FirestoreService] Synced ${coupons.length} coupons to Firestore for $restaurantId');
+    } catch (e) {
+      debugPrint('[FirestoreService] Error saving coupons to Firestore: $e');
+    }
+  }
+
+  /// Get coupons list from Firestore for multi-device synchronization
+  Future<List<CouponModel>> getCoupons(String restaurantId) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return [];
+    try {
+      final db = _db;
+      if (db == null) return [];
+
+      final doc = await db.collection('storefronts').doc(restaurantId).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        if (data['coupons'] is List) {
+          return (data['coupons'] as List)
+              .map((e) => CouponModel.fromJson(Map<String, dynamic>.from(e as Map)))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[FirestoreService] Error getting coupons from Firestore: $e');
+      return [];
+    }
+  }
+
+  /// Save public storefront settings (online status, theme color & gradient) to Firestore
+  Future<void> saveStorefrontSettings({
+    required String restaurantId,
+    required bool isOnline,
+    required int themeColorHex,
+    int? themeColorEndHex,
+  }) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return;
+    try {
+      final db = _db;
+      if (db == null) return;
+
+      final data = <String, dynamic>{
+        'isOnline': isOnline,
+        'isStorefrontOnline': isOnline,
+        'themeColorHex': themeColorHex,
+        'storefrontThemeColor': themeColorHex,
+        if (themeColorEndHex != null) ...{
+          'themeColorEndHex': themeColorEndHex,
+          'storefrontThemeColorEnd': themeColorEndHex,
+        },
+        'settingsUpdatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await db.collection('storefronts').doc(restaurantId).set(
+        data,
+        SetOptions(merge: true),
+      );
+      // Also sync to restaurants collection
+      await db.collection(restaurantsCollection).doc(restaurantId).set(
+        {
+          'isStorefrontOnline': isOnline,
+          'storefrontThemeColor': themeColorHex,
+          if (themeColorEndHex != null) ...{
+            'storefrontThemeColorEnd': themeColorEndHex,
+          },
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint('[FirestoreService] Storefront settings synced to Firestore for $restaurantId');
+    } catch (e) {
+      debugPrint('[FirestoreService] Error saving storefront settings: $e');
+    }
+  }
+
+  /// Fetch public storefront settings from Firestore
+  Future<Map<String, dynamic>?> getStorefrontSettings(String restaurantId) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return null;
+    try {
+      final db = _db;
+      if (db == null) return null;
+
+      final doc = await db.collection('storefronts').doc(restaurantId).get();
+      if (doc.exists && doc.data() != null) {
+        return doc.data();
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[FirestoreService] Error getting storefront settings: $e');
+      return null;
     }
   }
 

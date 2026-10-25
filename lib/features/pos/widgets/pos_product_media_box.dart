@@ -42,6 +42,7 @@ class PosMediaScrollBehavior extends MaterialScrollBehavior {
 /// Internal client interface for coordinating global video decoder slots
 abstract class _PosPlaybackClient {
   void onPlaybackSlotRevoked();
+  bool get isMountedClient;
 }
 
 /// Global Playback Coordinator to enforce strict hardware video decoder limits.
@@ -64,16 +65,39 @@ class _PosMediaPlaybackCoordinator {
     return 2;
   }
 
-  void acquireSlot(_PosPlaybackClient client) {
-    if (!_activeClients.contains(client)) {
+  bool isCurrentSlot(_PosPlaybackClient client) => _activeClients.contains(client);
+
+  bool get hasSlotAvailable => _activeClients.length < _maxActiveDecoders;
+
+  /// Acquires a hardware decoder slot.
+  /// If [forcePriority] is true (e.g. user interaction, slide change, or detail modal),
+  /// any existing client is evicted if necessary to give this client immediate priority.
+  /// If [forcePriority] is false (e.g. passive mount in a list), this client will only
+  /// acquire the slot if one is currently available, avoiding decoder churn during list rendering.
+  bool acquireSlot(_PosPlaybackClient client, {bool forcePriority = false}) {
+    if (_activeClients.contains(client)) {
+      // Move to end (most recently used)
+      _activeClients.remove(client);
       _activeClients.add(client);
+      return true;
     }
+
+    if (!forcePriority && _activeClients.length >= _maxActiveDecoders) {
+      // Clean up any unmounted dead clients
+      _activeClients.removeWhere((c) => !c.isMountedClient);
+      if (_activeClients.length >= _maxActiveDecoders) {
+        return false;
+      }
+    }
+
+    _activeClients.add(client);
     while (_activeClients.length > _maxActiveDecoders) {
       final evicted = _activeClients.removeAt(0);
       if (evicted != client) {
         evicted.onPlaybackSlotRevoked();
       }
     }
+    return true;
   }
 
   void releaseSlot(_PosPlaybackClient client) {
@@ -99,6 +123,7 @@ class PosProductMediaBox extends StatefulWidget {
   final bool showArrows;
   final bool isMini;
   final bool autoSlide;
+  final bool priorityPlayback;
   final VoidCallback? onTap;
 
   const PosProductMediaBox({
@@ -112,6 +137,7 @@ class PosProductMediaBox extends StatefulWidget {
     this.showArrows = false,
     this.isMini = false,
     this.autoSlide = true,
+    this.priorityPlayback = false,
     this.onTap,
   });
 
@@ -130,11 +156,18 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
   bool _isVideoLoading = false;
   bool _isVideoError = false;
 
+  // Concurrency & Cancellation Control
+  int _initGeneration = 0;
+  Timer? _streamInitDebounceTimer;
+
   // Auto-Slide Timers
   Timer? _autoSlideTimer;
   Timer? _resumeAutoSlideTimer;
   bool _isUserInteracting = false;
   bool _isVideoFinishingSlide = false;
+
+  @override
+  bool get isMountedClient => mounted;
 
   @override
   void initState() {
@@ -158,27 +191,32 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
 
   @override
   void onPlaybackSlotRevoked() {
+    _initGeneration++;
+    _streamInitDebounceTimer?.cancel();
+    _streamInitDebounceTimer = null;
     _releaseVideoController();
   }
 
-  void _releaseVideoController() {
+  void _releaseVideoController({bool updateState = true}) {
+    _streamInitDebounceTimer?.cancel();
+    _streamInitDebounceTimer = null;
     if (_videoController != null) {
       final ctrl = _videoController!;
       _videoController = null;
       try {
         ctrl.removeListener(_videoListener);
+      } catch (_) {}
+      try {
         ctrl.pause();
+      } catch (_) {}
+      try {
         ctrl.dispose();
       } catch (_) {}
     }
-    if (mounted) {
-      setState(() {
-        _isVideoInitialized = false;
-        _isVideoLoading = false;
-      });
-    } else {
-      _isVideoInitialized = false;
-      _isVideoLoading = false;
+    _isVideoInitialized = false;
+    _isVideoLoading = false;
+    if (updateState && mounted) {
+      setState(() {});
     }
   }
 
@@ -266,11 +304,10 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
 
     // If initial slide is video, check if we should auto-start stream
     if (_mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-      // Schedule stream initialization on demand
       if (!widget.isMini) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _currentPage == 0 && _mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-            _requestAndInitVideoStream(_mediaList[0].url);
+            _scheduleVideoStreamInit(_mediaList[0].url, forcePriority: widget.priorityPlayback);
           }
         });
       }
@@ -279,9 +316,29 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     }
   }
 
-  void _requestAndInitVideoStream(String videoUrl) {
-    _PosMediaPlaybackCoordinator.instance.acquireSlot(this);
-    _initVideoStream(videoUrl);
+  void _scheduleVideoStreamInit(String videoUrl, {bool forcePriority = false}) {
+    _streamInitDebounceTimer?.cancel();
+    if (widget.isMini) return;
+
+    // Use minimal delay if priority playback is requested, or 280ms debounce for passive cards in lists
+    final debounceDuration = forcePriority || widget.priorityPlayback
+        ? const Duration(milliseconds: 25)
+        : const Duration(milliseconds: 280);
+
+    _streamInitDebounceTimer = Timer(debounceDuration, () {
+      if (!mounted) return;
+      if (_currentPage >= 0 &&
+          _currentPage < _mediaList.length &&
+          _mediaList[_currentPage].type == PosMediaType.video) {
+        final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(
+          this,
+          forcePriority: forcePriority || widget.priorityPlayback,
+        );
+        if (acquired) {
+          _initVideoStream(videoUrl);
+        }
+      }
+    });
   }
 
   Future<void> _initVideoStream(String videoUrl) async {
@@ -296,6 +353,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       cleanUrl = cleanUrl.substring(1, cleanUrl.length - 1).trim();
     }
 
+    final generation = ++_initGeneration;
     _isVideoLoading = true;
     _isVideoError = false;
 
@@ -309,13 +367,21 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
 
     try {
       final playablePath = await YouTubeService.getPlayableVideoPath(cleanUrl, instantStream: true);
-      if (playablePath == null || playablePath.isEmpty) {
-        throw Exception('Could not resolve playable video path for $cleanUrl');
+
+      // Check cancellation generation and active slot ownership after async resolution
+      if (!mounted ||
+          generation != _initGeneration ||
+          !_PosMediaPlaybackCoordinator.instance.isCurrentSlot(this)) {
+        if (mounted) {
+          setState(() {
+            _isVideoLoading = false;
+          });
+        }
+        return;
       }
 
-      if (!mounted) {
-        _isVideoLoading = false;
-        return;
+      if (playablePath == null || playablePath.isEmpty) {
+        throw Exception('Could not resolve playable video path for $cleanUrl');
       }
 
       VideoPlayerController controller;
@@ -363,8 +429,21 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       final shouldLoop = _mediaList.length <= 1 || !widget.autoSlide;
       await controller.setLooping(shouldLoop);
 
-      if (!mounted) {
-        controller.dispose();
+      // Check cancellation generation and slot ownership after native hardware decoder allocation
+      if (!mounted ||
+          generation != _initGeneration ||
+          !_PosMediaPlaybackCoordinator.instance.isCurrentSlot(this)) {
+        try {
+          controller.pause();
+        } catch (_) {}
+        try {
+          controller.dispose();
+        } catch (_) {}
+        if (mounted) {
+          setState(() {
+            _isVideoLoading = false;
+          });
+        }
         return;
       }
 
@@ -372,7 +451,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       _videoController!.addListener(_videoListener);
 
       // Auto-play immediately if active slide is currently on Video
-      if (_mediaList.isNotEmpty && _currentPage < _mediaList.length && _mediaList[_currentPage].type == PosMediaType.video) {
+      if (_mediaList.isNotEmpty &&
+          _currentPage < _mediaList.length &&
+          _mediaList[_currentPage].type == PosMediaType.video) {
         try {
           await _videoController!.play();
         } catch (_) {}
@@ -387,6 +468,8 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       }
     } catch (e) {
       debugPrint('[PosProductMediaBox] Video stream error (${widget.item.name}): $e');
+      _PosMediaPlaybackCoordinator.instance.releaseSlot(this);
+      _releaseVideoController();
       if (mounted) {
         setState(() {
           _isVideoError = true;
@@ -401,14 +484,18 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
   }
 
   void _videoListener() {
-    if (!mounted || _videoController == null || !_videoController!.value.isInitialized) return;
+    if (!mounted || _videoController == null) return;
 
     final val = _videoController!.value;
     if (val.hasError) {
       debugPrint('[PosProductMediaBox] Video playback error: ${val.errorDescription}');
-      if (!_isVideoError) {
+      _PosMediaPlaybackCoordinator.instance.releaseSlot(this);
+      _releaseVideoController();
+      if (mounted) {
         setState(() {
           _isVideoError = true;
+          _isVideoInitialized = false;
+          _isVideoLoading = false;
         });
         if (_mediaList.length > 1) {
           _scheduleAutoSlideForImages();
@@ -416,6 +503,8 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       }
       return;
     }
+
+    if (!val.isInitialized) return;
 
     // Detect when video has played fully from start to finish
     if (widget.autoSlide &&
@@ -472,15 +561,18 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     if (currentMedia.type == PosMediaType.video) {
       _autoSlideTimer?.cancel();
       _isVideoFinishingSlide = false;
-      _PosMediaPlaybackCoordinator.instance.acquireSlot(this);
-      if (_videoController != null && _isVideoInitialized) {
-        _videoController!.seekTo(Duration.zero).then((_) {
-          if (mounted && _currentPage == index && _videoController != null) {
-            _videoController!.play();
-          }
-        });
-      } else if (!_isVideoLoading) {
-        _initVideoStream(currentMedia.url);
+      // User or auto-slide switched to video: acquire decoder slot with priority
+      final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(this, forcePriority: true);
+      if (acquired) {
+        if (_videoController != null && _isVideoInitialized) {
+          _videoController!.seekTo(Duration.zero).then((_) {
+            if (mounted && _currentPage == index && _videoController != null) {
+              _videoController!.play();
+            }
+          });
+        } else if (!_isVideoLoading) {
+          _initVideoStream(currentMedia.url);
+        }
       }
     } else {
       // Release video controller when viewing image slides to free up native decoders and GPU buffers
@@ -533,19 +625,15 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
   }
 
   void _cleanup() {
+    _initGeneration++;
     _PosMediaPlaybackCoordinator.instance.releaseSlot(this);
+    _streamInitDebounceTimer?.cancel();
+    _streamInitDebounceTimer = null;
     _autoSlideTimer?.cancel();
     _resumeAutoSlideTimer?.cancel();
     _pageController?.dispose();
     _pageController = null;
-    if (_videoController != null) {
-      final ctrl = _videoController!;
-      _videoController = null;
-      try {
-        ctrl.removeListener(_videoListener);
-        ctrl.dispose();
-      } catch (_) {}
-    }
+    _releaseVideoController(updateState: false);
     _isVideoInitialized = false;
     _isVideoLoading = false;
     _isVideoError = false;

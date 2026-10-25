@@ -329,7 +329,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
     );
   }
 
-  Widget _buildRestaurantAvatar(String? logo, String name, {double size = 48}) {
+  Widget _buildRestaurantAvatar(String? logo, String name, {double size = 50}) {
     final effectiveLogo = (logo != null && logo.trim().isNotEmpty)
         ? logo.trim()
         : DatabaseService().companyLogoPath?.trim();
@@ -340,12 +340,17 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
-        border: Border.all(color: _themeColor, width: 1.5),
+        border: Border.all(color: _themeColor.withValues(alpha: 0.8), width: 1.5),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+          const BoxShadow(
+            color: Colors.white,
+            offset: Offset(-2, -2),
             blurRadius: 4,
-            offset: const Offset(0, 2),
+          ),
+          BoxShadow(
+            color: const Color(0xFF94A3B8).withValues(alpha: 0.25),
+            offset: const Offset(2, 2.5),
+            blurRadius: 5,
           ),
         ],
       ),
@@ -477,29 +482,38 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFFF3E0),
-                  shape: BoxShape.circle,
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarColor: Color(0xFFEFF3F8),
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+        child: Scaffold(
+          backgroundColor: const Color(0xFFEFF3F8),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFF3E0),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: CircularProgressIndicator(color: _themeColor, strokeWidth: 3),
+                  ),
                 ),
-                child: Center(
-                  child: CircularProgressIndicator(color: _themeColor, strokeWidth: 3),
+                const SizedBox(height: 18),
+                const Text(
+                  'Loading Storefront...',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                 ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Loading Storefront...',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -507,20 +521,34 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
     final restaurant = _data!.restaurant;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: Stack(
-              children: [
-                SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, _cartItems.isNotEmpty ? 94 : 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFFEFF3F8),
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFEFF3F8),
+        body: SafeArea(
+          top: true,
+          bottom: true,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 800),
+              child: Stack(
+                children: [
+                  RefreshIndicator(
+                    onRefresh: _loadData,
+                    color: _themeColor,
+                    backgroundColor: Colors.white,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                      padding: EdgeInsets.fromLTRB(16, 10, 16, _cartItems.isNotEmpty ? 94 : 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                       // Preview Mode Bar (if inside POS app preview)
                       if (widget.isPreviewMode)
                         Container(
@@ -692,33 +720,46 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 2.1 Segmented Delivery / Pickup Switcher (Clean, compact tab bar)
+                          // 2.1 Segmented Delivery / Pickup Switcher (Sunken Neumorphic Track)
                           Container(
-                            height: 38,
-                            padding: const EdgeInsets.all(3),
+                            height: 42,
+                            padding: const EdgeInsets.all(3.5),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                              color: const Color(0xFFE2E8F0),
+                              borderRadius: BorderRadius.circular(22),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF94A3B8).withValues(alpha: 0.35),
+                                  offset: const Offset(1.5, 1.5),
+                                  blurRadius: 3,
+                                  spreadRadius: -0.5,
+                                ),
+                                const BoxShadow(
+                                  color: Colors.white,
+                                  offset: Offset(-1.5, -1.5),
+                                  blurRadius: 3,
+                                ),
+                              ],
                             ),
                             child: Row(
                               children: [
                                 Expanded(
                                   child: InkWell(
-                                    borderRadius: BorderRadius.circular(18),
+                                    borderRadius: BorderRadius.circular(19),
                                     onTap: () => setState(() => _orderType = OrderType.delivery),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 150),
+                                      duration: const Duration(milliseconds: 180),
                                       decoration: BoxDecoration(
-                                        color: _orderType == OrderType.delivery ? _themeColor : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(18),
+                                        gradient: (_orderType == OrderType.delivery && _hasGradient) ? _themeGradient : null,
+                                        color: _orderType == OrderType.delivery && !_hasGradient ? _themeColor : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(19),
                                         boxShadow: _orderType == OrderType.delivery
                                             ? [
                                                 BoxShadow(
-                                                  color: _themeColor.withValues(alpha: 0.25),
-                                                  blurRadius: 4,
+                                                  color: _themeColor.withValues(alpha: 0.35),
+                                                  blurRadius: 6,
                                                   offset: const Offset(0, 2),
-                                                )
+                                                ),
                                               ]
                                             : null,
                                       ),
@@ -748,20 +789,21 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                 ),
                                 Expanded(
                                   child: InkWell(
-                                    borderRadius: BorderRadius.circular(18),
+                                    borderRadius: BorderRadius.circular(19),
                                     onTap: () => setState(() => _orderType = OrderType.takeaway),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 150),
+                                      duration: const Duration(milliseconds: 180),
                                       decoration: BoxDecoration(
-                                        color: _orderType == OrderType.takeaway ? _themeColor : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(18),
+                                        gradient: (_orderType == OrderType.takeaway && _hasGradient) ? _themeGradient : null,
+                                        color: _orderType == OrderType.takeaway && !_hasGradient ? _themeColor : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(19),
                                         boxShadow: _orderType == OrderType.takeaway
                                             ? [
                                                 BoxShadow(
-                                                  color: _themeColor.withValues(alpha: 0.25),
-                                                  blurRadius: 4,
+                                                  color: _themeColor.withValues(alpha: 0.35),
+                                                  blurRadius: 6,
                                                   offset: const Offset(0, 2),
-                                                )
+                                                ),
                                               ]
                                             : null,
                                       ),
@@ -794,17 +836,28 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                           ),
                           const SizedBox(height: 8),
 
-                          // 2.2 Location & ETA Bar (Full width, wrapped and visible address)
+                          // 2.2 Location & ETA Bar (Elevated Neumorphic Card)
                           InkWell(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
                             onTap: _showChangeLocationDialog,
                             child: Container(
                               width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  const BoxShadow(
+                                    color: Colors.white,
+                                    offset: Offset(-2, -2),
+                                    blurRadius: 5,
+                                  ),
+                                  BoxShadow(
+                                    color: const Color(0xFF94A3B8).withValues(alpha: 0.16),
+                                    offset: const Offset(2.5, 3),
+                                    blurRadius: 6,
+                                  ),
+                                ],
                               ),
                               child: Row(
                                 children: [
@@ -836,7 +889,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                   ),
                                   const SizedBox(width: 6),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF1F5F9),
                                       borderRadius: BorderRadius.circular(8),
@@ -858,195 +911,217 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
                       const SizedBox(height: 16),
 
-                      // 3. PROMOTIONAL CAROUSEL BANNER
+                      // 3. PROMOTIONAL CAROUSEL BANNER (Neumorphic Elevated Carousel)
                       if (_data!.banners.isNotEmpty) ...[
-                        SizedBox(
-                          height: 156,
-                          child: PageView.builder(
-                            controller: _bannerController,
-                            itemCount: _data!.banners.length,
-                            onPageChanged: (idx) => setState(() => _activeBannerIndex = idx),
-                            itemBuilder: (context, index) {
-                              final b = _data!.banners[index];
-                              return InkWell(
-                                onTap: () {
-                                  if (b.couponCode != null && b.couponCode!.isNotEmpty) {
-                                    Clipboard.setData(ClipboardData(text: b.couponCode!));
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Promo Code "${b.couponCode}" copied! Use at checkout.'),
-                                        backgroundColor: const Color(0xFF051C48),
-                                        duration: const Duration(seconds: 2),
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
-                                    );
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: Stack(
-                                      children: [
-                                        Positioned.fill(
-                                          child: (b.imageUrl.isNotEmpty)
-                                              ? Image.network(
-                                                  b.imageUrl,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (ctx, err, st) => Container(
-                                                    color: Color(b.accentColorHex),
-                                                  ),
-                                                )
-                                              : Container(color: Color(b.accentColorHex)),
+                        RepaintBoundary(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                height: 156,
+                                child: PageView.builder(
+                                  controller: _bannerController,
+                                  itemCount: _data!.banners.length,
+                                  onPageChanged: (idx) => setState(() => _activeBannerIndex = idx),
+                                  itemBuilder: (context, index) {
+                                    final b = _data!.banners[index];
+                                    return InkWell(
+                                      onTap: () {
+                                        if (b.couponCode != null && b.couponCode!.isNotEmpty) {
+                                          Clipboard.setData(ClipboardData(text: b.couponCode!));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Promo Code "${b.couponCode}" copied! Use at checkout.'),
+                                              backgroundColor: const Color(0xFF051C48),
+                                              duration: const Duration(seconds: 2),
+                                              behavior: SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Container(
+                                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(20),
+                                          boxShadow: [
+                                            const BoxShadow(
+                                              color: Colors.white,
+                                              offset: Offset(-2, -2),
+                                              blurRadius: 5,
+                                            ),
+                                            BoxShadow(
+                                              color: const Color(0xFF94A3B8).withValues(alpha: 0.25),
+                                              offset: const Offset(3, 4),
+                                              blurRadius: 8,
+                                            ),
+                                          ],
                                         ),
-                                        Positioned.fill(
-                                          child: Container(
-                                            color: Colors.black.withValues(alpha: 0.45),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.all(18),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(20),
+                                          child: Stack(
                                             children: [
-                                              Row(
-                                                children: [
-                                                  Text(
-                                                    b.tag,
-                                                    style: const TextStyle(
-                                                      color: Color(0xFFFFB74D),
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w900,
-                                                      letterSpacing: 1.1,
-                                                    ),
-                                                  ),
-                                                  if (b.discountText != null && b.discountText!.isNotEmpty) ...[
-                                                    const SizedBox(width: 8),
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                      decoration: BoxDecoration(
-                                                        color: const Color(0xFFEF4444),
-                                                        borderRadius: BorderRadius.circular(4),
-                                                      ),
-                                                      child: Text(
-                                                        b.discountText!,
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 9.5,
-                                                          fontWeight: FontWeight.w900,
+                                              Positioned.fill(
+                                                child: (b.imageUrl.isNotEmpty)
+                                                    ? Image.network(
+                                                        b.imageUrl,
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder: (ctx, err, st) => Container(
+                                                          color: Color(b.accentColorHex),
                                                         ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ],
+                                                      )
+                                                    : Container(color: Color(b.accentColorHex)),
                                               ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                b.headline,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 22,
-                                                  fontWeight: FontWeight.w900,
-                                                  letterSpacing: -0.2,
-                                                  height: 1.1,
+                                              Positioned.fill(
+                                                child: Container(
+                                                  color: Colors.black.withValues(alpha: 0.45),
                                                 ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                b.subtitle,
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                  fontSize: 11.5,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 10),
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                                    decoration: BoxDecoration(
-                                                      color: _themeColor,
-                                                      borderRadius: BorderRadius.circular(20),
-                                                    ),
-                                                    child: Text(
-                                                      b.ctaText,
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 11.5,
-                                                        fontWeight: FontWeight.w800,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  if (b.couponCode != null && b.couponCode!.isNotEmpty) ...[
-                                                    const SizedBox(width: 8),
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.white.withValues(alpha: 0.22),
-                                                        borderRadius: BorderRadius.circular(16),
-                                                        border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          const Icon(Icons.confirmation_number_rounded, color: Colors.white, size: 12),
-                                                          const SizedBox(width: 4),
-                                                          Text(
-                                                            'CODE: ${b.couponCode}',
-                                                            style: const TextStyle(
-                                                              color: Colors.white,
-                                                              fontSize: 10,
-                                                              fontWeight: FontWeight.w900,
-                                                              letterSpacing: 0.4,
+                                              Padding(
+                                                padding: const EdgeInsets.all(18),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Text(
+                                                          b.tag,
+                                                          style: const TextStyle(
+                                                            color: Color(0xFFFFB74D),
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.w900,
+                                                            letterSpacing: 1.1,
+                                                          ),
+                                                        ),
+                                                        if (b.discountText != null && b.discountText!.isNotEmpty) ...[
+                                                          const SizedBox(width: 8),
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                            decoration: BoxDecoration(
+                                                              color: const Color(0xFFEF4444),
+                                                              borderRadius: BorderRadius.circular(4),
+                                                            ),
+                                                            child: Text(
+                                                              b.discountText!,
+                                                              style: const TextStyle(
+                                                                color: Colors.white,
+                                                                fontSize: 9.5,
+                                                                fontWeight: FontWeight.w900,
+                                                              ),
                                                             ),
                                                           ),
                                                         ],
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      b.headline,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 22,
+                                                        fontWeight: FontWeight.w900,
+                                                        letterSpacing: -0.2,
+                                                        height: 1.1,
                                                       ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      b.subtitle,
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 11.5,
+                                                        fontWeight: FontWeight.w500,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                    const SizedBox(height: 10),
+                                                    Row(
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                                          decoration: BoxDecoration(
+                                                            color: _themeColor,
+                                                            borderRadius: BorderRadius.circular(20),
+                                                          ),
+                                                          child: Text(
+                                                            b.ctaText,
+                                                            style: const TextStyle(
+                                                              color: Colors.white,
+                                                              fontSize: 11.5,
+                                                              fontWeight: FontWeight.w800,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        if (b.couponCode != null && b.couponCode!.isNotEmpty) ...[
+                                                          const SizedBox(width: 8),
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.white.withValues(alpha: 0.22),
+                                                              borderRadius: BorderRadius.circular(16),
+                                                              border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                const Icon(Icons.confirmation_number_rounded, color: Colors.white, size: 12),
+                                                                const SizedBox(width: 4),
+                                                                Text(
+                                                                  'CODE: ${b.couponCode}',
+                                                                  style: const TextStyle(
+                                                                    color: Colors.white,
+                                                                    fontSize: 10,
+                                                                    fontWeight: FontWeight.w900,
+                                                                    letterSpacing: 0.4,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ],
                                                     ),
                                                   ],
-                                                ],
+                                                ),
                                               ),
                                             ],
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Carousel Dots Indicator
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(_data!.banners.length, (dotIdx) {
-                            final isActive = dotIdx == _activeBannerIndex;
-                            return AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              width: isActive ? 18 : 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: isActive ? _themeColor : const Color(0xFFCBD5E1),
-                                borderRadius: BorderRadius.circular(4),
                               ),
-                            );
-                          }),
+                              const SizedBox(height: 8),
+
+                              // Carousel Dots Indicator
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(_data!.banners.length, (dotIdx) {
+                                  final isActive = dotIdx == _activeBannerIndex;
+                                  return AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                                    width: isActive ? 18 : 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: isActive ? _themeColor : const Color(0xFFCBD5E1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  );
+                                }),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 16),
                       ],
 
-                      // 4. CATEGORIES HORIZONTAL CIRCLE ICONS ROW (Displaying Product Default Image & Category Images)
+                      // 4. CATEGORIES HORIZONTAL CIRCLE ICONS ROW (Neumorphic Pods)
                       SizedBox(
                         height: 98,
                         child: ListView.separated(
@@ -1076,17 +1151,23 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                     padding: const EdgeInsets.all(2.5),
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
+                                      color: Colors.white,
                                       border: Border.all(
                                         color: isSelected ? _themeColor : const Color(0xFFE2E8F0),
                                         width: isSelected ? 2.5 : 1.2,
                                       ),
                                       boxShadow: [
+                                        const BoxShadow(
+                                          color: Colors.white,
+                                          offset: Offset(-2, -2),
+                                          blurRadius: 4,
+                                        ),
                                         BoxShadow(
                                           color: isSelected
-                                              ? _themeColor.withValues(alpha: 0.3)
-                                              : Colors.black.withValues(alpha: 0.04),
-                                          blurRadius: isSelected ? 8 : 4,
-                                          offset: const Offset(0, 2),
+                                              ? _themeColor.withValues(alpha: 0.35)
+                                              : const Color(0xFF94A3B8).withValues(alpha: 0.2),
+                                          blurRadius: isSelected ? 8 : 5,
+                                          offset: const Offset(2, 2.5),
                                         ),
                                       ],
                                     ),
@@ -1128,21 +1209,27 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
                       const SizedBox(height: 14),
 
-                      // 5. SEARCH INPUT BAR
+                      // 5. SEARCH INPUT BAR (Sunken Neumorphic Track)
                       Container(
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: const Color(0xFFE8EEF5),
                           borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(color: const Color(0xFFDDE3EC)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.03),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                              color: const Color(0xFF94A3B8).withValues(alpha: 0.22),
+                              offset: const Offset(1.5, 1.5),
+                              blurRadius: 3,
+                              spreadRadius: -0.5,
+                            ),
+                            const BoxShadow(
+                              color: Colors.white,
+                              offset: Offset(-1.5, -1.5),
+                              blurRadius: 3,
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
                         child: Row(
                           children: [
                             const Icon(Icons.search_rounded, color: Color(0xFF94A3B8), size: 22),
@@ -1173,44 +1260,17 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
 
-                      // 6. SECTION HEADER & ITEM COUNT
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '$_selectedCategory (${_filteredItems.length})',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          InkWell(
-                            onTap: () {
-                              setState(() {
-                                _selectedCategory = 'All';
-                                _searchQuery = '';
-                                _searchController.clear();
-                              });
-                            },
-                            child: Row(
-                              children: [
-                                Text(
-                                  'View All',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: _themeColor,
-                                  ),
-                                ),
-                                const SizedBox(width: 2),
-                                Icon(Icons.chevron_right_rounded, size: 18, color: _themeColor),
-                              ],
-                            ),
-                          ),
-                        ],
+                      // 6. SECTION HEADER & ITEM COUNT (View All removed per requirements)
+                      Text(
+                        '$_selectedCategory (${_filteredItems.length})',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.2,
+                        ),
                       ),
 
                       const SizedBox(height: 12),
@@ -1247,6 +1307,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                     ],
                   ),
                 ),
+              ),
 
                 // 8. FLOATING STICKY BOTTOM CART BAR
                 if (_cartItems.isNotEmpty)
@@ -1342,199 +1403,217 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildProductCard(MenuItemModel item) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Food Image on Left with slidable multi-image / auto-playing video & top-left Variants badge (POS Style)
-          Stack(
-            children: [
-              SizedBox(
-                width: 96,
-                height: 96,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: PosProductMediaBox(
-                    key: ValueKey('storefront_media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}'),
-                    item: item,
-                    fit: BoxFit.cover,
-                    width: 96,
-                    height: 96,
-                    borderRadius: BorderRadius.circular(12),
-                    showDots: true,
-                    autoSlide: true,
-                    onTap: () => _openCustomizationModal(item),
-                  ),
-                ),
-              ),
-
-              // Variants Count Pill Badge (Top-Left of product image, exactly like the POS screen)
-              if (item.variants.length > 1)
-                Positioned(
-                  top: 5,
-                  left: 5,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F2B48).withValues(alpha: 0.90),
-                      borderRadius: BorderRadius.circular(5),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
-                      ],
-                    ),
-                    child: Text(
-                      '${item.variants.length} Variants',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 14),
-
-          // Content in Middle
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return RepaintBoundary(
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            const BoxShadow(
+              color: Colors.white,
+              offset: Offset(-2.5, -2.5),
+              blurRadius: 5,
+            ),
+            BoxShadow(
+              color: const Color(0xFF94A3B8).withValues(alpha: 0.16),
+              offset: const Offset(3, 3),
+              blurRadius: 8,
+              spreadRadius: 0.5,
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Food Image on Left with slidable multi-image / auto-playing video & Variants badge (Adjusted to 88x88 for balanced space)
+            Stack(
               children: [
-                Row(
-                  children: [
-                    _buildVegNonVegBadge(item.itemType),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        item.name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                SizedBox(
+                  width: 88,
+                  height: 88,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: PosProductMediaBox(
+                      key: ValueKey('storefront_media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}'),
+                      item: item,
+                      fit: BoxFit.cover,
+                      width: 88,
+                      height: 88,
+                      borderRadius: BorderRadius.circular(12),
+                      showDots: true,
+                      autoSlide: true,
+                      onTap: () => _openCustomizationModal(item),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.description.isNotEmpty
-                      ? item.description
-                      : 'Delightful chef specialty prepared with fresh ingredients.',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.35),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  ),
                 ),
 
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '₹${item.effectivePrice.toStringAsFixed(0)}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF0F172A),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                // Variants Count Pill Badge
+                if (item.variants.length > 1)
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.90),
+                        borderRadius: BorderRadius.circular(5),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
+                        ],
+                      ),
+                      child: Text(
+                        '${item.variants.length} Sizes',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 12),
+
+            // Content in Middle
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _buildVegNonVegBadge(item.itemType),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          item.name,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                            letterSpacing: -0.2,
                           ),
-                          if (item.variants.length > 1) ...[
-                            const SizedBox(width: 2),
-                            const Flexible(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    item.description.isNotEmpty
+                        ? item.description
+                        : 'Specialty prepared with fresh ingredients and chef craftsmanship.',
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), height: 1.3),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+
+                  const SizedBox(height: 7),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Flexible(
                               child: Text(
-                                'onwards',
-                                style: TextStyle(
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFF64748B),
+                                '₹${item.effectivePrice.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-
-                    // Add Button or Store Offline Disabled Button
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: (_isStoreOnline && _hasGradient) ? _themeGradient : null,
-                        color: (_isStoreOnline && !_hasGradient)
-                            ? _themeColor
-                            : (!_isStoreOnline ? const Color(0xFFF1F5F9) : null),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _isStoreOnline ? () => _openCustomizationModal(item) : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: Colors.transparent,
-                          disabledForegroundColor: const Color(0xFF94A3B8),
-                          shadowColor: Colors.transparent,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          elevation: 0,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _isStoreOnline ? 'Add' : 'Offline',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w800,
-                                color: _isStoreOnline ? Colors.white : const Color(0xFF94A3B8),
-                              ),
-                            ),
-                            if (_isStoreOnline) ...[
+                            if (item.variants.length > 1) ...[
                               const SizedBox(width: 3),
-                              const Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                              const Flexible(
+                                child: Text(
+                                  'onwards',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ],
                           ],
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 6),
+
+                      // Add Button with Neumorphic subtle shadow & gradient
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: (_isStoreOnline && _hasGradient) ? _themeGradient : null,
+                          color: (_isStoreOnline && !_hasGradient)
+                              ? _themeColor
+                              : (!_isStoreOnline ? const Color(0xFFF1F5F9) : null),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: _isStoreOnline
+                              ? [
+                                  BoxShadow(
+                                    color: _themeColor.withValues(alpha: 0.3),
+                                    offset: const Offset(0, 2),
+                                    blurRadius: 4,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: ElevatedButton(
+                          onPressed: _isStoreOnline ? () => _openCustomizationModal(item) : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.transparent,
+                            disabledForegroundColor: const Color(0xFF94A3B8),
+                            shadowColor: Colors.transparent,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            elevation: 0,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _isStoreOnline ? 'Add' : 'Offline',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: _isStoreOnline ? Colors.white : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                              if (_isStoreOnline) ...[
+                                const SizedBox(width: 3),
+                                const Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1543,21 +1622,35 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
     required IconData icon,
     Color iconColor = const Color(0xFF0F172A),
     required VoidCallback onTap,
-    double size = 32,
+    double size = 34,
   }) {
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: Colors.white,
         shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          const BoxShadow(
+            color: Colors.white,
+            offset: Offset(-2, -2),
+            blurRadius: 4,
+          ),
+          BoxShadow(
+            color: const Color(0xFF94A3B8).withValues(alpha: 0.22),
+            offset: const Offset(2, 2.5),
+            blurRadius: 5,
+          ),
+        ],
       ),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Center(
-          child: Icon(icon, size: size * 0.52, color: iconColor),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Center(
+            child: Icon(icon, size: size * 0.52, color: iconColor),
+          ),
         ),
       ),
     );

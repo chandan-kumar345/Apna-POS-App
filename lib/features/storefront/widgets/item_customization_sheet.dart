@@ -188,6 +188,7 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                             fit: BoxFit.cover,
                             showDots: true,
                             autoSlide: true,
+                            priorityPlayback: true,
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
