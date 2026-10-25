@@ -259,40 +259,45 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
 
           // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 12, 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Text(
-                      'Your Order',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF3E0),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${widget.cartItems.length} items',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFE65100),
+                Expanded(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Your Order',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${widget.cartItems.length} items',
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFE65100),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                  icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
@@ -304,16 +309,16 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
           // Scrollable Cart Items & Customer Form
           Flexible(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Order Type Toggle (Delivery vs Pickup)
                   Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       children: [
@@ -323,7 +328,7 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                             onTap: () => setState(() => _orderType = OrderType.delivery),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
                               decoration: BoxDecoration(
                                 color: _orderType == OrderType.delivery ? const Color(0xFFE65100) : Colors.transparent,
                                 borderRadius: BorderRadius.circular(10),
@@ -333,16 +338,20 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                                 children: [
                                   Icon(
                                     Icons.two_wheeler_rounded,
-                                    size: 18,
+                                    size: 16,
                                     color: _orderType == OrderType.delivery ? Colors.white : const Color(0xFF64748B),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Delivery',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: _orderType == OrderType.delivery ? Colors.white : const Color(0xFF0F172A),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      'Delivery',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: _orderType == OrderType.delivery ? Colors.white : const Color(0xFF0F172A),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
@@ -356,7 +365,7 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                             onTap: () => setState(() => _orderType = OrderType.takeaway),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
                               decoration: BoxDecoration(
                                 color: _orderType == OrderType.takeaway ? const Color(0xFFE65100) : Colors.transparent,
                                 borderRadius: BorderRadius.circular(10),
@@ -366,16 +375,20 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                                 children: [
                                   Icon(
                                     Icons.store_mall_directory_rounded,
-                                    size: 18,
+                                    size: 16,
                                     color: _orderType == OrderType.takeaway ? Colors.white : const Color(0xFF64748B),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Pickup / Takeaway',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: _orderType == OrderType.takeaway ? Colors.white : const Color(0xFF0F172A),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      'Pickup',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: _orderType == OrderType.takeaway ? Colors.white : const Color(0xFF0F172A),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
@@ -412,7 +425,7 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                                   ? Image.network(
                                       ApiEndpoints.resolveMediaUrl(cartItem.item.imageUrl),
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Center(child: Text('🍕', style: TextStyle(fontSize: 24))),
+                                      errorBuilder: (context, error, stackTrace) => const Center(child: Text('🍕', style: TextStyle(fontSize: 24))),
                                     )
                                   : const Center(child: Text('🍕', style: TextStyle(fontSize: 24))),
                             ),
@@ -505,9 +518,9 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                   // Customer Details Form
                   const Text(
                     'Contact & Delivery Details',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
 
                   // Name & Phone in Row
                   Row(
@@ -515,30 +528,36 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                       Expanded(
                         child: TextField(
                           controller: _nameController,
-                          style: const TextStyle(fontSize: 13.5),
+                          style: const TextStyle(fontSize: 12.5),
                           decoration: InputDecoration(
                             labelText: 'Your Name',
-                            prefixIcon: const Icon(Icons.person_outline_rounded, size: 20),
+                            labelStyle: const TextStyle(fontSize: 12),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            prefixIcon: const Icon(Icons.person_outline_rounded, size: 18),
                             filled: true,
                             fillColor: const Color(0xFFF8FAFC),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: TextField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
-                          style: const TextStyle(fontSize: 13.5),
+                          style: const TextStyle(fontSize: 12.5),
                           decoration: InputDecoration(
                             labelText: 'Mobile Number',
-                            prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                            labelStyle: const TextStyle(fontSize: 12),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            prefixIcon: const Icon(Icons.phone_outlined, size: 18),
                             filled: true,
                             fillColor: const Color(0xFFF8FAFC),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                           ),
                         ),
                       ),
@@ -546,19 +565,23 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                   ),
 
                   if (_orderType == OrderType.delivery) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     TextField(
                       controller: _addressController,
-                      style: const TextStyle(fontSize: 13.5),
+                      style: const TextStyle(fontSize: 12.5),
                       maxLines: 2,
                       decoration: InputDecoration(
                         labelText: 'Complete Delivery Address',
+                        labelStyle: const TextStyle(fontSize: 12),
                         hintText: 'House/Flat No, Apartment, Street & Landmark',
-                        prefixIcon: const Icon(Icons.location_on_outlined, size: 20),
+                        hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        prefixIcon: const Icon(Icons.location_on_outlined, size: 18),
                         filled: true,
                         fillColor: const Color(0xFFF8FAFC),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                       ),
                     ),
                   ],
@@ -568,7 +591,7 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                   // Payment Method Switcher
                   const Text(
                     'Payment Method',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                   ),
                   const SizedBox(height: 8),
 
@@ -579,7 +602,7 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                           borderRadius: BorderRadius.circular(12),
                           onTap: () => setState(() => _paymentMethod = 'UPI'),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
                             decoration: BoxDecoration(
                               color: _paymentMethod == 'UPI' ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.circular(12),
@@ -591,24 +614,28 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.qr_code_2_rounded, size: 20, color: Color(0xFFE65100)),
-                                SizedBox(width: 8),
-                                Text(
-                                  'UPI / QR Pay',
-                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                Icon(Icons.qr_code_2_rounded, size: 18, color: Color(0xFFE65100)),
+                                SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    'UPI / QR Pay',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: InkWell(
                           borderRadius: BorderRadius.circular(12),
                           onTap: () => setState(() => _paymentMethod = 'Cash'),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
                             decoration: BoxDecoration(
                               color: _paymentMethod == 'Cash' ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.circular(12),
@@ -617,14 +644,18 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                                 width: _paymentMethod == 'Cash' ? 1.8 : 1,
                               ),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.payments_outlined, size: 20, color: Color(0xFF10B981)),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Pay at Delivery/Store',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                const Icon(Icons.payments_outlined, size: 18, color: Color(0xFF10B981)),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    _orderType == OrderType.delivery ? 'Pay on Delivery' : 'Pay at Store',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ],
                             ),
@@ -715,12 +746,16 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                       : Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              'Place ${_orderType == OrderType.delivery ? "Delivery" : "Takeaway"} Order • ₹${_grandTotal.toStringAsFixed(0)}',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                            Flexible(
+                              child: Text(
+                                'Place ${_orderType == OrderType.delivery ? "Delivery" : "Takeaway"} Order • ₹${_grandTotal.toStringAsFixed(0)}',
+                                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.arrow_forward_rounded, size: 20),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.arrow_forward_rounded, size: 18),
                           ],
                         ),
                 ),
@@ -736,8 +771,17 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B))),
-        Text(value, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: valueColor)),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          value,
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: valueColor),
+        ),
       ],
     );
   }

@@ -180,24 +180,23 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isVeg = widget.item.itemType.toLowerCase().contains('veg') &&
-        !widget.item.itemType.toLowerCase().contains('non');
+    final screenHeight = MediaQuery.of(context).size.height;
+    final sheetHeight = screenHeight * 0.65;
 
     return Container(
+      height: sheetHeight,
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
           // 1. Top Drag Handle
           Center(
             child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 48,
-              height: 5,
+              margin: const EdgeInsets.only(top: 8, bottom: 6),
+              width: 44,
+              height: 4,
               decoration: BoxDecoration(
                 color: const Color(0xFFCBD5E1),
                 borderRadius: BorderRadius.circular(10),
@@ -206,9 +205,9 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
           ),
 
           // Scrollable Content
-          Flexible(
+          Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -216,16 +215,16 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                   Stack(
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(16),
                         child: Container(
-                          height: 220,
+                          height: 135,
                           width: double.infinity,
                           color: const Color(0xFFF1F5F9),
                           child: (widget.item.imageUrl.isNotEmpty)
                               ? Image.network(
                                   ApiEndpoints.resolveMediaUrl(widget.item.imageUrl),
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => _buildFallbackBannerImage(),
+                                  errorBuilder: (context, error, stackTrace) => _buildFallbackBannerImage(),
                                 )
                               : _buildFallbackBannerImage(),
                         ),
@@ -233,17 +232,17 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
                       // Veg Badge (Top-Left)
                       Positioned(
-                        top: 12,
-                        left: 12,
+                        top: 10,
+                        left: 10,
                         child: Container(
-                          padding: const EdgeInsets.all(5),
+                          padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.95),
                             borderRadius: BorderRadius.circular(6),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.15),
-                                blurRadius: 6,
+                                blurRadius: 4,
                               )
                             ],
                           ),
@@ -253,8 +252,8 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
                       // Close Button (Top-Right)
                       Positioned(
-                        top: 12,
-                        right: 12,
+                        top: 10,
+                        right: 10,
                         child: Material(
                           color: Colors.white.withValues(alpha: 0.95),
                           shape: const CircleBorder(),
@@ -263,8 +262,8 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                             customBorder: const CircleBorder(),
                             onTap: () => Navigator.pop(context),
                             child: const Padding(
-                              padding: EdgeInsets.all(8),
-                              child: Icon(Icons.close_rounded, size: 20, color: Color(0xFF0F172A)),
+                              padding: EdgeInsets.all(6),
+                              child: Icon(Icons.close_rounded, size: 18, color: Color(0xFF0F172A)),
                             ),
                           ),
                         ),
@@ -272,24 +271,24 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
                       // Bestseller pill (Bottom-Left)
                       Positioned(
-                        bottom: 12,
-                        left: 12,
+                        bottom: 10,
+                        left: 10,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: const Color(0xFF0F172A).withValues(alpha: 0.85),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('🔥', style: TextStyle(fontSize: 12)),
-                              SizedBox(width: 4),
+                              Text('🔥', style: TextStyle(fontSize: 11)),
+                              SizedBox(width: 3),
                               Text(
                                 'Bestseller',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 11.5,
+                                  fontSize: 10.5,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -300,43 +299,43 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                     ],
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
 
                   // 3. Title & Info
                   Text(
                     widget.item.name,
                     style: const TextStyle(
-                      fontSize: 22,
+                      fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                       letterSpacing: -0.3,
                     ),
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
 
                   Text(
                     widget.item.description.isNotEmpty
                         ? widget.item.description
                         : 'Handcrafted with fresh gourmet ingredients, signature sauce, and melted mozzarella.',
                     style: const TextStyle(
-                      fontSize: 13.5,
-                      height: 1.45,
+                      fontSize: 12,
+                      height: 1.35,
                       color: Color(0xFF64748B),
                     ),
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
 
                   // Rating & Bestseller row
                   const Row(
                     children: [
-                      Icon(Icons.star_rounded, size: 18, color: Color(0xFFF59E0B)),
-                      SizedBox(width: 4),
+                      Icon(Icons.star_rounded, size: 16, color: Color(0xFFF59E0B)),
+                      SizedBox(width: 3),
                       Text(
                         '4.7',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF0F172A),
                         ),
@@ -344,17 +343,17 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                       SizedBox(width: 3),
                       Text(
                         '(320+)',
-                        style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                       ),
                       SizedBox(width: 8),
                       Text('•', style: TextStyle(color: Color(0xFFCBD5E1))),
                       SizedBox(width: 8),
-                      Text('🔥', style: TextStyle(fontSize: 12)),
-                      SizedBox(width: 4),
+                      Text('🔥', style: TextStyle(fontSize: 11)),
+                      SizedBox(width: 3),
                       Text(
                         'Bestseller',
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFFE65100),
                         ),
@@ -362,27 +361,27 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                     ],
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
                   // 4. Select Size Section
                   const Text(
                     'Select Size',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
 
                   Row(
                     children: _sizes.map((sizeOpt) {
                       final isSelected = _selectedSize?.id == sizeOpt.id;
                       return Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
+                          padding: const EdgeInsets.only(right: 6.0),
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(12),
                             onTap: () {
                               setState(() {
                                 _selectedSize = sizeOpt;
@@ -390,13 +389,13 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
-                              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                               decoration: BoxDecoration(
                                 color: isSelected ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isSelected ? const Color(0xFFE65100) : const Color(0xFFE2E8F0),
-                                  width: isSelected ? 2 : 1.2,
+                                  width: isSelected ? 1.8 : 1.0,
                                 ),
                               ),
                               child: Column(
@@ -405,26 +404,26 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                                   Text(
                                     sizeOpt.name,
                                     style: TextStyle(
-                                      fontSize: 14,
+                                      fontSize: 12.5,
                                       fontWeight: FontWeight.w800,
                                       color: isSelected ? const Color(0xFFE65100) : const Color(0xFF0F172A),
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 3),
                                   Text(
                                     sizeOpt.description,
                                     style: TextStyle(
-                                      fontSize: 10.5,
-                                      color: isSelected ? const Color(0xFFE65100).withValues(alpha: 0.8) : const Color(0xFF64748B),
+                                      fontSize: 9.5,
+                                      height: 1.25,
+                                      color: isSelected ? const Color(0xFFE65100).withValues(alpha: 0.85) : const Color(0xFF64748B),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: true,
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 6),
                                   Text(
                                     '₹${sizeOpt.price.toStringAsFixed(0)}',
                                     style: TextStyle(
-                                      fontSize: 15,
+                                      fontSize: 13.5,
                                       fontWeight: FontWeight.w800,
                                       color: isSelected ? const Color(0xFFE65100) : const Color(0xFF0F172A),
                                     ),
@@ -438,32 +437,32 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                     }).toList(),
                   ),
 
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 16),
 
                   // 5. Add Ons (Optional) Section
                   const Text(
                     'Add Ons (Optional)',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
 
                   SizedBox(
-                    height: 64,
+                    height: 54,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       itemCount: _addons.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      separatorBuilder: (_, index) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
                         final addon = _addons[index];
                         final isAdded = addon.isSelected;
 
                         return InkWell(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                           onTap: () {
                             setState(() {
                               addon.isSelected = !addon.isSelected;
@@ -471,10 +470,10 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                           },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                             decoration: BoxDecoration(
                               color: isAdded ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                               border: Border.all(
                                 color: isAdded ? const Color(0xFFE65100) : const Color(0xFFE2E8F0),
                                 width: isAdded ? 1.5 : 1,
@@ -483,21 +482,21 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                             child: Row(
                               children: [
                                 ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(6),
                                   child: Container(
-                                    width: 44,
-                                    height: 44,
+                                    width: 36,
+                                    height: 36,
                                     color: const Color(0xFFE2E8F0),
                                     child: Image.network(
                                       addon.imageUrl,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Center(
-                                        child: Text('🧀', style: TextStyle(fontSize: 18)),
+                                      errorBuilder: (context, error, stackTrace) => const Center(
+                                        child: Text('🧀', style: TextStyle(fontSize: 16)),
                                       ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 6),
                                 Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -505,26 +504,26 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                                     Text(
                                       addon.name,
                                       style: TextStyle(
-                                        fontSize: 12.5,
+                                        fontSize: 11.5,
                                         fontWeight: FontWeight.w700,
                                         color: isAdded ? const Color(0xFFE65100) : const Color(0xFF0F172A),
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
+                                    const SizedBox(height: 1),
                                     Text(
                                       '+₹${addon.price.toStringAsFixed(0)}',
                                       style: const TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 11,
                                         fontWeight: FontWeight.w700,
                                         color: Color(0xFFE65100),
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
                                 Container(
-                                  width: 26,
-                                  height: 26,
+                                  width: 22,
+                                  height: 22,
                                   decoration: BoxDecoration(
                                     color: isAdded ? const Color(0xFFE65100) : const Color(0xFFE65100).withValues(alpha: 0.1),
                                     shape: BoxShape.circle,
@@ -532,7 +531,7 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                                   child: Icon(
                                     isAdded ? Icons.check_rounded : Icons.add_rounded,
                                     color: isAdded ? Colors.white : const Color(0xFFE65100),
-                                    size: 17,
+                                    size: 14,
                                   ),
                                 ),
                               ],
@@ -543,27 +542,27 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                     ),
                   ),
 
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
 
                   // 6. Special Instructions Field
                   Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                     child: Row(
                       children: [
-                        const Icon(Icons.edit_note_rounded, color: Color(0xFF64748B), size: 22),
-                        const SizedBox(width: 10),
+                        const Icon(Icons.edit_note_rounded, color: Color(0xFF64748B), size: 18),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
                             controller: _instructionsController,
-                            style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A)),
+                            style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
                             decoration: const InputDecoration(
                               hintText: 'Add special instructions (optional)',
-                              hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                              hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                               border: InputBorder.none,
                               isDense: true,
                             ),
@@ -573,7 +572,7 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                     ),
                   ),
 
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                 ],
               ),
             ),
@@ -581,14 +580,14 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
           // 7. Sticky Bottom Action Bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.08),
                   offset: const Offset(0, -4),
-                  blurRadius: 16,
+                  blurRadius: 12,
                 )
               ],
             ),
@@ -600,53 +599,53 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                   Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     child: Row(
                       children: [
                         InkWell(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                           onTap: () {
                             if (_quantity > 1) {
                               setState(() => _quantity--);
                             }
                           },
                           child: Container(
-                            width: 32,
-                            height: 32,
+                            width: 28,
+                            height: 28,
                             alignment: Alignment.center,
-                            child: const Icon(Icons.remove_rounded, size: 18, color: Color(0xFF334155)),
+                            child: const Icon(Icons.remove_rounded, size: 16, color: Color(0xFF334155)),
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           child: Text(
                             '$_quantity',
                             style: const TextStyle(
-                              fontSize: 16,
+                              fontSize: 14,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF0F172A),
                             ),
                           ),
                         ),
                         InkWell(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                           onTap: () {
                             setState(() => _quantity++);
                           },
                           child: Container(
-                            width: 32,
-                            height: 32,
+                            width: 28,
+                            height: 28,
                             alignment: Alignment.center,
-                            child: const Icon(Icons.add_rounded, size: 18, color: Color(0xFF334155)),
+                            child: const Icon(Icons.add_rounded, size: 16, color: Color(0xFF334155)),
                           ),
                         ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
 
                   // Add to Cart Button (Large Vibrant Orange)
                   Expanded(
@@ -666,23 +665,27 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFE65100),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         elevation: 0,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.shopping_cart_rounded, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Add to Cart • ₹${_currentTotalPrice.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.2,
+                          const Icon(Icons.shopping_cart_rounded, size: 16),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Add to Cart • ₹${_currentTotalPrice.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                             ),
                           ),
                         ],

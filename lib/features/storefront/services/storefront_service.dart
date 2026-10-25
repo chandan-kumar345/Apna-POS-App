@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/restaurant_model.dart';
@@ -29,20 +28,43 @@ class StorefrontService {
     List<ExtraModel> addOns = [];
     List<StorefrontBanner> banners = [];
 
-    // 1. Check if local DatabaseService matches this slug or if previewing from POS
+    // 1. Resolve dynamic local restaurant, logo, store name and menu data from DatabaseService
     final localRest = _db.restaurant;
-    final isLocalMatch = localRest != null &&
-        (cleanSlug.isEmpty ||
-            localRest.storefrontSlug.toLowerCase() == cleanSlug ||
-            RestaurantModel.slugify(localRest.companyName).toLowerCase() == cleanSlug ||
-            RestaurantModel.slugify(localRest.name).toLowerCase() == cleanSlug ||
-            localRest.id.toLowerCase() == cleanSlug);
+    final dynamicLogo = _db.companyLogoPath?.trim().isNotEmpty == true
+        ? _db.companyLogoPath!.trim()
+        : (localRest?.logoUrl?.trim().isNotEmpty == true ? localRest!.logoUrl!.trim() : null);
 
-    if (isLocalMatch && localRest != null) {
-      restaurant = localRest;
-      categories = List<String>.from(_db.categories);
-      menuItems = List<MenuItemModel>.from(_db.menuItems);
-      addOns = List<ExtraModel>.from(_db.extras);
+    final dynamicStoreName = (localRest?.name.trim().isNotEmpty == true && localRest!.name != 'Apna Restaurant')
+        ? localRest.name.trim()
+        : ((localRest?.companyName.trim().isNotEmpty == true)
+            ? localRest!.companyName.trim()
+            : 'Pizza 47');
+
+    final isLocalMatch = cleanSlug.isEmpty ||
+        cleanSlug == 'preview' ||
+        cleanSlug == 'company-name' ||
+        (localRest != null &&
+            (localRest.storefrontSlug.toLowerCase() == cleanSlug ||
+                RestaurantModel.slugify(localRest.companyName).toLowerCase() == cleanSlug ||
+                RestaurantModel.slugify(localRest.name).toLowerCase() == cleanSlug ||
+                localRest.id.toLowerCase() == cleanSlug));
+
+    if (isLocalMatch) {
+      if (localRest != null) {
+        restaurant = localRest.copyWith(
+          name: dynamicStoreName,
+          logoUrl: dynamicLogo ?? localRest.logoUrl,
+        );
+      }
+      if (_db.menuItems.isNotEmpty) {
+        menuItems = List<MenuItemModel>.from(_db.menuItems);
+      }
+      if (_db.categories.isNotEmpty) {
+        categories = List<String>.from(_db.categories);
+      }
+      if (_db.extras.isNotEmpty) {
+        addOns = List<ExtraModel>.from(_db.extras);
+      }
     }
 
     // 2. Try loading from Backend Storefront API
@@ -100,38 +122,60 @@ class StorefrontService {
       }
     }
 
-    // 4. Default / Fallback matching the rich user screenshot
-    final resolvedRestaurant = restaurant ??
+    // 4. Default / Fallback matching the rich user storefront
+    RestaurantModel resolvedRestaurant = restaurant ??
         (localRest != null
-            ? localRest
+            ? localRest.copyWith(
+                name: dynamicStoreName,
+                logoUrl: dynamicLogo ?? localRest.logoUrl,
+              )
             : RestaurantModel(
                 id: 'pizza-47',
-                name: 'Pizza 47',
-                companyName: 'Pizza 47',
+                name: dynamicStoreName,
+                companyName: dynamicStoreName,
                 slug: cleanSlug.isNotEmpty ? cleanSlug : 'pizza-47',
                 tagline: 'Fresh Ingredients Bigger Happiness',
-                phone: '+91 98765 43210',
-                address: 'Sector 62, Noida',
-                cuisineType: 'Pizzas • Burgers • Fast Food',
+                phone: _db.restaurant?.phone.isNotEmpty == true ? _db.restaurant!.phone : '+91 98765 43210',
+                address: _db.restaurant?.address.isNotEmpty == true ? _db.restaurant!.address : 'Sector 62, Noida',
+                cuisineType: _db.restaurant?.cuisineType.isNotEmpty == true ? _db.restaurant!.cuisineType : 'Pizzas • Burgers • Fast Food',
                 taxRate: 5.0,
                 deliveryBaseCharge: 30.0,
                 deliveryChargePerKm: 10.0,
                 freeDeliveryEnabled: true,
                 freeDeliveryMinOrder: 299.0,
-                openingTime: '10:00 AM',
-                closingTime: '11:00 PM',
+                openingTime: _db.restaurant?.openingTime ?? '10:00 AM',
+                closingTime: _db.restaurant?.closingTime ?? '11:00 PM',
+                logoUrl: dynamicLogo,
               ));
+
+    if (dynamicLogo != null && (resolvedRestaurant.logoUrl == null || resolvedRestaurant.logoUrl!.isEmpty)) {
+      resolvedRestaurant = resolvedRestaurant.copyWith(logoUrl: dynamicLogo);
+    }
 
     // Ensure categories are rich and categorized
     if (categories.isEmpty) {
-      categories = ['All', 'Pizzas', 'Burgers', 'Pastas', 'Sides', 'Beverages'];
-    } else if (!categories.contains('All')) {
+      if (_db.categories.isNotEmpty) {
+        categories = List<String>.from(_db.categories);
+      } else {
+        categories = ['All', 'Pizzas', 'Burgers', 'Pastas', 'Sides', 'Beverages'];
+      }
+    }
+    if (!categories.contains('All')) {
       categories = ['All', ...categories];
     }
 
     // Ensure menu items are filled and appetizing
     if (menuItems.isEmpty) {
-      menuItems = _generateDefaultPizzeriaMenu();
+      if (_db.menuItems.isNotEmpty) {
+        menuItems = List<MenuItemModel>.from(_db.menuItems);
+      } else {
+        menuItems = _generateDefaultPizzeriaMenu();
+      }
+    }
+
+    // Ensure addons are filled
+    if (addOns.isEmpty && _db.extras.isNotEmpty) {
+      addOns = List<ExtraModel>.from(_db.extras);
     }
 
     // Ensure banners are present

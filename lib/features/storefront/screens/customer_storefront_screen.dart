@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/database/database_service.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/order_model.dart';
-import '../../../core/models/restaurant_model.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/storefront_model.dart';
 import '../services/storefront_service.dart';
@@ -277,24 +278,90 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   }
 
   Widget _buildRestaurantAvatar(String? logo, String name, {double size = 48}) {
-    if (logo != null && logo.isNotEmpty) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFE65100), width: 1.5),
-        ),
-        child: ClipOval(
-          child: Image.network(
-            ApiEndpoints.resolveMediaUrl(logo),
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _buildEmblemLogo(name, size),
+    final effectiveLogo = (logo != null && logo.trim().isNotEmpty)
+        ? logo.trim()
+        : DatabaseService().companyLogoPath?.trim();
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFE65100), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
-        ),
-      );
+        ],
+      ),
+      child: ClipOval(
+        child: _buildAvatarImage(effectiveLogo, name, size),
+      ),
+    );
+  }
+
+  Widget _buildAvatarImage(String? path, String name, double size) {
+    if (path != null && path.isNotEmpty) {
+      // 1. Data URI / Base64 image
+      if (path.startsWith('data:image') ||
+          path.startsWith('data:') ||
+          (path.length > 80 && !path.startsWith('http') && !path.startsWith('assets/'))) {
+        try {
+          final clean = path.contains(',') ? path.split(',').last : path;
+          final bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          return Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
+          );
+        } catch (_) {}
+      } else if (path.startsWith('http://') || path.startsWith('https://')) {
+        return Image.network(
+          ApiEndpoints.resolveMediaUrl(path),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
+        );
+      } else if (path.startsWith('assets/')) {
+        return Image.asset(
+          path,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
+        );
+      } else if (!kIsWeb) {
+        try {
+          final file = File(path);
+          if (file.existsSync()) {
+            return Image.file(
+              file,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
+            );
+          }
+        } catch (_) {}
+      }
     }
-    return _buildEmblemLogo(name, size);
+    return _buildFallbackImage(name, size);
+  }
+
+  Widget _buildFallbackImage(String name, double size) {
+    return Image.asset(
+      'assets/images/logo.png',
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => _buildEmblemLogo(name, size),
+    );
   }
 
   Widget _buildEmblemLogo(String name, double size) {
@@ -442,8 +509,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildRestaurantAvatar(restaurant.logoUrl, restaurant.name, size: 54),
-                          const SizedBox(width: 12),
+                          _buildRestaurantAvatar(restaurant.logoUrl, restaurant.name, size: 50),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,68 +518,80 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                 Text(
                                   restaurant.name,
                                   style: const TextStyle(
-                                    fontSize: 22,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.w900,
                                     color: Color(0xFF0F172A),
-                                    letterSpacing: -0.4,
+                                    letterSpacing: -0.3,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   restaurant.cuisineType,
-                                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(height: 6),
-                                Row(
+                                const SizedBox(height: 5),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     // Rating
-                                    const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF59E0B)),
-                                    const SizedBox(width: 3),
-                                    const Text(
-                                      '4.6',
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.star_rounded, size: 14, color: Color(0xFFF59E0B)),
+                                        const SizedBox(width: 2),
+                                        const Text(
+                                          '4.6',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                        ),
+                                        const SizedBox(width: 2),
+                                        const Text('(1.2k+)', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                                      ],
                                     ),
-                                    const SizedBox(width: 2),
-                                    const Text('(1.2k+)', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                                    const SizedBox(width: 8),
 
                                     // Open status badge
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFDCFCE7),
-                                        borderRadius: BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Text(
                                         'Open',
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w700,
                                           color: Color(0xFF16A34A),
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
+
+                                    // Timing
                                     Text(
                                       '${restaurant.openingTime} - ${restaurant.closingTime}',
-                                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                      style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                                     ),
                                   ],
                                 ),
                               ],
                             ),
                           ),
+                          const SizedBox(width: 6),
 
                           // Top-Right Action Buttons (Search, Heart, More)
                           Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               _buildCircularHeaderButton(
                                 icon: Icons.search_rounded,
                                 onTap: () => _searchFocusNode.requestFocus(),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 5),
                               _buildCircularHeaderButton(
                                 icon: _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                                 iconColor: _isFavorite ? const Color(0xFFEF4444) : const Color(0xFF0F172A),
@@ -520,7 +599,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                   setState(() => _isFavorite = !_isFavorite);
                                 },
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 5),
                               _buildCircularHeaderButton(
                                 icon: Icons.more_vert_rounded,
                                 onTap: _showRestaurantInfo,
@@ -530,148 +609,170 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
 
                       // 2. ORDER TYPE SWITCHER & LOCATION / ETA BAR
-                      Row(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Delivery Pill
-                          Expanded(
-                            flex: 5,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(24),
-                              onTap: () => setState(() => _orderType = OrderType.delivery),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 150),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: _orderType == OrderType.delivery ? const Color(0xFFE65100) : Colors.white,
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: _orderType == OrderType.delivery ? const Color(0xFFE65100) : const Color(0xFFE2E8F0),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.03),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    )
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.two_wheeler_rounded,
-                                      size: 18,
-                                      color: _orderType == OrderType.delivery ? Colors.white : const Color(0xFF64748B),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Delivery',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                        color: _orderType == OrderType.delivery ? Colors.white : const Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-
-                          // Pickup Pill
-                          Expanded(
-                            flex: 5,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(24),
-                              onTap: () => setState(() => _orderType = OrderType.takeaway),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 150),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: _orderType == OrderType.takeaway ? const Color(0xFFE65100) : Colors.white,
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: _orderType == OrderType.takeaway ? const Color(0xFFE65100) : const Color(0xFFE2E8F0),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.03),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    )
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.store_mall_directory_rounded,
-                                      size: 18,
-                                      color: _orderType == OrderType.takeaway ? Colors.white : const Color(0xFF64748B),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Pickup',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                        color: _orderType == OrderType.takeaway ? Colors.white : const Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-
-                          // Location & Delivery Estimate Card
-                          Expanded(
-                            flex: 7,
-                            child: InkWell(
+                          // 2.1 Segmented Delivery / Pickup Switcher (Clean, compact tab bar)
+                          Container(
+                            height: 38,
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
                               borderRadius: BorderRadius.circular(20),
-                              onTap: _showChangeLocationDialog,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.location_on_rounded, size: 16, color: Color(0xFFE65100)),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            _deliveryAddress,
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: Color(0xFF0F172A),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(18),
+                                    onTap: () => setState(() => _orderType = OrderType.delivery),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 150),
+                                      decoration: BoxDecoration(
+                                        color: _orderType == OrderType.delivery ? const Color(0xFFE65100) : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(18),
+                                        boxShadow: _orderType == OrderType.delivery
+                                            ? [
+                                                BoxShadow(
+                                                  color: const Color(0xFFE65100).withValues(alpha: 0.25),
+                                                  blurRadius: 4,
+                                                  offset: const Offset(0, 2),
+                                                )
+                                              ]
+                                            : null,
+                                      ),
+                                      child: Center(
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.two_wheeler_rounded,
+                                              size: 16,
+                                              color: _orderType == OrderType.delivery ? Colors.white : const Color(0xFF64748B),
                                             ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          Text(
-                                            _orderType == OrderType.delivery ? 'Delivery in 25–35 mins' : 'Pickup in 15–20 mins',
-                                            style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
-                                            maxLines: 1,
-                                          ),
-                                        ],
+                                            const SizedBox(width: 5),
+                                            Text(
+                                              'Delivery',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                color: _orderType == OrderType.delivery ? Colors.white : const Color(0xFF475569),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF94A3B8)),
-                                  ],
+                                  ),
                                 ),
+                                Expanded(
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(18),
+                                    onTap: () => setState(() => _orderType = OrderType.takeaway),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 150),
+                                      decoration: BoxDecoration(
+                                        color: _orderType == OrderType.takeaway ? const Color(0xFFE65100) : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(18),
+                                        boxShadow: _orderType == OrderType.takeaway
+                                            ? [
+                                                BoxShadow(
+                                                  color: const Color(0xFFE65100).withValues(alpha: 0.25),
+                                                  blurRadius: 4,
+                                                  offset: const Offset(0, 2),
+                                                )
+                                              ]
+                                            : null,
+                                      ),
+                                      child: Center(
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.store_mall_directory_rounded,
+                                              size: 16,
+                                              color: _orderType == OrderType.takeaway ? Colors.white : const Color(0xFF64748B),
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Text(
+                                              'Pickup',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                color: _orderType == OrderType.takeaway ? Colors.white : const Color(0xFF475569),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // 2.2 Location & ETA Bar (Full width, wrapped and visible address)
+                          InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: _showChangeLocationDialog,
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.location_on_rounded, size: 16, color: Color(0xFFE65100)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          _deliveryAddress,
+                                          style: const TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF0F172A),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          _orderType == OrderType.delivery
+                                              ? 'Delivery in 25–35 mins • Live tracking'
+                                              : 'Ready for pickup in 15–20 mins',
+                                          style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text('Change', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFE65100))),
+                                        Icon(Icons.keyboard_arrow_right_rounded, size: 14, color: Color(0xFFE65100)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -1188,10 +1289,11 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
     required IconData icon,
     Color iconColor = const Color(0xFF0F172A),
     required VoidCallback onTap,
+    double size = 32,
   }) {
     return Container(
-      width: 36,
-      height: 36,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: const Color(0xFFF1F5F9),
         shape: BoxShape.circle,
@@ -1200,7 +1302,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
-        child: Icon(icon, size: 18, color: iconColor),
+        child: Center(
+          child: Icon(icon, size: size * 0.52, color: iconColor),
+        ),
       ),
     );
   }

@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:apna_pos/core/models/restaurant_model.dart';
 import 'package:apna_pos/core/models/menu_item_model.dart';
+import 'package:apna_pos/core/models/order_model.dart';
 import 'package:apna_pos/features/storefront/models/storefront_model.dart';
 import 'package:apna_pos/features/storefront/services/storefront_service.dart';
 import 'package:apna_pos/features/storefront/screens/customer_storefront_screen.dart';
+import 'package:apna_pos/features/storefront/widgets/item_customization_sheet.dart';
+import 'package:apna_pos/features/storefront/widgets/storefront_cart_sheet.dart';
 
 void main() {
   group('Storefront & Company Slug Algorithms', () {
@@ -100,7 +103,21 @@ void main() {
   });
 
   group('CustomerStorefrontScreen UI Rendering', () {
-    testWidgets('renders storefront screen components', (WidgetTester tester) async {
+    testWidgets('renders storefront screen components on 360px viewport without overflow', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      FlutterErrorDetails? caughtDetails;
+      final oldHandler = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.exceptionAsString().contains('overflowed')) {
+          caughtDetails = details;
+        }
+      };
+      addTearDown(() => FlutterError.onError = oldHandler);
+
       await tester.runAsync(() async {
         await tester.pumpWidget(
           const MaterialApp(
@@ -121,6 +138,111 @@ void main() {
 
       // Verify search field exists
       expect(find.byType(TextField), findsWidgets);
+
+      // Zero RenderFlex overflows
+      expect(caughtDetails, isNull);
+    });
+
+    testWidgets('ItemCustomizationSheet opens at 65% of screen height and wraps size descriptions', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final item = MenuItemModel(
+        id: 'p1',
+        name: 'Margherita Pizza',
+        category: 'Pizzas',
+        price: 199.0,
+        salePrice: 199.0,
+        description: 'Classic delight with 100% real mozzarella cheese.',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ItemCustomizationSheet(
+              item: item,
+              onAddToCart: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify that sheet height is exactly 65% of screen height (800 * 0.65 = 520)
+      final sheetFinder = find.byType(ItemCustomizationSheet);
+      expect(sheetFinder, findsOneWidget);
+      final size = tester.getSize(sheetFinder);
+      expect(size.height, closeTo(520, 1.0));
+
+      // Verify full size descriptions are present and not clipped
+      expect(find.textContaining('7" (1-2 servings)'), findsOneWidget);
+      expect(find.textContaining('10" (2-3 servings)'), findsOneWidget);
+    });
+
+    testWidgets('StorefrontCartSheet renders on 360px width with no payment method overflow', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      FlutterErrorDetails? caughtDetails;
+      final oldHandler = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.exceptionAsString().contains('overflowed')) {
+          caughtDetails = details;
+          debugPrint('FULL_ERROR_DETAILS: $details');
+        }
+      };
+      addTearDown(() => FlutterError.onError = oldHandler);
+
+      final item = MenuItemModel(
+        id: 'p1',
+        name: 'Margherita Pizza',
+        category: 'Pizzas',
+        price: 199.0,
+        salePrice: 199.0,
+        description: 'Classic delight with 100% real mozzarella cheese.',
+      );
+
+      final cartItems = [
+        StorefrontCartItem(
+          uid: 'c1',
+          item: item,
+          quantity: 1,
+        ),
+      ];
+
+      final rest = RestaurantModel(
+        id: 'pizza-47',
+        name: 'Pizza 47',
+        companyName: 'Pizza 47',
+        tagline: 'Best Pizza',
+        phone: '9876543210',
+        address: 'Sector 62, Noida',
+        cuisineType: 'Pizzas • Fast Food',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StorefrontCartSheet(
+              cartItems: cartItems,
+              initialOrderType: OrderType.delivery,
+              deliveryAddress: 'Sector 62, Noida',
+              restaurant: rest,
+              onUpdateQuantity: (_, __) {},
+              onClearCart: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('UPI / QR Pay'), findsOneWidget);
+      expect(find.text('Pay on Delivery'), findsOneWidget);
+      expect(caughtDetails, isNull);
     });
   });
 }
