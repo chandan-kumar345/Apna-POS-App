@@ -1244,7 +1244,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                         ),
                                         Switch(
                                           value: freeDelivery,
-                                          activeColor: const Color(0xFF137333),
+                                          activeTrackColor: const Color(0xFF137333),
                                           onChanged: (val) {
                                             setModalState(() => freeDelivery = val);
                                           },
@@ -4216,7 +4216,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             subtitle: (restaurant?.freeDeliveryEnabled == true)
                                 ? 'Free Delivery (> ₹${restaurant?.freeDeliveryMinOrder.toStringAsFixed(0) ?? "0"})'
                                 : (restaurant?.deliveryChargePerKm != null && restaurant!.deliveryChargePerKm > 0)
-                                    ? 'Base: ₹${restaurant?.deliveryBaseCharge.toStringAsFixed(0) ?? "0"} + ₹${restaurant?.deliveryChargePerKm.toStringAsFixed(0) ?? "0"}/km'
+                                    ? 'Base: ₹${restaurant.deliveryBaseCharge.toStringAsFixed(0)} + ₹${restaurant.deliveryChargePerKm.toStringAsFixed(0)}/km'
                                     : 'Delivery Rates & Distance',
                             icon: Icons.delivery_dining_rounded,
                             accentColor: const Color(0xFF10B981),
@@ -4321,14 +4321,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             icon: Icons.account_balance_wallet_rounded,
                             accentColor: const Color(0xFF0D9488),
                             badgeText: db.isWalletEnabled ? '${db.walletCashbackPercentage}% Back' : 'Setup',
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const WalletScreen(),
-                                ),
-                              );
-                            },
+                            onTap: _showWalletModal,
                           ),
                           _buildSettingCard(
                             width: cardWidth,
@@ -4806,7 +4799,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   try {
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   } catch (_) {
-                    if (context.mounted) {
+                    if (mounted) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -4951,9 +4944,9 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       await db.setStorefrontThemeColor(hex);
                       setModalState(() {});
                       setState(() {});
-                      if (context.mounted) {
-                        Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(
+                      if (!mounted || !ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Row(
                               children: [
@@ -4971,7 +4964,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             duration: const Duration(seconds: 2),
                           ),
                         );
-                      }
                     },
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 8),

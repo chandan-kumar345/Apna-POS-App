@@ -421,7 +421,7 @@ class _CustomerAutoReplyScreenState extends State<CustomerAutoReplyScreen> {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
@@ -456,7 +456,7 @@ class _CustomerAutoReplyScreenState extends State<CustomerAutoReplyScreen> {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: _enabled ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                  color: _enabled ? _AutoReplyTheme.greenBrand : const Color(0xFF64748B),
                 ),
               ),
             ),
@@ -808,7 +808,7 @@ class _CustomerAutoReplyScreenState extends State<CustomerAutoReplyScreen> {
             bottomRight: const Radius.circular(10),
           ),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 2, offset: const Offset(0, 1)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 2, offset: const Offset(0, 1)),
           ],
         ),
         child: Column(
