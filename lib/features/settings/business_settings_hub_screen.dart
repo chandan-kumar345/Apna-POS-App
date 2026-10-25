@@ -4140,26 +4140,30 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // 1. NEUMORPHIC HERO HEADER CARD (OUTLET & EDIT PROFILE)
-                      _buildNeumorphicHeroCard(
-                        outletName: outletName,
-                        companyName: (restaurant?.companyName.isNotEmpty == true)
-                            ? restaurant!.companyName
-                            : (db.currentUser?.companyName ?? ''),
-                        phone: (restaurant?.phone.isNotEmpty == true)
-                            ? restaurant!.phone
-                            : (db.currentUser?.phone ?? ''),
-                        logoUrl: restaurant?.logoUrl ?? db.companyLogoPath ?? '',
-                        outletAddress: outletAddress,
-                        isMobile: isMobile,
-                        onEdit: _showEditBusinessProfileModal,
+                      RepaintBoundary(
+                        child: _buildNeumorphicHeroCard(
+                          outletName: outletName,
+                          companyName: (restaurant?.companyName.isNotEmpty == true)
+                              ? restaurant!.companyName
+                              : (db.currentUser?.companyName ?? ''),
+                          phone: (restaurant?.phone.isNotEmpty == true)
+                              ? restaurant!.phone
+                              : (db.currentUser?.phone ?? ''),
+                          logoUrl: restaurant?.logoUrl ?? db.companyLogoPath ?? '',
+                          outletAddress: outletAddress,
+                          isMobile: isMobile,
+                          onEdit: _showEditBusinessProfileModal,
+                        ),
                       ),
 
                       const SizedBox(height: 20),
 
                       // 1.5. CUSTOMER WEB STOREFRONT PREVIEW BOX (apnaposs.vercel.app/company-name)
-                      _buildCustomerStorefrontPreviewCard(
-                        restaurant,
-                        isMobile: isMobile,
+                      RepaintBoundary(
+                        child: _buildCustomerStorefrontPreviewCard(
+                          restaurant,
+                          isMobile: isMobile,
+                        ),
                       ),
 
                       const SizedBox(height: 24),
@@ -6040,9 +6044,10 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   }) {
     final bool isCompact = width < 140;
 
-    return SizedBox(
-      width: width,
-      child: Material(
+    return RepaintBoundary(
+      child: SizedBox(
+        width: width,
+        child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
@@ -6136,8 +6141,9 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   /// Neumorphic Dialog Outer Container - Calibrated with soft drop shadows and
   /// zero white outer glow so popups do not spread light from borders onto the dark barrier.

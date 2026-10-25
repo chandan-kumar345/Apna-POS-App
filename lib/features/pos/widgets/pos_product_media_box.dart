@@ -146,6 +146,25 @@ class PosProductMediaBox extends StatefulWidget {
 }
 
 class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _PosPlaybackClient {
+  static final Map<String, Uint8List> _base64Cache = {};
+
+  static Uint8List? _getOrDecodeBase64(String raw) {
+    final cached = _base64Cache[raw];
+    if (cached != null) return cached;
+    try {
+      final commaIdx = raw.indexOf(',');
+      final base64Clean = commaIdx != -1 ? raw.substring(commaIdx + 1) : raw;
+      final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+      if (_base64Cache.length >= 80) {
+        _base64Cache.remove(_base64Cache.keys.first);
+      }
+      _base64Cache[raw] = bytes;
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   final List<PosMediaItem> _mediaList = [];
   PageController? _pageController;
   int _currentPage = 0;
@@ -302,14 +321,17 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       _pageController = null;
     }
 
-    // If initial slide is video, check if we should auto-start stream
+    // If initial slide is video, auto-start stream ONLY if priorityPlayback is requested
+    // (e.g. in detail sheets or dedicated players). Passive list/grid cards stay lightweight!
     if (_mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-      if (!widget.isMini) {
+      if (!widget.isMini && widget.priorityPlayback) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _currentPage == 0 && _mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-            _scheduleVideoStreamInit(_mediaList[0].url, forcePriority: widget.priorityPlayback);
+            _scheduleVideoStreamInit(_mediaList[0].url, forcePriority: true);
           }
         });
+      } else if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
+        _scheduleAutoSlideForImages();
       }
     } else if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
       _scheduleAutoSlideForImages();
@@ -561,17 +583,24 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     if (currentMedia.type == PosMediaType.video) {
       _autoSlideTimer?.cancel();
       _isVideoFinishingSlide = false;
-      // User or auto-slide switched to video: acquire decoder slot with priority
-      final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(this, forcePriority: true);
-      if (acquired) {
-        if (_videoController != null && _isVideoInitialized) {
-          _videoController!.seekTo(Duration.zero).then((_) {
-            if (mounted && _currentPage == index && _videoController != null) {
-              _videoController!.play();
-            }
-          });
-        } else if (!_isVideoLoading) {
-          _initVideoStream(currentMedia.url);
+      // User or priority playback switched to video: acquire decoder slot
+      if (widget.priorityPlayback || _isUserInteracting) {
+        final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(this, forcePriority: true);
+        if (acquired) {
+          if (_videoController != null && _isVideoInitialized) {
+            _videoController!.seekTo(Duration.zero).then((_) {
+              if (mounted && _currentPage == index && _videoController != null) {
+                _videoController!.play();
+              }
+            });
+          } else if (!_isVideoLoading) {
+            _initVideoStream(currentMedia.url);
+          }
+        }
+      } else {
+        // In passive mode, display video thumbnail and auto-slide to next image
+        if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
+          _scheduleAutoSlideForImages();
         }
       }
     } else {
@@ -738,10 +767,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       );
     }
 
-    return SizedBox(
-      width: widget.width ?? double.infinity,
-      height: widget.height ?? double.infinity,
-      child: content,
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.width ?? double.infinity,
+        height: widget.height ?? double.infinity,
+        child: content,
+      ),
     );
   }
 
@@ -842,7 +873,40 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       );
     }
 
-    return baseThumb;
+    // 3. Passive mode: Display dish thumbnail with subtle video indicator badge
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        baseThumb,
+        Positioned(
+          top: 6,
+          right: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.60),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.play_arrow_rounded, color: Colors.white, size: 13),
+                SizedBox(width: 2),
+                Text(
+                  'VIDEO',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildImageSlide(String imagePath, {Key? key}) {
@@ -861,17 +925,15 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         height: double.infinity,
         cacheWidth: 480,
         cacheHeight: 480,
-        filterQuality: FilterQuality.high,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) => fallback,
       );
     }
 
     // 2. Base64 Data URI or raw Base64 bytes
     if (trimmed.startsWith('data:image') || trimmed.startsWith('data:') || (trimmed.length > 80 && !trimmed.contains('/') && !trimmed.contains('\\'))) {
-      try {
-        final commaIdx = trimmed.indexOf(',');
-        final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
-        final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+      final bytes = _getOrDecodeBase64(trimmed);
+      if (bytes != null) {
         return Image.memory(
           bytes,
           key: key,
@@ -880,11 +942,11 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
           width: double.infinity,
           height: double.infinity,
           gaplessPlayback: true,
-          filterQuality: FilterQuality.high,
+          cacheWidth: 480,
+          cacheHeight: 480,
+          filterQuality: FilterQuality.medium,
           errorBuilder: (context, error, stackTrace) => fallback,
         );
-      } catch (e) {
-        debugPrint('[PosProductMediaBox] Base64 image decode error: $e');
       }
     }
 
@@ -894,10 +956,8 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
 
     // 4. Base64 after resolve
     if (resolved.startsWith('data:image') || resolved.startsWith('data:')) {
-      try {
-        final commaIdx = resolved.indexOf(',');
-        final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
-        final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+      final bytes = _getOrDecodeBase64(resolved);
+      if (bytes != null) {
         return Image.memory(
           bytes,
           key: key,
@@ -906,10 +966,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
           width: double.infinity,
           height: double.infinity,
           gaplessPlayback: true,
-          filterQuality: FilterQuality.high,
+          cacheWidth: 480,
+          cacheHeight: 480,
+          filterQuality: FilterQuality.medium,
           errorBuilder: (context, error, stackTrace) => fallback,
         );
-      } catch (_) {}
+      }
     }
 
     // 5. Network URL
@@ -923,7 +985,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         height: double.infinity,
         cacheWidth: 480,
         cacheHeight: 480,
-        filterQuality: FilterQuality.high,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) {
           debugPrint('[PosProductMediaBox] Image network load failed for "$resolved": $error');
           if (!kIsWeb) {
@@ -939,7 +1001,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
                   height: double.infinity,
                   cacheWidth: 480,
                   cacheHeight: 480,
-                  filterQuality: FilterQuality.high,
+                  filterQuality: FilterQuality.medium,
                   errorBuilder: (context, error, stackTrace) => fallback,
                 );
               }
@@ -962,7 +1024,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
             height: double.infinity,
             cacheWidth: 480,
             cacheHeight: 480,
-            filterQuality: FilterQuality.high,
+            filterQuality: FilterQuality.medium,
             errorBuilder: (context, error, stackTrace) => fallback,
           );
         }

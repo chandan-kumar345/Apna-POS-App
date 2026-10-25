@@ -182,20 +182,18 @@ class SoundService {
       return;
     }
 
-    // 1. Instant zero-latency native hardware sound
-    try {
-      SystemSound.play(SystemSoundType.click);
-    } catch (_) {}
-
-    // 2. Hardware haptic feedback
+    // 1. Hardware haptic feedback
     try {
       HapticFeedback.selectionClick();
     } catch (_) {}
 
-    // 3. Audio asset playback (if initialized or auto-initialize)
+    // 2. Audio asset playback (fallback to native system sound while initializing)
     if (_instance._isInitialized) {
       _instance._playButtonAsset();
     } else {
+      try {
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
       _instance.init().then((_) => _instance._playButtonAsset()).catchError((_) {});
     }
   }
@@ -221,16 +219,15 @@ class SoundService {
     }
 
     try {
-      SystemSound.play(SystemSoundType.click);
-    } catch (_) {}
-
-    try {
       HapticFeedback.selectionClick();
     } catch (_) {}
 
     if (_instance._isInitialized) {
       _instance._playKeyAsset();
     } else {
+      try {
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
       _instance.init().then((_) => _instance._playKeyAsset()).catchError((_) {});
     }
   }

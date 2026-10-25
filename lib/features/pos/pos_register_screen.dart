@@ -1165,10 +1165,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               color: const Color(0xFFE2E8F0),
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: _buildPosProductImage(item),
-                            ),
+                            child: _buildPosProductImage(item, priorityPlayback: true),
                           ),
                           Positioned(
                             top: 8,
@@ -2585,12 +2582,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   );
 }
 
-  Widget _buildPosProductImage(MenuItemModel item) {
+  Widget _buildPosProductImage(MenuItemModel item, {bool priorityPlayback = false}) {
     return PosProductMediaBox(
       key: ValueKey('media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}'),
       item: item,
       fit: BoxFit.cover,
       showDots: true,
+      priorityPlayback: priorityPlayback,
       borderRadius: BorderRadius.circular(12),
     );
   }
@@ -10228,10 +10226,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   color: const Color(0xFFEDF3FA),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: _buildPosProductImage(item),
-                                ),
+                                child: _buildPosProductImage(item, priorityPlayback: false),
                               ),
                               // FoodType Badge (Top Right)
                               Positioned(
@@ -10898,7 +10893,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             addAutomaticKeepAlives: false,
             addRepaintBoundaries: true,
             // ignore: deprecated_member_use
-            cacheExtent: 600.0,
+            cacheExtent: 220.0,
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 90),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cols,
@@ -10909,11 +10904,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             itemCount: filteredItems.length,
             itemBuilder: (context, index) {
               final item = filteredItems[index];
-              return _buildProductCard(
-                item,
-                showImages: false,
-                currency: currency,
-                isDesktop: false,
+              return RepaintBoundary(
+                key: ValueKey('prod_no_img_${item.id}_${item.productId}'),
+                child: _buildProductCard(
+                  item,
+                  showImages: false,
+                  currency: currency,
+                  isDesktop: false,
+                ),
               );
             },
           );
@@ -10931,7 +10929,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
           // ignore: deprecated_member_use
-          cacheExtent: 600.0,
+          cacheExtent: 220.0,
           padding: EdgeInsets.fromLTRB(4, 4, 4, isDesktop ? 10 : 90),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columnCount,

@@ -199,6 +199,7 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                             borderRadius: BorderRadius.circular(22),
                             showDots: true,
                             autoSlide: true,
+                            priorityPlayback: true,
                           ),
                         ),
                       ),
