@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -35,6 +36,9 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
   @override
   void initState() {
     super.initState();
+    // Instant 0ms cached load from memory
+    _coupons = List.from(_couponService.cachedCoupons);
+    _isLoading = _coupons.isEmpty;
     _loadCoupons();
   }
 
@@ -46,7 +50,10 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
   }
 
   Future<void> _loadCoupons() async {
-    setState(() => _isLoading = true);
+    // Only show full loading spinner if we don't have any cached coupons
+    if (_coupons.isEmpty) {
+      setState(() => _isLoading = true);
+    }
     try {
       final res = await _couponService.getCoupons(
         search: _searchQuery,
@@ -63,21 +70,32 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load coupons: $e'), backgroundColor: Colors.red.shade700),
-        );
+        if (_coupons.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to load coupons: $e'), backgroundColor: Colors.red.shade700),
+          );
+        }
       }
     }
   }
 
+  static final DateFormat _dateFormat = DateFormat('dd MMM yyyy');
+
   List<CouponModel> get _filteredCoupons {
+    final query = _searchQuery.toLowerCase();
     return _coupons.where((c) {
       if (_selectedStatusFilter == 'active') {
-        return c.isActive && !c.isExpired;
+        if (!c.isActive || c.isExpired) return false;
       } else if (_selectedStatusFilter == 'inactive') {
-        return !c.isActive;
+        if (c.isActive) return false;
       } else if (_selectedStatusFilter == 'expired') {
-        return c.isExpired;
+        if (!c.isExpired) return false;
+      }
+      if (query.isNotEmpty) {
+        final inCode = c.code.toLowerCase().contains(query);
+        final inTitle = c.title.toLowerCase().contains(query);
+        final inDesc = c.description.toLowerCase().contains(query);
+        if (!inCode && !inTitle && !inDesc) return false;
       }
       return true;
     }).toList();
@@ -197,11 +215,26 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
   }
 
   Future<void> _toggleStatus(CouponModel coupon) async {
+    final oldStatus = coupon.isActive;
+    // Fast optimistic update for immediate feedback without lag
+    setState(() {
+      final idx = _coupons.indexWhere((c) => c.id == coupon.id);
+      if (idx != -1) {
+        _coupons[idx] = _coupons[idx].copyWith(isActive: !oldStatus);
+      }
+    });
+
     try {
       await _couponService.toggleCoupon(coupon.id);
-      _loadCoupons();
     } catch (e) {
       if (mounted) {
+        // Revert on error
+        setState(() {
+          final idx = _coupons.indexWhere((c) => c.id == coupon.id);
+          if (idx != -1) {
+            _coupons[idx] = _coupons[idx].copyWith(isActive: oldStatus);
+          }
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error toggling coupon: $e'), backgroundColor: Colors.red.shade700),
         );
@@ -228,9 +261,14 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
     );
 
     if (confirm == true) {
+      final oldList = List<CouponModel>.from(_coupons);
+      // Fast optimistic removal
+      setState(() {
+        _coupons.removeWhere((c) => c.id == coupon.id);
+      });
+
       try {
         await _couponService.deleteCoupon(coupon.id);
-        _loadCoupons();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Coupon deleted successfully'), backgroundColor: Color(0xFF051C48)),
@@ -238,6 +276,7 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
         }
       } catch (e) {
         if (mounted) {
+          setState(() => _coupons = oldList);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error deleting coupon: $e'), backgroundColor: Colors.red.shade700),
           );
@@ -425,14 +464,14 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
                   ),
                 ),
 
-                // Switch Toggle
+                // Switch Toggle (Lightweight & Smooth)
                 SizedBox(
                   height: 22,
                   child: Transform.scale(
                     scale: 0.65,
-                    child: Switch(
+                    child: CupertinoSwitch(
                       value: coupon.isActive,
-                      activeThumbColor: const Color(0xFF021B54),
+                      activeTrackColor: const Color(0xFF021B54),
                       onChanged: (val) => _toggleStatus(coupon),
                     ),
                   ),
@@ -535,7 +574,7 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
                 if (coupon.minCartAmount > 0)
                   _buildMetaChip(Icons.shopping_bag_outlined, 'Min Cart: ₹${coupon.minCartAmount.toStringAsFixed(0)}'),
                 if (coupon.endDate != null)
-                  _buildMetaChip(Icons.event_rounded, 'Till ${DateFormat('dd MMM yyyy').format(coupon.endDate!)}')
+                  _buildMetaChip(Icons.event_rounded, 'Till ${_dateFormat.format(coupon.endDate!)}')
                 else
                   _buildMetaChip(Icons.all_inclusive_rounded, 'No Expiry'),
                 _buildMetaChip(
@@ -1061,10 +1100,21 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
                         ),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) => _buildCouponCard(filtered[index]),
+                  : RefreshIndicator(
+                      onRefresh: _loadCoupons,
+                      color: const Color(0xFF0052FF),
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final coupon = filtered[index];
+                          return RepaintBoundary(
+                            key: ValueKey('coupon_${coupon.id}'),
+                            child: _buildCouponCard(coupon),
+                          );
+                        },
+                      ),
                     ),
         ),
       ],
@@ -1321,10 +1371,21 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
         Expanded(
           child: banners.isEmpty
               ? _buildBannersEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                  itemCount: banners.length,
-                  itemBuilder: (context, index) => _buildPromotionalBannerCard(banners[index]),
+              : RefreshIndicator(
+                  onRefresh: () async => setState(() {}),
+                  color: const Color(0xFF0052FF),
+                  child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    itemCount: banners.length,
+                    itemBuilder: (context, index) {
+                      final banner = banners[index];
+                      return RepaintBoundary(
+                        key: ValueKey('banner_${banner.id}'),
+                        child: _buildPromotionalBannerCard(banner),
+                      );
+                    },
+                  ),
                 ),
         ),
       ],
@@ -1366,7 +1427,9 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
                       child: Image.network(
                         banner.imageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: Color(banner.accentColorHex)),
+                        cacheWidth: 600,
+                        cacheHeight: 300,
+                        errorBuilder: (_, _, _) => Container(color: Color(banner.accentColorHex)),
                       ),
                     ),
                   Positioned.fill(
@@ -1562,9 +1625,9 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
                   height: 20,
                   child: Transform.scale(
                     scale: 0.65,
-                    child: Switch(
+                    child: CupertinoSwitch(
                       value: banner.isActive,
-                      activeColor: const Color(0xFF059669),
+                      activeTrackColor: const Color(0xFF059669),
                       onChanged: (_) => _toggleBannerStatus(banner),
                     ),
                   ),
@@ -1676,31 +1739,18 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                child: RefreshIndicator(
-                  onRefresh: () async {
-                    if (_selectedMainTab == 0) {
-                      await _loadCoupons();
-                    } else {
-                      setState(() {});
-                    }
-                  },
-                  color: const Color(0xFF0052FF),
-                  child: Column(
-                    children: [
-                      // Section Switcher: Coupons vs Promotional Banners
-                      _buildSectionSwitcher(),
+              child: Column(
+                children: [
+                  // Section Switcher: Coupons vs Promotional Banners
+                  _buildSectionSwitcher(),
 
-                      // Active View
-                      Expanded(
-                        child: _selectedMainTab == 0
-                            ? _buildCouponsSection(filtered)
-                            : _buildPromotionalBannersSection(),
-                      ),
-                    ],
+                  // Active View
+                  Expanded(
+                    child: _selectedMainTab == 0
+                        ? _buildCouponsSection(filtered)
+                        : _buildPromotionalBannersSection(),
                   ),
-                ),
+                ],
               ),
             ),
           ),

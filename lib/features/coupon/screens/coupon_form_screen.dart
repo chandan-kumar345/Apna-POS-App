@@ -1004,7 +1004,7 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
   // SECTION 4: PRODUCT ELIGIBILITY
   // ===========================================================================
   Widget _buildProductEligibilitySection() {
-    final filteredItems = _filteredMenuItems;
+    final filteredItems = _productApplicationMode == 'specific' ? _filteredMenuItems : const <MenuItemModel>[];
     final allCategories = ['All', ..._db.categories];
 
     return _buildAccordionSection(
@@ -1401,6 +1401,37 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
                 ],
               ),
             ),
+            // Quick Save Button in Header (Allows 1-tap save without dismissing keyboard)
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0052FF), Color(0xFF0038E0)],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0052FF).withValues(alpha: 0.35),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: _isSaving
+                  ? const Padding(
+                      padding: EdgeInsets.all(9),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.check_rounded, color: Colors.white, size: 20),
+                      tooltip: widget.existingCoupon != null ? 'Update Coupon' : 'Create Coupon',
+                      onPressed: _isSaving ? null : _saveCoupon,
+                    ),
+            ),
+            const SizedBox(width: 8),
+
             // Right circular close button
             Container(
               width: 36,
@@ -1426,6 +1457,12 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
   // BOTTOM STICKY ACTION BAR (Pixel-Matched to User Image)
   // ===========================================================================
   Widget _buildBottomStickyBar() {
+    // Hide bottom sticky bar when soft keyboard is open so no white box pops up
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    if (isKeyboardOpen) {
+      return const SizedBox.shrink();
+    }
+
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -1516,14 +1553,18 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
       backgroundColor: const Color(0xFF021B54),
+      // Prevent scaffold body from squishing upward when soft keyboard opens
+      resizeToAvoidBottomInset: false,
       body: Column(
         children: [
           // 1. Top Header Bar (Deep Midnight Navy with Squircle tag and Close X)
           _buildTopHeader(),
 
-          // 2. Curved Neumorphic Sheet Container
+          // 2. Curved Neumorphic Sheet Container (Permanently pinned without jumping)
           Expanded(
             child: Container(
               width: double.infinity,
@@ -1540,34 +1581,43 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
               ),
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                child: Form(
-                  key: _formKey,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Live Ticket Voucher Preview
-                        _buildLivePreviewCard(),
+                child: GestureDetector(
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  behavior: HitTestBehavior.translucent,
+                  child: Form(
+                    key: _formKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        14,
+                        12,
+                        14,
+                        keyboardInset > 0 ? keyboardInset + 20 : 16,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Live Ticket Voucher Preview
+                          _buildLivePreviewCard(),
 
-                        // Section 1: Basic Information
-                        _buildBasicInfoSection(),
+                          // Section 1: Basic Information
+                          _buildBasicInfoSection(),
 
-                        // Section 2: Discount Settings
-                        _buildDiscountSettingsSection(),
+                          // Section 2: Discount Settings
+                          _buildDiscountSettingsSection(),
 
-                        // Section 3: Validity Period
-                        _buildValidityPeriodSection(),
+                          // Section 3: Validity Period
+                          _buildValidityPeriodSection(),
 
-                        // Section 4: Product Eligibility
-                        _buildProductEligibilitySection(),
+                          // Section 4: Product Eligibility
+                          _buildProductEligibilitySection(),
 
-                        // Section 5: Usage Limits & Rules
-                        _buildUsageLimitsSection(),
+                          // Section 5: Usage Limits & Rules
+                          _buildUsageLimitsSection(),
 
-                        // Section 6: Terms & Conditions
-                        _buildTermsSection(),
-                      ],
+                          // Section 6: Terms & Conditions
+                          _buildTermsSection(),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1575,7 +1625,7 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
             ),
           ),
 
-          // 3. Bottom Sticky Action Bar
+          // 3. Bottom Sticky Action Bar (Smoothly hidden while typing)
           _buildBottomStickyBar(),
         ],
       ),
