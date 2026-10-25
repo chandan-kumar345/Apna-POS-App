@@ -37,6 +37,7 @@ class RestaurantModel {
   final String slug;
   final bool isStorefrontOnline;
   final int storefrontThemeColor;
+  final int? storefrontThemeColorEnd;
 
   static String slugify(String text) {
     final clean = text.trim().toLowerCase();
@@ -63,6 +64,7 @@ class RestaurantModel {
     this.slug = '',
     this.isStorefrontOnline = true,
     this.storefrontThemeColor = 0xFFE65100,
+    this.storefrontThemeColorEnd,
     required this.tagline,
     required this.phone,
     required this.address,
@@ -99,6 +101,7 @@ class RestaurantModel {
         'slug': storefrontSlug,
         'isStorefrontOnline': isStorefrontOnline,
         'storefrontThemeColor': storefrontThemeColor,
+        'storefrontThemeColorEnd': storefrontThemeColorEnd,
         'tagline': tagline,
         'phone': phone,
         'address': address,
@@ -212,10 +215,13 @@ class RestaurantModel {
             ? json['isStorefrontOnline'] as bool
             : (json['isOnline'] is bool ? json['isOnline'] as bool : true),
         storefrontThemeColor: (json['storefrontThemeColor'] as num?)?.toInt() ?? 0xFFE65100,
+        storefrontThemeColorEnd: (json['storefrontThemeColorEnd'] as num?)?.toInt(),
       );
   }
 
   String? get businessId => id.isNotEmpty ? id : null;
+
+  static const Object _sentinel = Object();
 
   RestaurantModel copyWith({
     String? id,
@@ -224,6 +230,7 @@ class RestaurantModel {
     String? slug,
     bool? isStorefrontOnline,
     int? storefrontThemeColor,
+    Object? storefrontThemeColorEnd = _sentinel,
     String? tagline,
     String? phone,
     String? address,
@@ -259,6 +266,9 @@ class RestaurantModel {
       slug: slug ?? this.slug,
       isStorefrontOnline: isStorefrontOnline ?? this.isStorefrontOnline,
       storefrontThemeColor: storefrontThemeColor ?? this.storefrontThemeColor,
+      storefrontThemeColorEnd: identical(storefrontThemeColorEnd, _sentinel)
+          ? this.storefrontThemeColorEnd
+          : (storefrontThemeColorEnd as int?),
       tagline: tagline ?? this.tagline,
       phone: phone ?? this.phone,
       address: address ?? this.address,

@@ -13,7 +13,7 @@ import '../models/storefront_model.dart';
 import '../services/storefront_service.dart';
 import '../widgets/item_customization_sheet.dart';
 import '../widgets/storefront_cart_sheet.dart';
-import '../widgets/storefront_video_player_dialog.dart';
+import '../../pos/widgets/pos_product_media_box.dart';
 
 class CustomerStorefrontScreen extends StatefulWidget {
   final String slug;
@@ -118,6 +118,13 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   int get _totalCartCount => _cartItems.fold(0, (sum, i) => sum + i.quantity);
   double get _totalCartAmount => _cartItems.fold(0.0, (sum, i) => sum + i.totalPrice);
   Color get _themeColor => Color(_data?.themeColorHex ?? 0xFFE65100);
+  Color? get _themeColorEnd => _data?.themeColorEndHex != null ? Color(_data!.themeColorEndHex!) : null;
+  bool get _hasGradient => _themeColorEnd != null && _themeColorEnd != _themeColor;
+  LinearGradient get _themeGradient => LinearGradient(
+        colors: [_themeColor, _themeColorEnd ?? _themeColor],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
   bool get _isStoreOnline => _data?.isOnline ?? true;
 
   String _getCategoryImageUrl(String cat) {
@@ -163,6 +170,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       builder: (ctx) => ItemCustomizationSheet(
         item: item,
         themeColor: _themeColor,
+        themeColorEnd: _themeColorEnd,
         isOnline: _isStoreOnline,
         onAddToCart: (cartItem) {
           setState(() {
@@ -204,6 +212,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         initialOrderType: _orderType,
         deliveryAddress: _deliveryAddress,
         themeColor: _themeColor,
+        themeColorEnd: _themeColorEnd,
         isOnline: _isStoreOnline,
         onUpdateQuantity: (item, newQty) {
           setState(() {
@@ -1296,22 +1305,30 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                   ],
                                 ),
                               ),
-                              ElevatedButton(
-                                onPressed: _openCartModal,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _themeColor,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  elevation: 0,
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: _hasGradient ? _themeGradient : null,
+                                  color: !_hasGradient ? _themeColor : null,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text('View Cart', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                                    SizedBox(width: 4),
-                                    Icon(Icons.arrow_forward_rounded, size: 16),
-                                  ],
+                                child: ElevatedButton(
+                                  onPressed: _openCartModal,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    foregroundColor: Colors.white,
+                                    shadowColor: Colors.transparent,
+                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    elevation: 0,
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('View Cart', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                                      SizedBox(width: 4),
+                                      Icon(Icons.arrow_forward_rounded, size: 16),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -1346,57 +1363,49 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Food Image on Left with optional Video badge
+          // Food Image on Left with slidable multi-image / auto-playing video & top-left Variants badge (POS Style)
           Stack(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  color: const Color(0xFFF1F5F9),
-                  child: (item.imageUrl.isNotEmpty)
-                      ? Image.network(
-                          ApiEndpoints.resolveMediaUrl(item.imageUrl),
-                          fit: BoxFit.cover,
-                          errorBuilder: (ctx, err, st) => Center(
-                            child: Text(item.emoji.isNotEmpty ? item.emoji : '🍕', style: const TextStyle(fontSize: 32)),
-                          ),
-                        )
-                      : Center(
-                          child: Text(item.emoji.isNotEmpty ? item.emoji : '🍕', style: const TextStyle(fontSize: 32)),
-                        ),
+              SizedBox(
+                width: 96,
+                height: 96,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: PosProductMediaBox(
+                    key: ValueKey('storefront_media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}'),
+                    item: item,
+                    fit: BoxFit.cover,
+                    width: 96,
+                    height: 96,
+                    borderRadius: BorderRadius.circular(12),
+                    showDots: true,
+                    autoSlide: true,
+                    onTap: () => _openCustomizationModal(item),
+                  ),
                 ),
               ),
 
-              // Play Video Pill Badge over Product Image
-              if (item.videoUrl.trim().isNotEmpty)
+              // Variants Count Pill Badge (Top-Left of product image, exactly like the POS screen)
+              if (item.variants.length > 1)
                 Positioned(
-                  bottom: 4,
-                  right: 4,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: () => StorefrontVideoPlayerDialog.show(context, item, themeColor: _themeColor),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.78),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.white30, width: 0.8),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.play_circle_fill_rounded, size: 12, color: Colors.white),
-                            SizedBox(width: 3),
-                            Text(
-                              'Video',
-                              style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800),
-                            ),
-                          ],
-                        ),
+                  top: 5,
+                  left: 5,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F2B48).withValues(alpha: 0.90),
+                      borderRadius: BorderRadius.circular(5),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
+                      ],
+                    ),
+                    child: Text(
+                      '${item.variants.length} Variants',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
                       ),
                     ),
                   ),
@@ -1438,76 +1447,86 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
 
-                // Variants Count Pill Badge (only if product has variants)
-                if (item.variants.length > 1) ...[
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _themeColor.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: _themeColor.withValues(alpha: 0.25)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.tune_rounded, size: 11, color: _themeColor),
-                        const SizedBox(width: 3),
-                        Flexible(
-                          child: Text(
-                            '${item.variants.length} Sizes',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: _themeColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      '₹${item.effectivePrice.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-
-                    // Add Button or Store Offline Disabled Button
-                    ElevatedButton(
-                      onPressed: _isStoreOnline ? () => _openCustomizationModal(item) : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isStoreOnline ? _themeColor : const Color(0xFFE2E8F0),
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFFF1F5F9),
-                        disabledForegroundColor: const Color(0xFF94A3B8),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                        visualDensity: VisualDensity.compact,
-                      ),
+                    Expanded(
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
                         children: [
-                          Text(
-                            _isStoreOnline ? 'Add' : 'Offline',
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                          Flexible(
+                            child: Text(
+                              '₹${item.effectivePrice.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          if (_isStoreOnline) ...[
-                            const SizedBox(width: 4),
-                            const Icon(Icons.add_rounded, size: 15),
+                          if (item.variants.length > 1) ...[
+                            const SizedBox(width: 2),
+                            const Flexible(
+                              child: Text(
+                                'onwards',
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF64748B),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           ],
                         ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+
+                    // Add Button or Store Offline Disabled Button
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: (_isStoreOnline && _hasGradient) ? _themeGradient : null,
+                        color: (_isStoreOnline && !_hasGradient)
+                            ? _themeColor
+                            : (!_isStoreOnline ? const Color(0xFFF1F5F9) : null),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _isStoreOnline ? () => _openCustomizationModal(item) : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.transparent,
+                          disabledForegroundColor: const Color(0xFF94A3B8),
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _isStoreOnline ? 'Add' : 'Offline',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: _isStoreOnline ? Colors.white : const Color(0xFF94A3B8),
+                              ),
+                            ),
+                            if (_isStoreOnline) ...[
+                              const SizedBox(width: 3),
+                              const Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                   ],

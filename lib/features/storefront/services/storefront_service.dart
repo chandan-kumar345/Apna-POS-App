@@ -240,6 +240,7 @@ class StorefrontService {
       banners: banners,
       isOnline: _db.isStorefrontOnline,
       themeColorHex: _db.storefrontThemeColor,
+      themeColorEndHex: _db.storefrontThemeColorEnd,
     );
   }
 

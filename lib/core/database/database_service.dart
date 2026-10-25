@@ -2977,6 +2977,7 @@ class DatabaseService extends ChangeNotifier {
 
   bool? _isStorefrontOnlineMemory;
   int? _storefrontThemeColorMemory;
+  int? _storefrontThemeColorEndMemory;
 
   /// Whether the public customer web storefront is taking online orders
   bool get isStorefrontOnline {
@@ -3007,11 +3008,28 @@ class DatabaseService extends ChangeNotifier {
     return restaurant?.storefrontThemeColor ?? 0xFFE65100;
   }
 
-  Future<void> setStorefrontThemeColor(int colorHex) async {
+  /// Optional gradient secondary color hex for the customer storefront
+  int? get storefrontThemeColorEnd {
+    if (_storefrontThemeColorEndMemory != null) return _storefrontThemeColorEndMemory;
+    final cached = _prefs?.getInt(_businessKey('storefront_theme_color_end'));
+    if (cached != null) return cached;
+    return restaurant?.storefrontThemeColorEnd;
+  }
+
+  Future<void> setStorefrontThemeColor(int colorHex, [int? colorEndHex]) async {
     _storefrontThemeColorMemory = colorHex;
+    _storefrontThemeColorEndMemory = colorEndHex;
     await _prefs?.setInt(_businessKey('storefront_theme_color'), colorHex);
+    if (colorEndHex != null) {
+      await _prefs?.setInt(_businessKey('storefront_theme_color_end'), colorEndHex);
+    } else {
+      await _prefs?.remove(_businessKey('storefront_theme_color_end'));
+    }
     if (restaurant != null) {
-      restaurant = restaurant!.copyWith(storefrontThemeColor: colorHex);
+      restaurant = restaurant!.copyWith(
+        storefrontThemeColor: colorHex,
+        storefrontThemeColorEnd: colorEndHex,
+      );
       await _saveRestaurantToPrefs();
       try {
         await _firestoreService.saveRestaurant(restaurant!);

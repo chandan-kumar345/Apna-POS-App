@@ -9,6 +9,7 @@ import 'package:apna_pos/features/storefront/services/storefront_service.dart';
 import 'package:apna_pos/features/storefront/screens/customer_storefront_screen.dart';
 import 'package:apna_pos/features/storefront/widgets/item_customization_sheet.dart';
 import 'package:apna_pos/features/storefront/widgets/storefront_cart_sheet.dart';
+import 'package:apna_pos/features/pos/widgets/pos_product_media_box.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -54,12 +55,14 @@ void main() {
       await db.setStorefrontOnline(false);
       expect(db.isStorefrontOnline, isFalse);
 
-      await db.setStorefrontThemeColor(0xFF10B981);
+      await db.setStorefrontThemeColor(0xFF10B981, 0xFF059669);
       expect(db.storefrontThemeColor, equals(0xFF10B981));
+      expect(db.storefrontThemeColorEnd, equals(0xFF059669));
 
       // Reset
       await db.setStorefrontOnline(true);
-      await db.setStorefrontThemeColor(0xFFE65100);
+      await db.setStorefrontThemeColor(0xFFE65100, null);
+      expect(db.storefrontThemeColorEnd, isNull);
     });
 
     test('StorefrontCartItem calculates price with size and addons dynamically', () {
@@ -250,7 +253,7 @@ void main() {
       expect(find.textContaining('10" (2-3 servings)'), findsOneWidget);
     });
 
-    testWidgets('ItemCustomizationSheet shows Watch Video button when item has videoUrl', (WidgetTester tester) async {
+    testWidgets('ItemCustomizationSheet renders PosProductMediaBox for product media with auto-playing video', (WidgetTester tester) async {
       tester.view.physicalSize = const Size(360, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -278,8 +281,9 @@ void main() {
       );
       await tester.pump();
 
-      // "Watch Video" badge must be present!
-      expect(find.text('Watch Video'), findsOneWidget);
+      // Slidable mixed-media box must be present and video label removed!
+      expect(find.byType(PosProductMediaBox), findsOneWidget);
+      expect(find.text('Watch Video'), findsNothing);
     });
 
     testWidgets('ItemCustomizationSheet and StorefrontCartSheet disable checkout when store is offline', (WidgetTester tester) async {

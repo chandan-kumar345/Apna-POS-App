@@ -13,6 +13,7 @@ class StorefrontCartSheet extends StatefulWidget {
   final Function(StorefrontCartItem item, int newQty) onUpdateQuantity;
   final VoidCallback onClearCart;
   final Color themeColor;
+  final Color? themeColorEnd;
   final bool isOnline;
 
   const StorefrontCartSheet({
@@ -24,6 +25,7 @@ class StorefrontCartSheet extends StatefulWidget {
     required this.onUpdateQuantity,
     required this.onClearCart,
     this.themeColor = const Color(0xFFE65100),
+    this.themeColorEnd,
     this.isOnline = true,
   });
 
@@ -732,40 +734,60 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
               top: false,
               child: SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: (_isSubmitting || !widget.isOnline) ? null : _handlePlaceOrder,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: widget.isOnline ? widget.themeColor : const Color(0xFF94A3B8),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFFCBD5E1),
-                    disabledForegroundColor: const Color(0xFF64748B),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    elevation: 0,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: (widget.isOnline &&
+                            widget.themeColorEnd != null &&
+                            widget.themeColorEnd != widget.themeColor)
+                        ? LinearGradient(
+                            colors: [widget.themeColor, widget.themeColorEnd!],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: (widget.isOnline &&
+                            (widget.themeColorEnd == null ||
+                                widget.themeColorEnd == widget.themeColor))
+                        ? widget.themeColor
+                        : (!widget.isOnline ? const Color(0xFFCBD5E1) : null),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                widget.isOnline
-                                    ? 'Place ${_orderType == OrderType.delivery ? "Delivery" : "Takeaway"} Order • ₹${_grandTotal.toStringAsFixed(0)}'
-                                    : 'Store is Offline • Ordering Paused',
-                                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                  child: ElevatedButton(
+                    onPressed: (_isSubmitting || !widget.isOnline) ? null : _handlePlaceOrder,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.transparent,
+                      disabledForegroundColor: const Color(0xFF64748B),
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.isOnline
+                                      ? 'Place ${_orderType == OrderType.delivery ? "Delivery" : "Takeaway"} Order • ₹${_grandTotal.toStringAsFixed(0)}'
+                                      : 'Store is Offline • Ordering Paused',
+                                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                            Icon(widget.isOnline ? Icons.arrow_forward_rounded : Icons.lock_outline_rounded, size: 18),
-                          ],
-                        ),
+                              const SizedBox(width: 6),
+                              Icon(widget.isOnline ? Icons.arrow_forward_rounded : Icons.lock_outline_rounded, size: 18),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),

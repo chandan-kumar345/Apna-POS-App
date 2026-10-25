@@ -1,15 +1,13 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 import '../../../core/models/menu_item_model.dart';
-import '../../../core/network/api_endpoints.dart';
+import '../../pos/widgets/pos_product_media_box.dart';
 import '../models/storefront_model.dart';
 
 class ItemCustomizationSheet extends StatefulWidget {
   final MenuItemModel item;
   final Function(StorefrontCartItem cartItem) onAddToCart;
   final Color themeColor;
+  final Color? themeColorEnd;
   final bool isOnline;
 
   const ItemCustomizationSheet({
@@ -17,6 +15,7 @@ class ItemCustomizationSheet extends StatefulWidget {
     required this.item,
     required this.onAddToCart,
     this.themeColor = const Color(0xFFE65100),
+    this.themeColorEnd,
     this.isOnline = true,
   });
 
@@ -31,76 +30,17 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
   final TextEditingController _instructionsController = TextEditingController();
   int _quantity = 1;
 
-  VideoPlayerController? _videoController;
-  bool _isVideoPlaying = false;
-  bool _isVideoLoading = false;
-
   @override
   void initState() {
     super.initState();
     _initSizes();
     _initAddons();
-    if (widget.item.videoUrl.trim().isNotEmpty) {
-      _initVideo();
-    }
   }
 
   @override
   void dispose() {
     _instructionsController.dispose();
-    _videoController?.dispose();
     super.dispose();
-  }
-
-  void _initVideo() async {
-    if (widget.item.videoUrl.trim().isEmpty) return;
-    setState(() => _isVideoLoading = true);
-    try {
-      final path = widget.item.videoUrl.trim();
-      VideoPlayerController controller;
-      if (!kIsWeb && File(path).existsSync()) {
-        controller = VideoPlayerController.file(File(path));
-      } else if (path.startsWith('assets/')) {
-        controller = VideoPlayerController.asset(path);
-      } else if (path.startsWith('http://') || path.startsWith('https://')) {
-        controller = VideoPlayerController.networkUrl(Uri.parse(path));
-      } else {
-        controller = VideoPlayerController.file(File(path));
-      }
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(1.0);
-      if (!mounted) {
-        controller.dispose();
-        return;
-      }
-      setState(() {
-        _videoController = controller;
-        _isVideoLoading = false;
-      });
-    } catch (e) {
-      debugPrint('[ItemCustomizationSheet] Video init note: $e');
-      if (mounted) {
-        setState(() {
-          _isVideoLoading = false;
-        });
-      }
-    }
-  }
-
-  void _toggleVideo() async {
-    if (_videoController == null) {
-      _initVideo();
-    }
-    if (_videoController != null && _videoController!.value.isInitialized) {
-      if (_videoController!.value.isPlaying) {
-        await _videoController!.pause();
-        setState(() => _isVideoPlaying = false);
-      } else {
-        await _videoController!.play();
-        setState(() => _isVideoPlaying = true);
-      }
-    }
   }
 
   void _initSizes() {
@@ -233,34 +173,23 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 2. Large Food Image / Video with Bestseller Badge and Close (X) Button
+                  // 2. Large Food Image / Video (Slidable Multi-Image & Auto-Playing Video)
                   Stack(
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          height: 135,
+                        child: SizedBox(
+                          height: 145,
                           width: double.infinity,
-                          color: const Color(0xFFF1F5F9),
-                          child: (_isVideoPlaying &&
-                                  _videoController != null &&
-                                  _videoController!.value.isInitialized)
-                              ? FittedBox(
-                                  fit: BoxFit.cover,
-                                  clipBehavior: Clip.hardEdge,
-                                  child: SizedBox(
-                                    width: _videoController!.value.size.width > 0 ? _videoController!.value.size.width : 300,
-                                    height: _videoController!.value.size.height > 0 ? _videoController!.value.size.height : 200,
-                                    child: VideoPlayer(_videoController!),
-                                  ),
-                                )
-                              : (widget.item.imageUrl.isNotEmpty)
-                                  ? Image.network(
-                                      ApiEndpoints.resolveMediaUrl(widget.item.imageUrl),
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) => _buildFallbackBannerImage(),
-                                    )
-                                  : _buildFallbackBannerImage(),
+                          child: PosProductMediaBox(
+                            key: ValueKey('sheet_media_${widget.item.id}_${widget.item.imageUrl}_${widget.item.videoUrl}_${widget.item.images.length}'),
+                            item: widget.item,
+                            height: 145,
+                            fit: BoxFit.cover,
+                            showDots: true,
+                            autoSlide: true,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
                       ),
 
@@ -273,9 +202,9 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.95),
                             borderRadius: BorderRadius.circular(6),
-                            boxShadow: [
+                            boxShadow: const [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.15),
+                                color: Colors.black12,
                                 blurRadius: 4,
                               )
                             ],
@@ -330,60 +259,6 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                           ),
                         ),
                       ),
-
-                      // Watch Video Badge (Bottom-Right)
-                      if (widget.item.videoUrl.trim().isNotEmpty)
-                        Positioned(
-                          bottom: 10,
-                          right: 10,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(16),
-                              onTap: _toggleVideo,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: widget.themeColor.withValues(alpha: 0.95),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.25),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (_isVideoLoading)
-                                      const SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    else
-                                      Icon(
-                                        _isVideoPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
-                                        size: 15,
-                                        color: Colors.white,
-                                      ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _isVideoPlaying ? 'Pause' : 'Watch Video',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
 
@@ -739,52 +614,72 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
                   // Add to Cart Button
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: widget.isOnline
-                          ? () {
-                              final cartItem = StorefrontCartItem(
-                                uid: 'cart_${DateTime.now().millisecondsSinceEpoch}',
-                                item: widget.item,
-                                selectedSize: _selectedSize,
-                                selectedAddons: _addons.where((a) => a.isSelected).toList(),
-                                instructions: _instructionsController.text.trim(),
-                                quantity: _quantity,
-                              );
-                              widget.onAddToCart(cartItem);
-                              Navigator.pop(context);
-                            }
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: widget.isOnline ? widget.themeColor : const Color(0xFF94A3B8),
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFFCBD5E1),
-                        disabledForegroundColor: const Color(0xFF64748B),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: (widget.isOnline &&
+                                widget.themeColorEnd != null &&
+                                widget.themeColorEnd != widget.themeColor)
+                            ? LinearGradient(
+                                colors: [widget.themeColor, widget.themeColorEnd!],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: (widget.isOnline &&
+                                (widget.themeColorEnd == null ||
+                                    widget.themeColorEnd == widget.themeColor))
+                            ? widget.themeColor
+                            : (!widget.isOnline ? const Color(0xFFCBD5E1) : null),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(widget.isOnline ? Icons.shopping_cart_rounded : Icons.store_mall_directory_outlined, size: 16),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                widget.isOnline
-                                    ? 'Add to Cart • ₹${_currentTotalPrice.toStringAsFixed(0)}'
-                                    : 'Store Offline • Orders Paused',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
+                      child: ElevatedButton(
+                        onPressed: widget.isOnline
+                            ? () {
+                                final cartItem = StorefrontCartItem(
+                                  uid: 'cart_${DateTime.now().millisecondsSinceEpoch}',
+                                  item: widget.item,
+                                  selectedSize: _selectedSize,
+                                  selectedAddons: _addons.where((a) => a.isSelected).toList(),
+                                  instructions: _instructionsController.text.trim(),
+                                  quantity: _quantity,
+                                );
+                                widget.onAddToCart(cartItem);
+                                Navigator.pop(context);
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.transparent,
+                          disabledForegroundColor: const Color(0xFF64748B),
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(widget.isOnline ? Icons.shopping_cart_rounded : Icons.store_mall_directory_outlined, size: 16),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  widget.isOnline
+                                      ? 'Add to Cart • ₹${_currentTotalPrice.toStringAsFixed(0)}'
+                                      : 'Store Offline • Orders Paused',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -793,18 +688,6 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFallbackBannerImage() {
-    return Container(
-      color: const Color(0xFF262626),
-      child: Center(
-        child: Text(
-          widget.item.emoji.isNotEmpty ? widget.item.emoji : '🍕',
-          style: const TextStyle(fontSize: 72),
-        ),
       ),
     );
   }

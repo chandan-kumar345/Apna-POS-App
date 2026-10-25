@@ -4858,16 +4858,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   }
 
   void _showStorefrontThemeColorPickerModal(int currentColorHex) {
-    final colors = [
-      {'name': 'Deep Orange (Pizzeria)', 'hex': 0xFFE65100, 'desc': 'Warm, energetic & appetite-boosting'},
-      {'name': 'Emerald Green (Healthy)', 'hex': 0xFF10B981, 'desc': 'Fresh, vegetarian, salad & vegan'},
-      {'name': 'Royal Blue (Bistro)', 'hex': 0xFF2563EB, 'desc': 'Clean, modern dining & cafés'},
-      {'name': 'Sunset Crimson (Spicy)', 'hex': 0xFFDC2626, 'desc': 'Bold, grills, burgers & fast food'},
-      {'name': 'Royal Purple (Dessert)', 'hex': 0xFF7C3AED, 'desc': 'Artisanal bakes, treats & lounge'},
-      {'name': 'Warm Amber (Bakery)', 'hex': 0xFFD97706, 'desc': 'Golden pastries, coffee & breakfast'},
-      {'name': 'Charcoal Dark (Fine Dining)', 'hex': 0xFF1E293B, 'desc': 'Upscale, elegant & contemporary'},
-    ];
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -4876,173 +4866,592 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
         builder: (ctx, setModalState) {
           final db = DatabaseService();
           final current = db.storefrontThemeColor;
+          final currentEnd = db.storefrontThemeColorEnd;
+          int selectedTab = 0; // 0: Presets, 1: Gradients, 2: Custom / Hex
 
-          return Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+          final solidPresets = [
+            {'name': 'Deep Orange (Pizzeria)', 'hex': 0xFFE65100, 'desc': 'Warm, energetic & appetite-boosting'},
+            {'name': 'Emerald Green (Healthy)', 'hex': 0xFF10B981, 'desc': 'Fresh, vegetarian, salads & vegan'},
+            {'name': 'Royal Blue (Bistro)', 'hex': 0xFF2563EB, 'desc': 'Clean, modern dining & cafés'},
+            {'name': 'Sunset Crimson (Spicy)', 'hex': 0xFFDC2626, 'desc': 'Bold, grills, burgers & fast food'},
+            {'name': 'Royal Purple (Dessert)', 'hex': 0xFF7C3AED, 'desc': 'Artisanal bakes, treats & lounge'},
+            {'name': 'Warm Amber (Bakery)', 'hex': 0xFFD97706, 'desc': 'Golden pastries, coffee & breakfast'},
+            {'name': 'Charcoal Slate (Fine Dine)', 'hex': 0xFF1E293B, 'desc': 'Upscale, elegant & contemporary'},
+            {'name': 'Vibrant Rose (Cafe)', 'hex': 0xFFE11D48, 'desc': 'Chic, trendy drinks & sweets'},
+          ];
+
+          final gradientPresets = [
+            {'name': 'Sunset Blaze', 'start': 0xFFE65100, 'end': 0xFFF59E0B, 'desc': 'Warm Amber to Vivid Orange'},
+            {'name': 'Emerald Fresh', 'start': 0xFF047857, 'end': 0xFF10B981, 'desc': 'Deep Forest to Mint Green'},
+            {'name': 'Ocean Royal', 'start': 0xFF1E40AF, 'end': 0xFF06B6D4, 'desc': 'Royal Navy to Bright Cyan'},
+            {'name': 'Cosmic Velvet', 'start': 0xFF6D28D9, 'end': 0xFFEC4899, 'desc': 'Imperial Purple to Vivid Rose'},
+            {'name': 'Crimson Fire', 'start': 0xFFB91C1C, 'end': 0xFFF97316, 'desc': 'Ruby Crimson to Tangy Coral'},
+            {'name': 'Midnight Indigo', 'start': 0xFF0F172A, 'end': 0xFF334155, 'desc': 'Dark Obsidian to Steel Grey'},
+            {'name': 'Golden Dawn', 'start': 0xFFB45309, 'end': 0xFFFBBF24, 'desc': 'Rich Honey to Radiant Sun'},
+            {'name': 'Electric Berry', 'start': 0xFF831843, 'end': 0xFFF43F5E, 'desc': 'Deep Merlot to Bright Strawberry'},
+          ];
+
+          final customSwatches = [
+            0xFFEF4444, 0xFFF97316, 0xFFF59E0B, 0xFFEAB308, 0xFF84CC16, 0xFF22C55E,
+            0xFF10B981, 0xFF14B8A6, 0xFF06B6D4, 0xFF0EA5E9, 0xFF3B82F6, 0xFF6366F1,
+            0xFF8B5CF6, 0xFFA855F7, 0xFFD946EF, 0xFFEC4899, 0xFFF43F5E, 0xFF78716C,
+            0xFF64748B, 0xFF475569, 0xFF334155, 0xFF1E293B, 0xFF0F172A, 0xFF000000,
+          ];
+
+          final hexController = TextEditingController(
+            text: '#${current.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+          );
+          String? hexError;
+
+          return StatefulBuilder(
+            builder: (ctx, setInnerState) {
+              final activeColor = Color(db.storefrontThemeColor);
+              final activeEndColor = db.storefrontThemeColorEnd != null ? Color(db.storefrontThemeColorEnd!) : null;
+              final hasActiveGradient = activeEndColor != null && activeEndColor != activeColor;
+
+              final activeGradient = LinearGradient(
+                colors: [activeColor, activeEndColor ?? activeColor],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              );
+
+              return Container(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.88),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
-                const SizedBox(height: 14),
-                Row(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Color(current).withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
+                    // Drag Handle
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCBD5E1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                      child: Icon(Icons.palette_rounded, color: Color(current), size: 20),
                     ),
-                    const SizedBox(width: 10),
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 12),
+
+                    // Header Row
+                    Row(
                       children: [
-                        Text(
-                          'Storefront Theme Color',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                        Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            gradient: hasActiveGradient ? activeGradient : null,
+                            color: !hasActiveGradient ? activeColor : null,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.palette_rounded, color: Colors.white, size: 17),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Storefront Theme & Colors',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              ),
+                              SizedBox(height: 1),
+                              Text(
+                                'Live theme color, gradients & customer color code',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                              ),
+                            ],
                           ),
                         ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Choose the accent palette for your customer web store',
-                          style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => Navigator.pop(ctx),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                const SizedBox(height: 12),
+                    const SizedBox(height: 12),
 
-                ...colors.map((c) {
-                  final hex = c['hex'] as int;
-                  final isSelected = hex == current;
-                  final color = Color(hex);
-
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () async {
-                      await db.setStorefrontThemeColor(hex);
-                      setModalState(() {});
-                      setState(() {});
-                      if (!mounted || !ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              children: [
-                                Container(
-                                  width: 14,
-                                  height: 14,
-                                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                                ),
-                                const SizedBox(width: 8),
-                                Text('Storefront theme updated to "${c['name']}"!'),
-                              ],
-                            ),
-                            backgroundColor: const Color(0xFF0F172A),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    // Live Storefront Mockup Preview Card
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: isSelected ? color.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected ? color : const Color(0xFFE2E8F0),
-                          width: isSelected ? 1.8 : 1,
-                        ),
+                        color: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
                       child: Row(
                         children: [
                           Container(
-                            width: 28,
-                            height: 28,
+                            padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: color,
+                              gradient: hasActiveGradient ? activeGradient : null,
+                              color: !hasActiveGradient ? activeColor : null,
                               shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: color.withValues(alpha: 0.35),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
                             ),
-                            child: isSelected
-                                ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
-                                : null,
+                            child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 14),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  c['name'] as String,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                    color: const Color(0xFF0F172A),
-                                  ),
+                                  db.restaurant?.name ?? 'Storefront Preview',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 1),
-                                Text(
-                                  c['desc'] as String,
-                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      hasActiveGradient ? 'Gradient Active' : 'Solid Accent Active',
+                                      style: const TextStyle(fontSize: 9.5, color: Colors.white70),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
-                          if (isSelected)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: color,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'ACTIVE',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              gradient: hasActiveGradient ? activeGradient : null,
+                              color: !hasActiveGradient ? activeColor : null,
+                              borderRadius: BorderRadius.circular(8),
                             ),
+                            child: const Text(
+                              'Add to Cart • ₹299',
+                              style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  );
-                }),
-              ],
-            ),
+                    const SizedBox(height: 12),
+
+                    // Mode Switcher: Solid Presets | Gradients | Custom & Hex
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          _buildThemeTabPill(
+                            title: 'Presets',
+                            icon: Icons.palette_outlined,
+                            isSelected: selectedTab == 0,
+                            onTap: () => setInnerState(() => selectedTab = 0),
+                          ),
+                          _buildThemeTabPill(
+                            title: 'Gradients',
+                            icon: Icons.gradient_rounded,
+                            isSelected: selectedTab == 1,
+                            onTap: () => setInnerState(() => selectedTab = 1),
+                          ),
+                          _buildThemeTabPill(
+                            title: 'Custom & Hex',
+                            icon: Icons.colorize_rounded,
+                            isSelected: selectedTab == 2,
+                            onTap: () => setInnerState(() => selectedTab = 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Scrollable Tab Contents
+                    Expanded(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: selectedTab == 0
+                            ? _buildSolidPresetsList(solidPresets, current, currentEnd, db, setInnerState)
+                            : (selectedTab == 1
+                                ? _buildGradientPresetsList(gradientPresets, current, currentEnd, db, setInnerState)
+                                : _buildCustomAndHexSection(
+                                    current,
+                                    currentEnd,
+                                    customSwatches,
+                                    hexController,
+                                    hexError,
+                                    db,
+                                    setInnerState,
+                                  )),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           );
         },
       ),
+    );
+  }
+
+  Widget _buildThemeTabPill({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 13, color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF64748B)),
+              const SizedBox(width: 4),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSolidPresetsList(
+    List<Map<String, dynamic>> presets,
+    int current,
+    int? currentEnd,
+    DatabaseService db,
+    void Function(void Function()) setInnerState,
+  ) {
+    return Column(
+      children: presets.map((c) {
+        final hex = c['hex'] as int;
+        final isSelected = hex == current && (currentEnd == null || currentEnd == current);
+        final color = Color(hex);
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () async {
+            await db.setStorefrontThemeColor(hex, null);
+            setInnerState(() {});
+            setState(() {});
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: isSelected ? color.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? color : const Color(0xFFE2E8F0),
+                width: isSelected ? 1.6 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 4, offset: const Offset(0, 1)),
+                    ],
+                  ),
+                  child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 15) : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c['name'] as String,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      Text(
+                        c['desc'] as String,
+                        style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+                    child: const Text('ACTIVE', style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w800)),
+                  ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildGradientPresetsList(
+    List<Map<String, dynamic>> gradients,
+    int current,
+    int? currentEnd,
+    DatabaseService db,
+    void Function(void Function()) setInnerState,
+  ) {
+    return Column(
+      children: gradients.map((g) {
+        final startHex = g['start'] as int;
+        final endHex = g['end'] as int;
+        final isSelected = current == startHex && currentEnd == endHex;
+        final grad = LinearGradient(colors: [Color(startHex), Color(endHex)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () async {
+            await db.setStorefrontThemeColor(startHex, endHex);
+            setInnerState(() {});
+            setState(() {});
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: isSelected ? Color(startHex).withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? Color(startHex) : const Color(0xFFE2E8F0),
+                width: isSelected ? 1.6 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    gradient: grad,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: Color(startHex).withValues(alpha: 0.35), blurRadius: 4, offset: const Offset(0, 1)),
+                    ],
+                  ),
+                  child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 15) : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        g['name'] as String,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      Text(
+                        g['desc'] as String,
+                        style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(gradient: grad, borderRadius: BorderRadius.circular(8)),
+                    child: const Text('ACTIVE', style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w800)),
+                  ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildCustomAndHexSection(
+    int current,
+    int? currentEnd,
+    List<int> swatches,
+    TextEditingController hexController,
+    String? hexError,
+    DatabaseService db,
+    void Function(void Function()) setInnerState,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Color Code (Hex Input) Option
+        const Text(
+          'Enter Custom Hex Color Code',
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: Color(current),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: hexController,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A), letterSpacing: 0.5),
+                  decoration: const InputDecoration(
+                    hintText: '#E65100',
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (val) {
+                    final clean = val.replaceAll('#', '').trim();
+                    if (clean.length == 6) {
+                      final parsed = int.tryParse('0xFF$clean');
+                      if (parsed != null) {
+                        setInnerState(() {});
+                      }
+                    }
+                  },
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final text = hexController.text.replaceAll('#', '').trim();
+                  if (text.length == 6 || text.length == 8) {
+                    final hexStr = text.length == 6 ? '0xFF$text' : '0x$text';
+                    final parsed = int.tryParse(hexStr);
+                    if (parsed != null) {
+                      await db.setStorefrontThemeColor(parsed, null);
+                      setInnerState(() {});
+                      setState(() {});
+                      return;
+                    }
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invalid Hex color! e.g. #E65100'), behavior: SnackBarBehavior.floating),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text('Apply Hex', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // 2. Customer Color Selector (Swatches Palette)
+        const Text(
+          'Customer Palette Swatches',
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+        ),
+        const SizedBox(height: 6),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: swatches.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 8,
+            crossAxisSpacing: 6,
+            mainAxisSpacing: 6,
+            childAspectRatio: 1,
+          ),
+          itemBuilder: (context, idx) {
+            final hex = swatches[idx];
+            final isSelected = hex == current;
+            final color = Color(hex);
+
+            return InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () async {
+                hexController.text = '#${hex.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+                await db.setStorefrontThemeColor(hex, null);
+                setInnerState(() {});
+                setState(() {});
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected ? Colors.black : Colors.white,
+                    width: isSelected ? 2.2 : 1.2,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1)),
+                  ],
+                ),
+                child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 14) : null,
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -5138,82 +5547,220 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   }
 
   void _showStorefrontQrCodeDialog(String storeUrl, String restaurantName) {
+    final themeColor = Color(db.storefrontThemeColor);
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        contentPadding: const EdgeInsets.all(24),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              restaurantName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Scan to Order Takeaway & Delivery',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
-                ],
-              ),
-              child: QrImageView(
-                data: storeUrl,
-                version: QrVersions.auto,
-                size: 200,
-                backgroundColor: Colors.white,
-                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFFE65100)),
-                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Color(0xFF0F172A)),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              storeUrl,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFE65100)),
-            ),
-            const SizedBox(height: 20),
-            Row(
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        elevation: 10,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: storeUrl));
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Link copied to clipboard!'), behavior: SnackBarBehavior.floating),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                // 1. Header with Store Avatar & Close Button
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: themeColor.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.qr_code_2_rounded, color: themeColor, size: 20),
                     ),
-                    child: const Text('Copy Link'),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            restaurantName,
+                            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 1),
+                          const Text(
+                            'Scan to Order Takeaway & Delivery',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                const SizedBox(height: 14),
+
+                // 2. High-Contrast QR Code Card
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        QrImageView(
+                          data: storeUrl,
+                          version: QrVersions.auto,
+                          size: 185,
+                          backgroundColor: Colors.transparent,
+                          eyeStyle: QrEyeStyle(eyeShape: QrEyeShape.circle, color: themeColor),
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.circle,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.camera_alt_outlined, size: 12, color: themeColor),
+                            const SizedBox(width: 4),
+                            const Text(
+                              'Scan with Camera or UPI scanner',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE65100),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Done'),
+                const SizedBox(height: 14),
+
+                // 3. Compact Full URL Card with Quick Copy Icon
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
                   ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.link_rounded, size: 14, color: themeColor),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          storeUrl,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(6),
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: storeUrl));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Link copied to clipboard!'), behavior: SnackBarBehavior.floating),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(Icons.copy_rounded, size: 14, color: themeColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 4. Action Buttons (Copy, Share, Done)
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: storeUrl));
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Link copied to clipboard!'), behavior: SnackBarBehavior.floating),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 13),
+                        label: const Text('Copy Link', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0F172A),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          SharePlus.instance.share(
+                            ShareParams(
+                              text: 'Order online from $restaurantName:\n$storeUrl',
+                              subject: '$restaurantName Menu',
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.share_rounded, size: 13),
+                        label: const Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0F172A),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: themeColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        child: const Text('Done', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

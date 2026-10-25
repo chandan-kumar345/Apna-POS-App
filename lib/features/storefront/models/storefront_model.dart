@@ -195,6 +195,7 @@ class StorefrontData {
   final List<StorefrontBanner> banners;
   final bool isOnline;
   final int themeColorHex;
+  final int? themeColorEndHex;
 
   const StorefrontData({
     required this.restaurant,
@@ -204,5 +205,8 @@ class StorefrontData {
     required this.banners,
     this.isOnline = true,
     this.themeColorHex = 0xFFE65100,
+    this.themeColorEndHex,
   });
+
+  bool get hasGradient => themeColorEndHex != null && themeColorEndHex != themeColorHex;
 }
