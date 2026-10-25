@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/menu_item_model.dart';
@@ -791,83 +792,156 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                             onPageChanged: (idx) => setState(() => _activeBannerIndex = idx),
                             itemBuilder: (context, index) {
                               final b = _data!.banners[index];
-                              return Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 2),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: (b.imageUrl.isNotEmpty)
-                                            ? Image.network(
-                                                b.imageUrl,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) => Container(
-                                                  color: Color(b.accentColorHex),
-                                                ),
-                                              )
-                                            : Container(color: Color(b.accentColorHex)),
+                              return InkWell(
+                                onTap: () {
+                                  if (b.couponCode != null && b.couponCode!.isNotEmpty) {
+                                    Clipboard.setData(ClipboardData(text: b.couponCode!));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Promo Code "${b.couponCode}" copied! Use at checkout.'),
+                                        backgroundColor: const Color(0xFF051C48),
+                                        duration: const Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
                                       ),
-                                      Positioned.fill(
-                                        child: Container(
-                                          color: Colors.black.withValues(alpha: 0.42),
+                                    );
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: (b.imageUrl.isNotEmpty)
+                                              ? Image.network(
+                                                  b.imageUrl,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) => Container(
+                                                    color: Color(b.accentColorHex),
+                                                  ),
+                                                )
+                                              : Container(color: Color(b.accentColorHex)),
                                         ),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.all(18),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              b.tag,
-                                              style: const TextStyle(
-                                                color: Color(0xFFFFB74D),
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w900,
-                                                letterSpacing: 1.1,
+                                        Positioned.fill(
+                                          child: Container(
+                                            color: Colors.black.withValues(alpha: 0.45),
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.all(18),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    b.tag,
+                                                    style: const TextStyle(
+                                                      color: Color(0xFFFFB74D),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w900,
+                                                      letterSpacing: 1.1,
+                                                    ),
+                                                  ),
+                                                  if (b.discountText != null && b.discountText!.isNotEmpty) ...[
+                                                    const SizedBox(width: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFEF4444),
+                                                        borderRadius: BorderRadius.circular(4),
+                                                      ),
+                                                      child: Text(
+                                                        b.discountText!,
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 9.5,
+                                                          fontWeight: FontWeight.w900,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
                                               ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              b.headline,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 22,
-                                                fontWeight: FontWeight.w900,
-                                                letterSpacing: -0.2,
-                                                height: 1.1,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              b.subtitle,
-                                              style: const TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: 11.5,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 10),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFE65100),
-                                                borderRadius: BorderRadius.circular(20),
-                                              ),
-                                              child: Text(
-                                                b.ctaText,
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                b.headline,
                                                 style: const TextStyle(
                                                   color: Colors.white,
-                                                  fontSize: 11.5,
-                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 22,
+                                                  fontWeight: FontWeight.w900,
+                                                  letterSpacing: -0.2,
+                                                  height: 1.1,
                                                 ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ),
-                                          ],
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                b.subtitle,
+                                                style: const TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 11.5,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFE65100),
+                                                      borderRadius: BorderRadius.circular(20),
+                                                    ),
+                                                    child: Text(
+                                                      b.ctaText,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 11.5,
+                                                        fontWeight: FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (b.couponCode != null && b.couponCode!.isNotEmpty) ...[
+                                                    const SizedBox(width: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white.withValues(alpha: 0.22),
+                                                        borderRadius: BorderRadius.circular(16),
+                                                        border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          const Icon(Icons.confirmation_number_rounded, color: Colors.white, size: 12),
+                                                          const SizedBox(width: 4),
+                                                          Text(
+                                                            'CODE: ${b.couponCode}',
+                                                            style: const TextStyle(
+                                                              color: Colors.white,
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.w900,
+                                                              letterSpacing: 0.4,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );

@@ -5,6 +5,7 @@ import '../models/user_model.dart';
 import '../models/restaurant_model.dart';
 import '../models/menu_item_model.dart';
 import '../models/order_model.dart';
+import '../../features/storefront/models/storefront_model.dart';
 
 class FirestoreService {
   static final FirestoreService _instance = FirestoreService._internal();
@@ -242,6 +243,54 @@ class FirestoreService {
     } catch (e) {
       debugPrint('[FirestoreService] Error getting storefront menu (non-fatal): $e');
       return null;
+    }
+  }
+
+  /// Save promotional storefront banners to Firestore
+  Future<void> saveStorefrontBanners({
+    required String restaurantId,
+    required List<StorefrontBanner> banners,
+  }) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return;
+    try {
+      final db = _db;
+      if (db == null) return;
+
+      final storeDoc = db.collection('storefronts').doc(restaurantId);
+      await storeDoc.set(
+        {
+          'banners': banners.map((b) => b.toJson()).toList(),
+          'bannerCount': banners.length,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint('[FirestoreService] Storefront banners synced for $restaurantId (${banners.length} banners)');
+    } catch (e) {
+      debugPrint('[FirestoreService] Storefront banners sync notice: $e');
+    }
+  }
+
+  /// Fetch promotional storefront banners from Firestore
+  Future<List<StorefrontBanner>> getStorefrontBanners(String restaurantId) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return [];
+    try {
+      final db = _db;
+      if (db == null) return [];
+
+      final doc = await db.collection('storefronts').doc(restaurantId).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        if (data['banners'] is List) {
+          return (data['banners'] as List)
+              .map((e) => StorefrontBanner.fromJson(Map<String, dynamic>.from(e as Map)))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[FirestoreService] Error getting storefront banners: $e');
+      return [];
     }
   }
 

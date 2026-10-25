@@ -39,6 +39,7 @@ import '../services/whatsapp_chat_service.dart';
 import '../services/sound_service.dart';
 import '../services/local_notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
+import '../../features/storefront/models/storefront_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class DatabaseService extends ChangeNotifier {
@@ -112,6 +113,9 @@ class DatabaseService extends ChangeNotifier {
   List<ExtraModel> extras = [];
   final List<OrderModel> _holdOrders = [];
   List<OrderModel> get holdOrders => List.unmodifiable(_holdOrders);
+
+  List<StorefrontBanner> _storefrontBanners = [];
+  List<StorefrontBanner> get storefrontBanners => List.unmodifiable(_storefrontBanners);
 
   /// Resolves the authoritative company / restaurant profile logo path or url
   String? get companyLogoPath {
@@ -1112,6 +1116,9 @@ class DatabaseService extends ChangeNotifier {
     // 11. Load Staff List (User-scoped)
     _loadStaffFromPrefs();
 
+    // 12. Load Storefront Promotional Banners
+    _loadStorefrontBannersFromPrefs();
+
     notifyListeners();
 
     // Asynchronously sync customers from backend server
@@ -1215,6 +1222,7 @@ class DatabaseService extends ChangeNotifier {
       _liveTableDiscounts.clear();
       _liveDraftCustomerInfo.clear();
       _liveDraftDeliveryInfo.clear();
+      _storefrontBanners.clear();
       restaurant = null;
     }
 
@@ -3016,6 +3024,115 @@ class DatabaseService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[DatabaseService.placeOnlineStorefrontOrder] error: $e');
       return false;
+    }
+  }
+
+  List<StorefrontBanner> _defaultStorefrontBanners() {
+    return const [
+      StorefrontBanner(
+        id: 'banner_1',
+        tag: 'HOT & CHEESY',
+        headline: 'PIZZA LOVERS FEST',
+        subtitle: 'Fresh Hand-Tossed Pizzas & Bigger Happiness',
+        ctaText: 'ORDER NOW ➔',
+        imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1200&q=80',
+        accentColorHex: 0xFFE65100,
+        couponCode: 'PIZZA50',
+        discountText: 'FLAT 50% OFF',
+        isActive: true,
+      ),
+      StorefrontBanner(
+        id: 'banner_2',
+        tag: 'CHEF RECOMMENDATION',
+        headline: 'PANEER SUPREME SPECIAL',
+        subtitle: 'Loaded with 100% Mozzarella & Herb Spiced Paneer',
+        ctaText: 'VIEW ITEM ➔',
+        imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=1200&q=80',
+        accentColorHex: 0xFFD84315,
+        couponCode: 'CHEF20',
+        discountText: '20% OFF',
+        isActive: true,
+      ),
+      StorefrontBanner(
+        id: 'banner_3',
+        tag: 'SUPER SAVER COMBO',
+        headline: 'COMBO DELIGHT BOX',
+        subtitle: 'Pizza + Fries + Cold Drink at exclusive prices',
+        ctaText: 'GRAB COMBO ➔',
+        imageUrl: 'https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?auto=format&fit=crop&w=1200&q=80',
+        accentColorHex: 0xFFC2185B,
+        couponCode: 'COMBO100',
+        discountText: 'FLAT ₹100 OFF',
+        isActive: true,
+      ),
+    ];
+  }
+
+  Future<void> _loadStorefrontBannersFromPrefs() async {
+    final bannersJson = _prefs?.getString(_businessKey('storefront_banners'));
+    if (bannersJson != null && bannersJson.isNotEmpty) {
+      try {
+        final List raw = jsonDecode(bannersJson);
+        _storefrontBanners = raw.map((e) => StorefrontBanner.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      } catch (e) {
+        debugPrint('[DatabaseService] Error parsing cached storefront banners: $e');
+        _storefrontBanners = [];
+      }
+    }
+    if (_storefrontBanners.isEmpty) {
+      _storefrontBanners = _defaultStorefrontBanners();
+      await _saveStorefrontBannersToPrefs();
+    }
+  }
+
+  Future<void> _saveStorefrontBannersToPrefs() async {
+    try {
+      final jsonStr = jsonEncode(_storefrontBanners.map((b) => b.toJson()).toList());
+      await _prefs?.setString(_businessKey('storefront_banners'), jsonStr);
+    } catch (e) {
+      debugPrint('[DatabaseService] Error saving storefront banners: $e');
+    }
+  }
+
+  Future<void> saveStorefrontBanner(StorefrontBanner banner) async {
+    final idx = _storefrontBanners.indexWhere((b) => b.id == banner.id);
+    if (idx >= 0) {
+      _storefrontBanners[idx] = banner;
+    } else {
+      _storefrontBanners.insert(0, banner);
+    }
+    await _saveStorefrontBannersToPrefs();
+    notifyListeners();
+    await syncStorefrontBanners();
+  }
+
+  Future<void> deleteStorefrontBanner(String bannerId) async {
+    _storefrontBanners.removeWhere((b) => b.id == bannerId);
+    await _saveStorefrontBannersToPrefs();
+    notifyListeners();
+    await syncStorefrontBanners();
+  }
+
+  Future<void> toggleStorefrontBanner(String bannerId) async {
+    final idx = _storefrontBanners.indexWhere((b) => b.id == bannerId);
+    if (idx >= 0) {
+      final current = _storefrontBanners[idx];
+      _storefrontBanners[idx] = current.copyWith(isActive: !current.isActive);
+      await _saveStorefrontBannersToPrefs();
+      notifyListeners();
+      await syncStorefrontBanners();
+    }
+  }
+
+  Future<void> syncStorefrontBanners() async {
+    if (restaurant == null) return;
+    try {
+      await _firestoreService.saveStorefrontBanners(
+        restaurantId: restaurant!.id,
+        banners: _storefrontBanners,
+      );
+    } catch (e) {
+      debugPrint('[DatabaseService] syncStorefrontBanners notice: $e');
     }
   }
 

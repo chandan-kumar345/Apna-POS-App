@@ -65,6 +65,12 @@ class StorefrontService {
       if (_db.extras.isNotEmpty) {
         addOns = List<ExtraModel>.from(_db.extras);
       }
+      if (_db.storefrontBanners.isNotEmpty) {
+        final active = _db.storefrontBanners.where((b) => b.isActive).toList();
+        if (active.isNotEmpty) {
+          banners = List<StorefrontBanner>.from(active);
+        }
+      }
     }
 
     // 2. Try loading from Backend Storefront API
@@ -114,6 +120,13 @@ class StorefrontService {
               menuItems = (storeMenu['items'] as List)
                   .map((e) => MenuItemModel.fromJson(Map<String, dynamic>.from(e as Map)))
                   .toList();
+            }
+            if (banners.isEmpty && storeMenu['banners'] is List) {
+              final raw = (storeMenu['banners'] as List)
+                  .map((e) => StorefrontBanner.fromJson(Map<String, dynamic>.from(e as Map)))
+                  .where((b) => b.isActive)
+                  .toList();
+              if (raw.isNotEmpty) banners = raw;
             }
           }
         }
@@ -179,6 +192,14 @@ class StorefrontService {
     }
 
     // Ensure banners are present
+    if (banners.isEmpty) {
+      if (_db.storefrontBanners.isNotEmpty) {
+        final active = _db.storefrontBanners.where((b) => b.isActive).toList();
+        if (active.isNotEmpty) {
+          banners = List<StorefrontBanner>.from(active);
+        }
+      }
+    }
     if (banners.isEmpty) {
       banners = [
         const StorefrontBanner(

@@ -11,6 +11,11 @@ class StorefrontBanner {
   final String ctaText;
   final String imageUrl;
   final int accentColorHex;
+  final String? couponCode;
+  final String? discountText;
+  final bool isActive;
+  final int displayOrder;
+  final DateTime? createdAt;
 
   const StorefrontBanner({
     required this.id,
@@ -20,7 +25,29 @@ class StorefrontBanner {
     required this.ctaText,
     required this.imageUrl,
     this.accentColorHex = 0xFFFF5722,
+    this.couponCode,
+    this.discountText,
+    this.isActive = true,
+    this.displayOrder = 0,
+    this.createdAt,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'tag': tag,
+      'headline': headline,
+      'subtitle': subtitle,
+      'ctaText': ctaText,
+      'imageUrl': imageUrl,
+      'accentColorHex': accentColorHex,
+      'couponCode': couponCode,
+      'discountText': discountText,
+      'isActive': isActive,
+      'displayOrder': displayOrder,
+      'createdAt': createdAt?.toIso8601String(),
+    };
+  }
 
   factory StorefrontBanner.fromJson(Map<String, dynamic> json) {
     return StorefrontBanner(
@@ -31,6 +58,41 @@ class StorefrontBanner {
       ctaText: json['ctaText']?.toString() ?? 'ORDER NOW',
       imageUrl: json['imageUrl']?.toString() ?? '',
       accentColorHex: json['accentColorHex'] as int? ?? 0xFFFF5722,
+      couponCode: json['couponCode']?.toString(),
+      discountText: json['discountText']?.toString(),
+      isActive: json['isActive'] is bool ? json['isActive'] as bool : true,
+      displayOrder: (json['displayOrder'] as num?)?.toInt() ?? 0,
+      createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt'].toString()) : null,
+    );
+  }
+
+  StorefrontBanner copyWith({
+    String? id,
+    String? tag,
+    String? headline,
+    String? subtitle,
+    String? ctaText,
+    String? imageUrl,
+    int? accentColorHex,
+    String? couponCode,
+    String? discountText,
+    bool? isActive,
+    int? displayOrder,
+    DateTime? createdAt,
+  }) {
+    return StorefrontBanner(
+      id: id ?? this.id,
+      tag: tag ?? this.tag,
+      headline: headline ?? this.headline,
+      subtitle: subtitle ?? this.subtitle,
+      ctaText: ctaText ?? this.ctaText,
+      imageUrl: imageUrl ?? this.imageUrl,
+      accentColorHex: accentColorHex ?? this.accentColorHex,
+      couponCode: couponCode ?? this.couponCode,
+      discountText: discountText ?? this.discountText,
+      isActive: isActive ?? this.isActive,
+      displayOrder: displayOrder ?? this.displayOrder,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }
