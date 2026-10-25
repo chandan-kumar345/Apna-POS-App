@@ -488,4 +488,94 @@ class FirestoreService {
       return null;
     }
   }
+
+  static const String customersCollection = 'customers';
+
+  /// Save or update customer profile in Firestore
+  Future<void> saveCustomerProfile(Map<String, dynamic> customerData) async {
+    if (_hasPermissionError) return;
+    try {
+      final db = _db;
+      if (db == null) return;
+      final id = customerData['id']?.toString() ?? '';
+      if (id.isEmpty) return;
+
+      final data = Map<String, dynamic>.from(customerData);
+      data['updatedAt'] = FieldValue.serverTimestamp();
+
+      await db.collection(customersCollection).doc(id).set(
+        data,
+        SetOptions(merge: true),
+      );
+      debugPrint('[FirestoreService] Customer $id synced to Firestore');
+    } catch (e) {
+      debugPrint('[FirestoreService] Error saving customer profile: $e');
+    }
+  }
+
+  /// Get customer profile from Firestore by ID or phone
+  Future<Map<String, dynamic>?> getCustomerProfile(String customerIdOrPhone) async {
+    if (_hasPermissionError || customerIdOrPhone.trim().isEmpty) return null;
+    try {
+      final db = _db;
+      if (db == null) return null;
+
+      final clean = customerIdOrPhone.trim();
+      final doc = await db.collection(customersCollection).doc(clean).get();
+      if (doc.exists && doc.data() != null) {
+        return doc.data();
+      }
+
+      // Query by phone
+      final query = await db
+          .collection(customersCollection)
+          .where('phone', isEqualTo: clean)
+          .limit(1)
+          .get();
+      if (query.docs.isNotEmpty) {
+        return query.docs.first.data();
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('[FirestoreService] Error getting customer profile: $e');
+      return null;
+    }
+  }
+
+  /// Stream order tracking updates from Firestore in real-time
+  Stream<Map<String, dynamic>?> streamStorefrontOrder(String orderId) {
+    if (_hasPermissionError || orderId.trim().isEmpty) {
+      return Stream.value(null);
+    }
+    try {
+      final db = _db;
+      if (db == null) return Stream.value(null);
+      return db.collection('orders').doc(orderId.trim()).snapshots().map((snap) {
+        if (snap.exists && snap.data() != null) {
+          return snap.data();
+        }
+        return null;
+      });
+    } catch (e) {
+      debugPrint('[FirestoreService] Error streaming order $orderId: $e');
+      return Stream.value(null);
+    }
+  }
+
+  /// Update storefront order status (e.g. from POS merchant action or simulation)
+  Future<void> updateStorefrontOrderStatus(String orderId, String status, int stepIndex) async {
+    if (_hasPermissionError || orderId.trim().isEmpty) return;
+    try {
+      final db = _db;
+      if (db == null) return;
+      await db.collection('orders').doc(orderId.trim()).set({
+        'status': status,
+        'currentStepIndex': stepIndex,
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[FirestoreService] Error updating order status: $e');
+    }
+  }
 }

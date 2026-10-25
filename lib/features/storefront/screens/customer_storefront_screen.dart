@@ -11,8 +11,8 @@ import '../../../core/models/order_model.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/storefront_model.dart';
 import '../services/storefront_service.dart';
-import '../widgets/item_customization_sheet.dart';
-import '../widgets/storefront_cart_sheet.dart';
+import '../widgets/storefront_product_detail_sheet.dart';
+import '../widgets/storefront_checkout_flow_sheet.dart';
 import '../../pos/widgets/pos_product_media_box.dart';
 
 class CustomerStorefrontScreen extends StatefulWidget {
@@ -167,12 +167,12 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => ItemCustomizationSheet(
+      builder: (ctx) => StorefrontProductDetailSheet(
         item: item,
         themeColor: _themeColor,
         themeColorEnd: _themeColorEnd,
         isOnline: _isStoreOnline,
-        onAddToCart: (cartItem) {
+        onAddToCart: (cartItem, {bool openCartImmediately = false}) {
           setState(() {
             final existingIdx = _cartItems.indexWhere(
               (c) =>
@@ -195,25 +195,28 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
               behavior: SnackBarBehavior.floating,
             ),
           );
+
+          if (openCartImmediately) {
+            _openCartModal();
+          }
         },
       ),
     );
   }
 
-  void _openCartModal() {
+  void _openCartModal({int initialStep = 3}) {
     if (_data == null) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => StorefrontCartSheet(
+      builder: (ctx) => StorefrontCheckoutFlowSheet(
         restaurant: _data!.restaurant,
         cartItems: _cartItems,
-        initialOrderType: _orderType,
-        deliveryAddress: _deliveryAddress,
+        allMenuItems: _data!.menuItems,
+        initialStep: initialStep,
         themeColor: _themeColor,
         themeColorEnd: _themeColorEnd,
-        isOnline: _isStoreOnline,
         onUpdateQuantity: (item, newQty) {
           setState(() {
             if (newQty <= 0) {
@@ -221,6 +224,15 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
             } else {
               item.quantity = newQty;
             }
+          });
+        },
+        onAddCrossSellItem: (item) {
+          setState(() {
+            _cartItems.add(StorefrontCartItem(
+              uid: 'cart_cross_${DateTime.now().millisecondsSinceEpoch}',
+              item: item,
+              quantity: 1,
+            ));
           });
         },
         onClearCart: () {
