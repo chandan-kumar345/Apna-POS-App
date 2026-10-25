@@ -2995,6 +2995,12 @@ class DatabaseService extends ChangeNotifier {
       await _saveRestaurantToPrefs();
       try {
         await _firestoreService.saveRestaurant(restaurant!);
+        await _firestoreService.saveStorefrontSettings(
+          restaurantId: restaurant!.id,
+          isOnline: isOnline,
+          themeColorHex: storefrontThemeColor,
+          themeColorEndHex: storefrontThemeColorEnd,
+        );
       } catch (_) {}
     }
     notifyListeners();
@@ -3033,9 +3039,55 @@ class DatabaseService extends ChangeNotifier {
       await _saveRestaurantToPrefs();
       try {
         await _firestoreService.saveRestaurant(restaurant!);
+        await _firestoreService.saveStorefrontSettings(
+          restaurantId: restaurant!.id,
+          isOnline: isStorefrontOnline,
+          themeColorHex: colorHex,
+          themeColorEndHex: colorEndHex,
+        );
       } catch (_) {}
     }
     notifyListeners();
+  }
+
+  /// Synchronize restaurant storefront configuration, theme colors & banners across devices via Firestore
+  Future<void> syncRestaurantSettingsFromCloud() async {
+    if (restaurant == null || restaurant!.id.isEmpty) return;
+    try {
+      // 1. Fetch storefront settings (theme colors & online status)
+      final settings = await _firestoreService.getStorefrontSettings(restaurant!.id);
+      if (settings != null) {
+        if (settings['isOnline'] is bool) {
+          _isStorefrontOnlineMemory = settings['isOnline'] as bool;
+          await _prefs?.setBool(_businessKey('storefront_online'), _isStorefrontOnlineMemory!);
+        }
+        if (settings['themeColorHex'] is num) {
+          _storefrontThemeColorMemory = (settings['themeColorHex'] as num).toInt();
+          await _prefs?.setInt(_businessKey('storefront_theme_color'), _storefrontThemeColorMemory!);
+        }
+        if (settings['themeColorEndHex'] is num) {
+          _storefrontThemeColorEndMemory = (settings['themeColorEndHex'] as num).toInt();
+          await _prefs?.setInt(_businessKey('storefront_theme_color_end'), _storefrontThemeColorEndMemory!);
+        }
+      }
+
+      // 2. Fetch updated restaurant profile
+      final remoteRest = await _firestoreService.getRestaurant(restaurant!.id);
+      if (remoteRest != null) {
+        restaurant = remoteRest.copyWith(
+          isStorefrontOnline: _isStorefrontOnlineMemory ?? remoteRest.isStorefrontOnline,
+          storefrontThemeColor: _storefrontThemeColorMemory ?? remoteRest.storefrontThemeColor,
+          storefrontThemeColorEnd: _storefrontThemeColorEndMemory ?? remoteRest.storefrontThemeColorEnd,
+        );
+        await _saveRestaurantToPrefs();
+      }
+
+      // 3. Sync banners from cloud
+      await syncBannersFromCloud();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[DatabaseService] syncRestaurantSettingsFromCloud notice: $e');
+    }
   }
 
   /// Customize or update the public storefront URL slug (e.g. apnaposs.vercel.app/my-brand)
@@ -3196,6 +3248,21 @@ class DatabaseService extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('[DatabaseService] syncStorefrontBanners notice: $e');
+    }
+  }
+
+  /// Synchronize promotional storefront banners from Cloud Firestore across multiple devices
+  Future<void> syncBannersFromCloud() async {
+    if (restaurant == null || restaurant!.id.isEmpty) return;
+    try {
+      final remoteBanners = await _firestoreService.getStorefrontBanners(restaurant!.id);
+      if (remoteBanners.isNotEmpty) {
+        _storefrontBanners = remoteBanners;
+        await _saveStorefrontBannersToPrefs();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] syncBannersFromCloud notice: $e');
     }
   }
 

@@ -1262,7 +1262,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
                       const SizedBox(height: 18),
 
-                      // 6. SECTION HEADER & ITEM COUNT (View All removed per requirements)
+                      // 6. SECTION HEADER & ITEM COUNT (Clean header)
                       Text(
                         '$_selectedCategory (${_filteredItems.length})',
                         style: const TextStyle(

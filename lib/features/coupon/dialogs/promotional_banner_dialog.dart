@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../storefront/models/storefront_model.dart';
 import '../../../core/models/coupon_model.dart';
-import '../../../core/database/database_service.dart';
 
 class PromotionalBannerDialog extends StatefulWidget {
   final StorefrontBanner? existingBanner;
@@ -758,10 +757,12 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 3,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 1.5),
                             decoration: BoxDecoration(
                               color: const Color(0xFFFFB74D),
                               borderRadius: BorderRadius.circular(4),
@@ -770,14 +771,13 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
                               tag,
                               style: const TextStyle(
                                 color: Color(0xFF7C2D12),
-                                fontSize: 8,
+                                fontSize: 7.5,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 0.5,
                               ),
                             ),
                           ),
                           if (discount.isNotEmpty) ...[
-                            const SizedBox(width: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                               decoration: BoxDecoration(
@@ -788,14 +788,13 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
                                 discount,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 8,
+                                  fontSize: 7.5,
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
                             ),
                           ],
                           if (coupon.isNotEmpty) ...[
-                            const SizedBox(width: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                               decoration: BoxDecoration(
@@ -820,7 +819,7 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
                         headline,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 14.5,
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w900,
                           height: 1.15,
                         ),
@@ -832,7 +831,7 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
                         subtitle,
                         style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 9.5,
+                          fontSize: 9,
                           fontWeight: FontWeight.w500,
                         ),
                         maxLines: 1,
@@ -840,7 +839,7 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
                       ),
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                         decoration: BoxDecoration(
                           color: const Color(0xFFE65100),
                           borderRadius: BorderRadius.circular(14),
@@ -849,7 +848,7 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
                           cta,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 9,
+                            fontSize: 8.5,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -877,21 +876,21 @@ class _PromotionalBannerDialogState extends State<PromotionalBannerDialog> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+          style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
         ),
         const SizedBox(height: 3),
         TextFormField(
           controller: controller,
           onChanged: onChanged,
           validator: validator,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+            hintStyle: const TextStyle(fontSize: 9.5, color: Color(0xFF94A3B8)),
             filled: true,
             fillColor: Colors.white,
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF0052FF), width: 1.3)),

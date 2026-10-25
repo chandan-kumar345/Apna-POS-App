@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../database/database_service.dart';
 import '../models/coupon_model.dart';
 import '../network/api_client.dart';
 import '../network/api_exception.dart';
+import 'firestore_service.dart';
 
 class CouponPaginatedResult {
   final List<CouponModel> coupons;
@@ -25,12 +27,50 @@ class CouponService {
   CouponService._internal();
 
   final _client = ApiClient();
+  final _firestore = FirestoreService();
+  final _db = DatabaseService();
+
   static const String _cacheKey = 'cached_coupons_list_v2';
   List<CouponModel> _cachedCoupons = [];
   bool _isCacheLoaded = false;
 
   /// In-memory cached coupons list for instantaneous 0ms display
   List<CouponModel> get cachedCoupons => List.unmodifiable(_cachedCoupons);
+
+  /// Synchronize cached coupons with Cloud Firestore for multi-device sync
+  Future<void> _syncToCloud() async {
+    final restId = _db.restaurant?.id;
+    if (restId != null && restId.isNotEmpty) {
+      try {
+        await _firestore.saveCoupons(restaurantId: restId, coupons: _cachedCoupons);
+      } catch (e) {
+        debugPrint('[CouponService] _syncToCloud notice: $e');
+      }
+    }
+  }
+
+  /// Merge remote Cloud Firestore coupons into local cache for multi-device sync
+  Future<void> _mergeFromCloud() async {
+    final restId = _db.restaurant?.id;
+    if (restId != null && restId.isNotEmpty) {
+      try {
+        final cloudCoupons = await _firestore.getCoupons(restId);
+        if (cloudCoupons.isNotEmpty) {
+          for (final c in cloudCoupons) {
+            final idx = _cachedCoupons.indexWhere((existing) => existing.id == c.id || existing.code == c.code);
+            if (idx != -1) {
+              _cachedCoupons[idx] = c;
+            } else {
+              _cachedCoupons.add(c);
+            }
+          }
+          _saveCacheToPrefs();
+        }
+      } catch (e) {
+        debugPrint('[CouponService] _mergeFromCloud notice: $e');
+      }
+    }
+  }
 
   /// Initialize local memory cache from persistent SharedPreferences
   Future<void> initCache() async {
@@ -78,6 +118,9 @@ class CouponService {
       await initCache();
     }
 
+    // Merge any remote Firestore coupons from other logged-in devices
+    await _mergeFromCloud();
+
     try {
       final query = <String, dynamic>{
         'page': page,
@@ -123,6 +166,7 @@ class CouponService {
         if (page == 1 && (search == null || search.trim().isEmpty) && (status == null || status == 'all')) {
           _cachedCoupons = List.from(coupons);
           _saveCacheToPrefs();
+          _syncToCloud();
         } else {
           // Merge newly fetched coupons into cache
           for (final c in coupons) {
@@ -134,6 +178,7 @@ class CouponService {
             }
           }
           _saveCacheToPrefs();
+          _syncToCloud();
         }
 
         return CouponPaginatedResult(
@@ -186,6 +231,7 @@ class CouponService {
         _cachedCoupons.removeWhere((c) => c.id == created.id || c.code == created.code);
         _cachedCoupons.insert(0, created);
         _saveCacheToPrefs();
+        _syncToCloud();
         return created;
       }
       throw ApiException(message: res?['message'] ?? 'Failed to create coupon');
@@ -198,6 +244,7 @@ class CouponService {
         _cachedCoupons.removeWhere((c) => c.code == localCoupon.code);
         _cachedCoupons.insert(0, localCoupon);
         _saveCacheToPrefs();
+        _syncToCloud();
         return localCoupon;
       }
       rethrow;
@@ -219,6 +266,7 @@ class CouponService {
           _cachedCoupons.insert(0, updated);
         }
         _saveCacheToPrefs();
+        _syncToCloud();
         return updated;
       }
       throw ApiException(message: res?['message'] ?? 'Failed to update coupon');
@@ -229,6 +277,7 @@ class CouponService {
         if (idx != -1) {
           _cachedCoupons[idx] = coupon;
           _saveCacheToPrefs();
+          _syncToCloud();
           return coupon;
         }
       }
@@ -248,6 +297,7 @@ class CouponService {
         if (idx != -1) {
           _cachedCoupons[idx] = updated;
           _saveCacheToPrefs();
+          _syncToCloud();
         }
         return updated;
       }
@@ -259,6 +309,7 @@ class CouponService {
         final toggled = _cachedCoupons[idx].copyWith(isActive: !_cachedCoupons[idx].isActive);
         _cachedCoupons[idx] = toggled;
         _saveCacheToPrefs();
+        _syncToCloud();
         return toggled;
       }
       rethrow;
@@ -269,6 +320,7 @@ class CouponService {
   Future<bool> deleteCoupon(String id) async {
     _cachedCoupons.removeWhere((c) => c.id == id);
     _saveCacheToPrefs();
+    _syncToCloud();
     try {
       final res = await _client
           .delete('/coupons/$id')

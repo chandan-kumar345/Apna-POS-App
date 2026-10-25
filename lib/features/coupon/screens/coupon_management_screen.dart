@@ -55,6 +55,14 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
       setState(() => _isLoading = true);
     }
     try {
+      // Sync promotional banners & storefront settings from Cloud Firestore across devices
+      _db.syncBannersFromCloud().then((_) {
+        if (mounted) setState(() {});
+      }).catchError((_) {});
+      _db.syncRestaurantSettingsFromCloud().then((_) {
+        if (mounted) setState(() {});
+      }).catchError((_) {});
+
       final res = await _couponService.getCoupons(
         search: _searchQuery,
         status: _selectedStatusFilter != 'all' && _selectedStatusFilter != 'expired'
@@ -1541,116 +1549,128 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
             ),
           ),
 
-          // Metadata & Controls Row
+          // Metadata & Controls Row (Neumorphic wrapped layout & compact typography)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
               children: [
-                // Live status indicator
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: banner.isActive ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(5),
-                    border: Border.all(
-                      color: banner.isActive ? const Color(0xFFA7F3D0) : const Color(0xFFCBD5E1),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                Expanded(
+                  child: Wrap(
+                    spacing: 5,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
+                      // Live status indicator
                       Container(
-                        width: 5,
-                        height: 5,
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: BoxDecoration(
-                          color: banner.isActive ? const Color(0xFF059669) : const Color(0xFF94A3B8),
-                          shape: BoxShape.circle,
+                          color: banner.isActive ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(
+                            color: banner.isActive ? const Color(0xFFA7F3D0) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 4.5,
+                              height: 4.5,
+                              decoration: BoxDecoration(
+                                color: banner.isActive ? const Color(0xFF059669) : const Color(0xFF94A3B8),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              banner.isActive ? 'Live on Storefront' : 'Draft (Hidden)',
+                              style: TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w800,
+                                color: banner.isActive ? const Color(0xFF059669) : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 3.5),
-                      Text(
-                        banner.isActive ? 'Live on Storefront' : 'Draft (Hidden)',
-                        style: TextStyle(
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w800,
-                          color: banner.isActive ? const Color(0xFF059669) : const Color(0xFF64748B),
+
+                      // Linked Coupon Pill if available
+                      if (banner.couponCode != null && banner.couponCode!.isNotEmpty)
+                        InkWell(
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: banner.couponCode!));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Copied coupon: ${banner.couponCode}'),
+                                duration: const Duration(seconds: 1),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(5),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(color: const Color(0xFFBFDBFE)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.confirmation_number_rounded, size: 8.5, color: Color(0xFF0052FF)),
+                                const SizedBox(width: 2.5),
+                                Text(
+                                  banner.couponCode!,
+                                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: Color(0xFF0052FF)),
+                                ),
+                                const SizedBox(width: 2),
+                                const Icon(Icons.copy_rounded, size: 7.5, color: Color(0xFF3B82F6)),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 5),
-
-                // Linked Coupon Pill if available
-                if (banner.couponCode != null && banner.couponCode!.isNotEmpty)
-                  InkWell(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: banner.couponCode!));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Copied coupon: ${banner.couponCode}'),
-                          duration: const Duration(seconds: 1),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(5),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.confirmation_number_rounded, size: 9, color: Color(0xFF0052FF)),
-                          const SizedBox(width: 2.5),
-                          Text(
-                            banner.couponCode!,
-                            style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Color(0xFF0052FF)),
-                          ),
-                          const SizedBox(width: 2),
-                          const Icon(Icons.copy_rounded, size: 8, color: Color(0xFF3B82F6)),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                const Spacer(),
-
-                // Toggle Switch
-                SizedBox(
-                  height: 20,
-                  child: Transform.scale(
-                    scale: 0.65,
-                    child: CupertinoSwitch(
-                      value: banner.isActive,
-                      activeTrackColor: const Color(0xFF059669),
-                      onChanged: (_) => _toggleBannerStatus(banner),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-
-                // Edit Button
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 14, color: Color(0xFF0052FF)),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Edit Banner',
-                  onPressed: () => _openCreateBannerDialog(banner),
-                ),
                 const SizedBox(width: 6),
 
-                // Delete Button
-                IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, size: 14, color: Color(0xFFDC2626)),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Delete Banner',
-                  onPressed: () => _confirmDeleteBanner(banner),
+                // Controls: Toggle Switch, Edit, Delete
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 20,
+                      child: Transform.scale(
+                        scale: 0.65,
+                        child: CupertinoSwitch(
+                          value: banner.isActive,
+                          activeTrackColor: const Color(0xFF059669),
+                          onChanged: (_) => _toggleBannerStatus(banner),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+
+                    // Edit Button
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 14, color: Color(0xFF0052FF)),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Edit Banner',
+                      onPressed: () => _openCreateBannerDialog(banner),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Delete Button
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 14, color: Color(0xFFDC2626)),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Delete Banner',
+                      onPressed: () => _confirmDeleteBanner(banner),
+                    ),
+                  ],
                 ),
               ],
             ),
