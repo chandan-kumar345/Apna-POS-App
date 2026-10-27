@@ -424,7 +424,10 @@ class ApiEndpoints {
   static const String campaignStats = '/campaigns/stats';
   static const String campaignTemplates = '/campaigns/templates';
   static const String campaignChannels = '/campaigns/channels';
-  static const String campaignAudienceGroups = '/campaigns/audience-groups';
+  static const String campaignAudienceGroups = '/campaigns/groups';
+  static const String campaignGroups = '/campaigns/groups';
+  static const String campaignGroupGrab = '/campaigns/groups/grab';
+  static String campaignGroupById(String id) => '/campaigns/groups/$id';
   static const String autoCampaigns = '/campaigns/auto';
   static String campaignById(String id) => '/campaigns/$id';
   static String pauseCampaign(String id) => '/campaigns/$id/pause';

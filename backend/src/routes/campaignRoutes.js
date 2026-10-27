@@ -10,7 +10,18 @@ router.use(authMiddleware);
 // Meta resources & KPIs
 router.get('/stats', (req, res, next) => campaignController.getDashboardStats(req, res, next));
 router.get('/templates', (req, res, next) => campaignController.getTemplates(req, res, next));
+router.post('/templates', (req, res, next) => campaignController.createTemplate(req, res, next));
 router.get('/channels', (req, res, next) => campaignController.getChannels(req, res, next));
+
+// Audience Groups CRUD (Isolated per businessId)
+router.get('/groups', (req, res, next) => campaignController.getAudienceGroups(req, res, next));
+router.post('/groups', (req, res, next) => campaignController.createAudienceGroup(req, res, next));
+router.post('/groups/grab', (req, res, next) => campaignController.grabCustomerNumbers(req, res, next));
+router.get('/groups/:id', (req, res, next) => campaignController.getAudienceGroupById(req, res, next));
+router.put('/groups/:id', (req, res, next) => campaignController.updateAudienceGroup(req, res, next));
+router.delete('/groups/:id', (req, res, next) => campaignController.deleteAudienceGroup(req, res, next));
+
+// Audience groups backward compatibility route
 router.get('/audience-groups', (req, res, next) => campaignController.getAudienceGroups(req, res, next));
 
 // Auto campaigns

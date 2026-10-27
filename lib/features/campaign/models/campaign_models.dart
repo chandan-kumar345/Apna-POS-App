@@ -4,65 +4,137 @@ class CampaignStatsModel {
   final int messagesSent;
   final double deliveryRate;
   final double totalSpent;
+  final int draftCount;
+  final int approvedCount;
+  final int scheduledCount;
+  final int pendingCount;
+  final int rejectedCount;
+  final double walletBalance;
   final int allCount;
   final int marketingCount;
   final int utilityCount;
-  final int scheduledCount;
   final int runningCount;
   final int completedCount;
 
   const CampaignStatsModel({
-    this.totalCampaigns = 24,
-    this.messagesSent = 12450,
-    this.deliveryRate = 92.4,
-    this.totalSpent = 1125.30,
-    this.allCount = 24,
-    this.marketingCount = 14,
-    this.utilityCount = 6,
-    this.scheduledCount = 4,
-    this.runningCount = 2,
-    this.completedCount = 18,
+    this.totalCampaigns = 0,
+    this.messagesSent = 0,
+    this.deliveryRate = 0.0,
+    this.totalSpent = 0.0,
+    this.draftCount = 36,
+    this.approvedCount = 12,
+    this.scheduledCount = 5,
+    this.pendingCount = 3,
+    this.rejectedCount = 0,
+    this.walletBalance = 7250.50,
+    this.allCount = 0,
+    this.marketingCount = 0,
+    this.utilityCount = 0,
+    this.runningCount = 0,
+    this.completedCount = 0,
   });
 
   factory CampaignStatsModel.fromJson(Map<String, dynamic> json) {
     final counts = json['counts'] as Map<String, dynamic>? ?? {};
     return CampaignStatsModel(
-      totalCampaigns: (json['totalCampaigns'] as num?)?.toInt() ?? 24,
-      messagesSent: (json['messagesSent'] as num?)?.toInt() ?? 12450,
-      deliveryRate: (json['deliveryRate'] as num?)?.toDouble() ?? 92.4,
-      totalSpent: (json['totalSpent'] as num?)?.toDouble() ?? 1125.30,
-      allCount: (counts['all'] as num?)?.toInt() ?? 24,
-      marketingCount: (counts['marketing'] as num?)?.toInt() ?? 14,
-      utilityCount: (counts['utility'] as num?)?.toInt() ?? 6,
-      scheduledCount: (counts['scheduled'] as num?)?.toInt() ?? 4,
-      runningCount: (counts['running'] as num?)?.toInt() ?? 2,
-      completedCount: (counts['completed'] as num?)?.toInt() ?? 18,
+      totalCampaigns: (json['totalCampaigns'] as num?)?.toInt() ?? 0,
+      messagesSent: (json['messagesSent'] as num?)?.toInt() ?? 0,
+      deliveryRate: (json['deliveryRate'] as num?)?.toDouble() ?? 0.0,
+      totalSpent: (json['totalSpent'] as num?)?.toDouble() ?? 0.0,
+      draftCount: (json['draftCount'] as num?)?.toInt() ?? (counts['drafts'] as num?)?.toInt() ?? 36,
+      approvedCount: (json['approvedCount'] as num?)?.toInt() ?? (counts['approved'] as num?)?.toInt() ?? 12,
+      scheduledCount: (json['scheduledCount'] as num?)?.toInt() ?? (counts['scheduled'] as num?)?.toInt() ?? 5,
+      pendingCount: (json['pendingCount'] as num?)?.toInt() ?? (counts['pending'] as num?)?.toInt() ?? 3,
+      rejectedCount: (json['rejectedCount'] as num?)?.toInt() ?? (counts['rejected'] as num?)?.toInt() ?? 0,
+      walletBalance: (json['walletBalance'] as num?)?.toDouble() ?? 7250.50,
+      allCount: (counts['all'] as num?)?.toInt() ?? 0,
+      marketingCount: (counts['marketing'] as num?)?.toInt() ?? 0,
+      utilityCount: (counts['utility'] as num?)?.toInt() ?? 0,
+      runningCount: (counts['running'] as num?)?.toInt() ?? 0,
+      completedCount: (counts['completed'] as num?)?.toInt() ?? 0,
     );
   }
 }
 
-/// Audience group item
-class AudienceGroupModel {
+/// Contact phone number item in an audience group
+class ContactNumberModel {
   final String id;
   final String name;
-  final int count;
+  final String phone;
+  final DateTime? addedAt;
+
+  const ContactNumberModel({
+    required this.id,
+    required this.name,
+    required this.phone,
+    this.addedAt,
+  });
+
+  factory ContactNumberModel.fromJson(Map<String, dynamic> json) {
+    return ContactNumberModel(
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Contact',
+      phone: json['phone']?.toString() ?? '',
+      addedAt: json['addedAt'] != null ? DateTime.tryParse(json['addedAt'].toString()) : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'phone': phone,
+      };
+}
+
+/// Audience group item (Organize contact groups with a cleaner command center)
+class AudienceGroupModel {
+  final String id;
+  final int srNo;
+  final String name;
+  final String type; // 'Mobile', 'Customer', 'Excel/CSV', 'Segment'
+  final String source; // 'Mobile source', 'POS Customers', etc.
   final String description;
+  final int count;
+  final int totalNumbers;
+  final List<ContactNumberModel> numbers;
+  final DateTime? createdAt;
 
   const AudienceGroupModel({
     required this.id,
+    this.srNo = 237,
     required this.name,
-    required this.count,
+    this.type = 'Mobile',
+    this.source = 'Mobile source',
     this.description = '',
+    this.count = 0,
+    this.totalNumbers = 0,
+    this.numbers = const [],
+    this.createdAt,
   });
 
   factory AudienceGroupModel.fromJson(Map<String, dynamic> json) {
+    final rawNumbers = json['numbers'] as List<dynamic>? ?? [];
+    final total = (json['totalNumbers'] as num?)?.toInt() ?? (json['count'] as num?)?.toInt() ?? rawNumbers.length;
     return AudienceGroupModel(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
-      count: (json['count'] as num?)?.toInt() ?? 0,
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      srNo: (json['srNo'] as num?)?.toInt() ?? 237,
+      name: json['name']?.toString() ?? 'Group',
+      type: json['type']?.toString() ?? 'Mobile',
+      source: json['source']?.toString() ?? 'Mobile source',
       description: json['description']?.toString() ?? '',
+      count: total,
+      totalNumbers: total,
+      numbers: rawNumbers.map((n) => ContactNumberModel.fromJson(Map<String, dynamic>.from(n as Map))).toList(),
+      createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt'].toString()) : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'type': type,
+        'source': source,
+        'description': description,
+        'numbers': numbers.map((n) => n.toJson()).toList(),
+      };
 }
 
 /// Audience selection details
@@ -139,49 +211,97 @@ class CampaignChannelModel {
       };
 }
 
-/// WhatsApp template model
+/// WhatsApp & Multi-Channel Meta-Verified template model
 class CampaignTemplateModel {
   final String id;
   final String name;
-  final String category; // 'Marketing', 'Utility'
+  final String subtitle;
+  final String category; // 'Promotional', 'Discount', 'BOGO', 'New Menu', 'Free Gift', 'Festival', 'Re-engagement', 'AI', 'Utility'
+  final String channel; // 'whatsapp', 'sms', 'email'
+  final String metaStatus; // 'APPROVED', 'PENDING', 'REJECTED'
+  final String metaTemplateName;
+  final String metaCategory; // 'MARKETING', 'UTILITY'
   final String language;
+  final String headerImageUrl;
+  final String iconCode; // 'crown', 'tag', 'clock', 'cloche', 'gift', 'refresh'
+  final String tagLabel;
+  final String tagColor;
+  final bool isMetaVerified;
   final String body;
   final String headerText;
   final String footerText;
   final List<String> parameters;
+  final List<String> sampleParameters;
 
   const CampaignTemplateModel({
     required this.id,
     required this.name,
-    this.category = 'Marketing',
+    this.subtitle = '',
+    this.category = 'Promotional',
+    this.channel = 'whatsapp',
+    this.metaStatus = 'APPROVED',
+    this.metaTemplateName = '',
+    this.metaCategory = 'MARKETING',
     this.language = 'EN',
+    this.headerImageUrl = '',
+    this.iconCode = 'tag',
+    this.tagLabel = 'Promotional',
+    this.tagColor = '#10B981',
+    this.isMetaVerified = true,
     this.body = '',
     this.headerText = '',
     this.footerText = '',
     this.parameters = const [],
+    this.sampleParameters = const [],
   });
+
+  bool get isApprovedByMeta => metaStatus.toUpperCase() == 'APPROVED' && channel == 'whatsapp';
 
   factory CampaignTemplateModel.fromJson(Map<String, dynamic> json) {
     final rawParams = json['parameters'] as List<dynamic>? ?? [];
+    final rawSampleParams = json['sampleParameters'] as List<dynamic>? ?? [];
+
     return CampaignTemplateModel(
-      id: json['id']?.toString() ?? json['templateId']?.toString() ?? '',
+      id: json['id']?.toString() ?? json['templateId']?.toString() ?? json['_id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
-      category: json['category']?.toString() ?? 'Marketing',
+      subtitle: json['subtitle']?.toString() ?? json['description']?.toString() ?? '',
+      category: json['category']?.toString() ?? 'Promotional',
+      channel: json['channel']?.toString() ?? 'whatsapp',
+      metaStatus: (json['metaStatus']?.toString() ?? 'APPROVED').toUpperCase(),
+      metaTemplateName: json['metaTemplateName']?.toString() ?? '',
+      metaCategory: json['metaCategory']?.toString() ?? 'MARKETING',
       language: json['language']?.toString() ?? 'EN',
+      headerImageUrl: json['headerImageUrl']?.toString() ?? '',
+      iconCode: json['iconCode']?.toString() ?? 'tag',
+      tagLabel: json['tagLabel']?.toString() ?? json['category']?.toString() ?? 'Promotional',
+      tagColor: json['tagColor']?.toString() ?? '#10B981',
+      isMetaVerified: json['isMetaVerified'] ?? (json['channel'] == 'whatsapp' || json['channel'] == null),
       body: json['body']?.toString() ?? '',
       headerText: json['headerText']?.toString() ?? '',
       footerText: json['footerText']?.toString() ?? '',
       parameters: rawParams.map((e) => e.toString()).toList(),
+      sampleParameters: rawSampleParams.map((e) => e.toString()).toList(),
     );
   }
 
   Map<String, dynamic> toJson() => {
         'templateId': id,
         'name': name,
+        'subtitle': subtitle,
         'category': category,
+        'channel': channel,
+        'metaStatus': metaStatus,
+        'metaTemplateName': metaTemplateName,
+        'metaCategory': metaCategory,
         'language': language,
+        'headerImageUrl': headerImageUrl,
+        'iconCode': iconCode,
+        'tagLabel': tagLabel,
+        'tagColor': tagColor,
+        'isMetaVerified': isMetaVerified,
         'body': body,
         'parameters': parameters,
+        'sampleParameters': sampleParameters,
       };
 }
 

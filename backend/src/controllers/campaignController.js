@@ -69,8 +69,18 @@ class CampaignController {
 
   async getTemplates(req, res, next) {
     try {
-      const templates = await campaignService.getTemplates(req.businessId);
+      const { channel, category, search, metaStatus } = req.query;
+      const templates = await campaignService.getTemplates(req.businessId, { channel, category, search, metaStatus });
       return ApiResponse.success(res, templates, 'Campaign templates retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createTemplate(req, res, next) {
+    try {
+      const template = await campaignService.createTemplate(req.businessId, req.body);
+      return ApiResponse.created(res, template, 'Meta Verified template created successfully');
     } catch (error) {
       next(error);
     }
@@ -85,14 +95,71 @@ class CampaignController {
     }
   }
 
+  // ==========================================
+  // AUDIENCE GROUPS
+  // ==========================================
+
   async getAudienceGroups(req, res, next) {
     try {
-      const groups = await campaignService.getAudienceGroups(req.businessId);
+      const { search } = req.query;
+      const groups = await campaignService.getAudienceGroups(req.businessId, { search });
       return ApiResponse.success(res, groups, 'Audience customer groups retrieved');
     } catch (error) {
       next(error);
     }
   }
+
+  async getAudienceGroupById(req, res, next) {
+    try {
+      const { id } = req.params;
+      const group = await campaignService.getAudienceGroupById(req.businessId, id);
+      return ApiResponse.success(res, group, 'Audience group retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createAudienceGroup(req, res, next) {
+    try {
+      const group = await campaignService.createAudienceGroup(req.businessId, req.body);
+      return ApiResponse.created(res, group, 'Audience group created successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateAudienceGroup(req, res, next) {
+    try {
+      const { id } = req.params;
+      const group = await campaignService.updateAudienceGroup(req.businessId, id, req.body);
+      return ApiResponse.success(res, group, 'Audience group updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteAudienceGroup(req, res, next) {
+    try {
+      const { id } = req.params;
+      const result = await campaignService.deleteAudienceGroup(req.businessId, id);
+      return ApiResponse.success(res, result, 'Audience group deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async grabCustomerNumbers(req, res, next) {
+    try {
+      const group = await campaignService.grabCustomerNumbers(req.businessId, req.body);
+      return ApiResponse.created(res, group, 'Customer contacts grabbed into audience group');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ==========================================
+  // AUTO CAMPAIGNS
+  // ==========================================
 
   async getAutoCampaigns(req, res, next) {
     try {

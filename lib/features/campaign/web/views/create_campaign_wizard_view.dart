@@ -10,11 +10,13 @@ import '../../../../core/services/wallet_service.dart';
 class CreateCampaignWizardView extends StatefulWidget {
   final VoidCallback onCancel;
   final ValueChanged<CampaignModel> onCampaignCreated;
+  final CampaignTemplateModel? initialTemplate;
 
   const CreateCampaignWizardView({
     super.key,
     required this.onCancel,
     required this.onCampaignCreated,
+    this.initialTemplate,
   });
 
   @override
@@ -60,7 +62,12 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   @override
   void initState() {
     super.initState();
-    _campaignNameController = TextEditingController(text: 'Diwali Special Offer');
+    final initialName = widget.initialTemplate?.name ?? 'Diwali Special Offer';
+    _campaignNameController = TextEditingController(text: initialName);
+    if (widget.initialTemplate != null) {
+      _selectedTemplate = widget.initialTemplate;
+      _selectedType = widget.initialTemplate!.category.toLowerCase() == 'utility' ? 'utility' : 'marketing';
+    }
     _loadInitialData();
   }
 
@@ -87,7 +94,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
         _channels = channels;
         _selectedChannel = channels.isNotEmpty ? channels.first : null;
         _templates = templates;
-        _selectedTemplate = templates.isNotEmpty ? templates.first : null;
+        _selectedTemplate = widget.initialTemplate ?? (templates.isNotEmpty ? templates.first : null);
         _walletBalance = wallet ?? const WalletBalanceData(balance: 1250.50);
         _isLoading = false;
       });
@@ -659,7 +666,19 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    ..._audienceGroups
+                    if (_audienceGroups.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text(
+                            'No audience groups found.\nCreate a group using the "Create Group" button on the dashboard.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          ),
+                        ),
+                      )
+                    else
+                      ..._audienceGroups
                         .where((g) => g.name.toLowerCase().contains(_groupSearch.toLowerCase()))
                         .map((group) {
                       final isChecked = _selectedGroup?.id == group.id;

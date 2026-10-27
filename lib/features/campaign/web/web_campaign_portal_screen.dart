@@ -4,6 +4,7 @@ import 'views/campaign_dashboard_view.dart';
 import 'views/create_campaign_wizard_view.dart';
 import 'views/create_auto_campaign_view.dart';
 import 'views/campaign_details_monitoring_view.dart';
+import 'views/audience_groups_view.dart';
 
 class WebCampaignPortalScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -15,19 +16,29 @@ class WebCampaignPortalScreen extends StatefulWidget {
 }
 
 class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
-  String _currentView = 'dashboard'; // 'dashboard', 'create', 'create_auto', 'details'
+  String _currentView = 'dashboard'; // 'dashboard', 'create', 'create_auto', 'details', 'groups'
   CampaignModel? _selectedCampaign;
+  CampaignTemplateModel? _selectedTemplateForCreate;
 
   void _navigateToDashboard() {
     setState(() {
       _currentView = 'dashboard';
       _selectedCampaign = null;
+      _selectedTemplateForCreate = null;
     });
   }
 
-  void _navigateToCreate() {
+  void _navigateToCreate({CampaignTemplateModel? template}) {
     setState(() {
       _currentView = 'create';
+      _selectedCampaign = null;
+      _selectedTemplateForCreate = template;
+    });
+  }
+
+  void _navigateToGroups() {
+    setState(() {
+      _currentView = 'groups';
       _selectedCampaign = null;
     });
   }
@@ -50,8 +61,14 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
   Widget build(BuildContext context) {
     Widget currentWidget;
     switch (_currentView) {
+      case 'groups':
+        currentWidget = AudienceGroupsView(
+          onBack: _navigateToDashboard,
+        );
+        break;
       case 'create':
         currentWidget = CreateCampaignWizardView(
+          initialTemplate: _selectedTemplateForCreate,
           onCancel: _navigateToDashboard,
           onCampaignCreated: (campaign) => _navigateToDetails(campaign),
         );
@@ -70,7 +87,9 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
           );
         } else {
           currentWidget = CampaignDashboardView(
-            onCreateCampaign: _navigateToCreate,
+            onCreateCampaign: () => _navigateToCreate(),
+            onUseTemplate: (tpl) => _navigateToCreate(template: tpl),
+            onCreateGroup: _navigateToGroups,
             onCreateAutoCampaign: _navigateToCreateAuto,
             onSelectCampaign: _navigateToDetails,
           );
@@ -79,7 +98,9 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
       case 'dashboard':
       default:
         currentWidget = CampaignDashboardView(
-          onCreateCampaign: _navigateToCreate,
+          onCreateCampaign: () => _navigateToCreate(),
+          onUseTemplate: (tpl) => _navigateToCreate(template: tpl),
+          onCreateGroup: _navigateToGroups,
           onCreateAutoCampaign: _navigateToCreateAuto,
           onSelectCampaign: _navigateToDetails,
         );
