@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../web/web_campaign_portal_screen.dart';
 import '../../subscription/screens/subscription_screen.dart';
 import '../../../core/services/subscription_service.dart';
 import '../../../core/database/database_service.dart';
@@ -422,6 +424,10 @@ class _CampaignScreenState extends State<CampaignScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return WebCampaignPortalScreen(onBack: widget.onBack);
+    }
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),

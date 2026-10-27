@@ -419,6 +419,18 @@ class ApiEndpoints {
   static const String walletRecharge = '/wallet/recharge';
   static const String walletTransactions = '/wallet/transactions';
 
+  // Campaign endpoints
+  static const String campaigns = '/campaigns';
+  static const String campaignStats = '/campaigns/stats';
+  static const String campaignTemplates = '/campaigns/templates';
+  static const String campaignChannels = '/campaigns/channels';
+  static const String campaignAudienceGroups = '/campaigns/audience-groups';
+  static const String autoCampaigns = '/campaigns/auto';
+  static String campaignById(String id) => '/campaigns/$id';
+  static String pauseCampaign(String id) => '/campaigns/$id/pause';
+  static String resumeCampaign(String id) => '/campaigns/$id/resume';
+  static String toggleAutoCampaign(String id) => '/campaigns/auto/$id/toggle';
+
   // Sales & Reports endpoints
 
   static const String sales = '/sales';
