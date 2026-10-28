@@ -243,9 +243,14 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
       }
     } catch (e) {
       if (!mounted) return;
+      final raw = e.toString().replaceAll('Exception:', '').trim();
+      String userFriendlyMsg = raw;
+      if (raw.toLowerCase().contains('appsecret_proof') || raw.toLowerCase().contains('app secret')) {
+        userFriendlyMsg = "Meta 'appsecret_proof' required: Provide your Meta App Secret under WhatsApp Connection Settings, or toggle OFF 'Require App Secret' in Meta Developer Console.";
+      }
       setState(() {
         _isSending = false;
-        _errorMessage = e.toString().replaceAll('Exception:', '').trim();
+        _errorMessage = userFriendlyMsg;
       });
     }
   }

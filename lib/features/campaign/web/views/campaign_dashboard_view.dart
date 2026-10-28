@@ -2,6 +2,103 @@ import 'package:flutter/material.dart';
 import '../../models/campaign_models.dart';
 import '../../services/campaign_service.dart';
 
+/// Neumorphic design token definitions for Campaign Web Portal
+class NeumorphicTheme {
+  // Soft matte canvas background
+  static const Color background = Color(0xFFEFF3F8);
+
+  // Raised surface background
+  static const Color cardSurface = Color(0xFFF6F9FC);
+
+  // App & Top Header Colors
+  static const Color headerPrimary = Color(0xFF082559);
+  static const Color headerAccent = Color(0xFF0F3E82);
+  static const Color headerDarkTeal = Color(0xFF09393C);
+  static const Color accentCyan = Color(0xFF2DD4BF);
+  static const Color textDark = Color(0xFF0F172A);
+  static const Color textMuted = Color(0xFF64748B);
+
+  /// Neumorphic convex / raised card decoration (dual shadow: bottom-right dark, top-left white)
+  static BoxDecoration raisedDecoration({
+    double radius = 18,
+    Color color = cardSurface,
+    double blur = 14,
+    double distance = 5,
+    Border? border,
+  }) {
+    return BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(radius),
+      border: border ?? Border.all(color: Colors.white, width: 1.5),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0x1C64748B),
+          offset: Offset(distance, distance),
+          blurRadius: blur,
+        ),
+        BoxShadow(
+          color: Colors.white,
+          offset: Offset(-distance, -distance),
+          blurRadius: blur,
+        ),
+      ],
+    );
+  }
+
+  /// Neumorphic concave / recessed track decoration (sunken / debossed)
+  static BoxDecoration recessedDecoration({
+    double radius = 24,
+    Color color = const Color(0xFFE4EBF4),
+  }) {
+    return BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(radius),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x16000000),
+          offset: Offset(2.5, 2.5),
+          blurRadius: 5,
+        ),
+        BoxShadow(
+          color: Colors.white,
+          offset: Offset(-2.5, -2.5),
+          blurRadius: 5,
+        ),
+      ],
+    );
+  }
+
+  /// Neumorphic button in top header color
+  static BoxDecoration headerButtonDecoration({
+    double radius = 20,
+    bool isElevated = true,
+  }) {
+    return BoxDecoration(
+      gradient: const LinearGradient(
+        colors: [headerPrimary, headerAccent],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+      boxShadow: isElevated
+          ? [
+              const BoxShadow(
+                color: Color(0x3D082559),
+                offset: Offset(3, 4),
+                blurRadius: 10,
+              ),
+              const BoxShadow(
+                color: Colors.white30,
+                offset: Offset(-1, -1),
+                blurRadius: 3,
+              ),
+            ]
+          : null,
+    );
+  }
+}
+
 class CampaignDashboardView extends StatefulWidget {
   final VoidCallback onCreateCampaign;
   final VoidCallback onCreateGroup;
@@ -25,44 +122,93 @@ class CampaignDashboardView extends StatefulWidget {
 class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   final CampaignService _campaignService = CampaignService();
 
-  String _selectedMainTab = 'Explore Campaigns'; // Explore Campaigns, Drafts, Pending, Approved, Scheduled, Action Rejected
-  String _selectedCategory = 'AI'; // AI, Promotional, Free Gift, Flat Cash Discount, Percent Discount, etc.
+  String _selectedMainTab = 'Explore Campaigns';
+  String _selectedCategory = 'All';
   String _templateSearchQuery = '';
   bool _isLoading = true;
 
   CampaignStatsModel _stats = const CampaignStatsModel();
+  List<CampaignModel> _allCampaigns = [];
   List<CampaignModel> _campaigns = [];
+  List<CampaignTemplateModel> _allTemplates = [];
   List<CampaignTemplateModel> _templates = [];
+  List<Map<String, dynamic>> _categories = [];
 
   @override
   void initState() {
     super.initState();
-    _loadAllData();
+    _loadAllData(isInitial: true);
   }
 
-  Future<void> _loadAllData() async {
-    setState(() => _isLoading = true);
-
-    final statsFuture = _campaignService.fetchDashboardStats();
-    final campaignsFuture = _campaignService.fetchCampaigns(
-      status: _mapTabToStatus(_selectedMainTab),
-    );
-    final templatesFuture = _campaignService.fetchTemplates(
-      channel: 'whatsapp',
-      category: _selectedCategory == 'AI' ? null : _selectedCategory,
-      search: _templateSearchQuery,
-    );
-
-    final results = await Future.wait([statsFuture, campaignsFuture, templatesFuture]);
-
-    if (mounted) {
-      setState(() {
-        _stats = results[0] as CampaignStatsModel;
-        _campaigns = results[1] as List<CampaignModel>;
-        _templates = results[2] as List<CampaignTemplateModel>;
-        _isLoading = false;
-      });
+  Future<void> _loadAllData({bool isInitial = false}) async {
+    if (isInitial && mounted) {
+      setState(() => _isLoading = true);
     }
+
+    try {
+      final statsFuture = _campaignService.fetchDashboardStats();
+      final campaignsFuture = _campaignService.fetchCampaigns();
+      final templatesFuture = _campaignService.fetchTemplates(channel: 'whatsapp');
+      final categoriesFuture = _campaignService.fetchCategories();
+
+      final results = await Future.wait([statsFuture, campaignsFuture, templatesFuture, categoriesFuture]);
+
+      if (mounted) {
+        setState(() {
+          _stats = results[0] as CampaignStatsModel;
+          _allCampaigns = results[1] as List<CampaignModel>;
+          _allTemplates = results[2] as List<CampaignTemplateModel>;
+          _categories = results[3] as List<Map<String, dynamic>>;
+          _applyFilters();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[CampaignDashboardView] _loadAllData error: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _applyFilters() {
+    // 1. Filter campaigns by selected main status tab
+    final statusFilter = _mapTabToStatus(_selectedMainTab);
+    if (statusFilter == null || statusFilter.isEmpty) {
+      _campaigns = List.from(_allCampaigns);
+    } else {
+      _campaigns = _allCampaigns.where((c) {
+        final cStatus = c.status.toLowerCase();
+        if (statusFilter == 'running') {
+          return cStatus == 'running' || cStatus == 'pending';
+        }
+        if (statusFilter == 'completed') {
+          return cStatus == 'completed' || cStatus == 'approved';
+        }
+        if (statusFilter == 'cancelled') {
+          return cStatus == 'cancelled' || cStatus == 'rejected';
+        }
+        return cStatus == statusFilter;
+      }).toList();
+    }
+
+    // 2. Filter templates by selected category and search query
+    _templates = _allTemplates.where((t) {
+      if (_selectedCategory != 'All') {
+        final matchesCat = t.category.toLowerCase() == _selectedCategory.toLowerCase() ||
+            t.tagLabel.toLowerCase() == _selectedCategory.toLowerCase();
+        if (!matchesCat) return false;
+      }
+      if (_templateSearchQuery.trim().isNotEmpty) {
+        final q = _templateSearchQuery.trim().toLowerCase();
+        final matchesQuery = t.name.toLowerCase().contains(q) ||
+            t.subtitle.toLowerCase().contains(q) ||
+            t.tagLabel.toLowerCase().contains(q) ||
+            t.category.toLowerCase().contains(q);
+        if (!matchesQuery) return false;
+      }
+      return true;
+    }).toList();
   }
 
   String? _mapTabToStatus(String tab) {
@@ -84,310 +230,438 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   }
 
   void _onMainTabChanged(String tab) {
-    setState(() => _selectedMainTab = tab);
-    _loadAllData();
+    if (_selectedMainTab == tab) return;
+    setState(() {
+      _selectedMainTab = tab;
+      _applyFilters();
+    });
+    // Silently fetch fresh filtered data in the background without showing any loader
+    _refreshCampaignsSilently();
+  }
+
+  Future<void> _refreshCampaignsSilently() async {
+    try {
+      final status = _mapTabToStatus(_selectedMainTab);
+      final fresh = await _campaignService.fetchCampaigns(status: status);
+      if (mounted) {
+        setState(() {
+          _campaigns = fresh;
+          for (final c in fresh) {
+            final idx = _allCampaigns.indexWhere((existing) => existing.id == c.id);
+            if (idx >= 0) {
+              _allCampaigns[idx] = c;
+            } else {
+              _allCampaigns.add(c);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[CampaignDashboardView] _refreshCampaignsSilently notice: $e');
+    }
   }
 
   void _onCategoryChanged(String cat) {
-    setState(() => _selectedCategory = cat);
-    _loadAllData();
+    if (_selectedCategory == cat) return;
+    setState(() {
+      _selectedCategory = cat;
+      _applyFilters();
+    });
+  }
+
+  int _getCountForTab(String tab, int statsCount) {
+    if (statsCount > 0) return statsCount;
+    final status = _mapTabToStatus(tab);
+    if (status == null) return _allCampaigns.length;
+    return _allCampaigns.where((c) {
+      final s = c.status.toLowerCase();
+      if (status == 'running') return s == 'running' || s == 'pending';
+      if (status == 'completed') return s == 'completed' || s == 'approved';
+      if (status == 'cancelled') return s == 'cancelled' || s == 'rejected';
+      return s == status;
+    }).length;
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFF8FAFC),
+      color: NeumorphicTheme.background,
       child: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF5722)),
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(NeumorphicTheme.headerPrimary),
+              ),
             )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 1. Top Section: Hero Banner (Left) + Stats & Wallet Grid (Right)
-                  _buildTopSplitSection(),
-                  const SizedBox(height: 20),
+          : RefreshIndicator(
+              onRefresh: _loadAllData,
+              color: NeumorphicTheme.headerPrimary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. TOP SPLIT HERO SECTION: Hero Studio Banner + (2x2 Stats & Wallet Column)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        if (constraints.maxWidth > 980) {
+                          return IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(flex: 64, child: _buildHeroStudioBanner()),
+                                const SizedBox(width: 18),
+                                Expanded(flex: 36, child: _buildStatsAndWalletColumn()),
+                              ],
+                            ),
+                          );
+                        } else {
+                          return Column(
+                            children: [
+                              _buildHeroStudioBanner(),
+                              const SizedBox(height: 18),
+                              _buildStatsAndWalletColumn(),
+                            ],
+                          );
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 22),
 
-                  // 2. Main Status Navigation Bar (Horizontal Rounded Pill Container)
-                  _buildMainFilterNavBar(),
-                  const SizedBox(height: 16),
+                    // 2. MAIN STATUS FILTER PILL BAR
+                    _buildMainFilterNavBar(),
+                    const SizedBox(height: 18),
 
-                  // 3. Sub-Category Filter Pills & Search Input Row
-                  _buildCategoryFilterRow(),
-                  const SizedBox(height: 24),
+                    // 3. SUB-CATEGORY FILTER PILLS & SEARCH INPUT
+                    _buildCategoryFilterRow(),
+                    const SizedBox(height: 26),
 
-                  // 4. Campaign Templates Horizontal Row (Meta Verified)
-                  _buildCampaignTemplatesSection(),
-                  const SizedBox(height: 32),
+                    // 4. CAMPAIGN TEMPLATES SECTION
+                    _buildCampaignTemplatesSection(),
+                    const SizedBox(height: 30),
 
-                  // 5. Recent Campaigns Management Table
-                  _buildRecentCampaignsSection(),
-                  const SizedBox(height: 40),
-                ],
+                    // 5. RECENT CAMPAIGNS SECTION (DYNAMIC TABLE)
+                    _buildRecentCampaignsSection(),
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
             ),
     );
   }
 
   // =========================================================================
-  // 1. TOP SPLIT SECTION: HERO BANNER & STATS/WALLET GRID
+  // 1. HERO STUDIO BANNER & STATS COLUMN
   // =========================================================================
-
-  Widget _buildTopSplitSection() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth > 960;
-
-        if (isWide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Hero Banner Left (63% width)
-              Expanded(
-                flex: 63,
-                child: _buildHeroStudioBanner(),
-              ),
-              const SizedBox(width: 18),
-              // Stats & Wallet Right (37% width)
-              Expanded(
-                flex: 37,
-                child: _buildStatsAndWalletColumn(),
-              ),
-            ],
-          );
-        }
-
-        // Stacked vertically for narrower views
-        return Column(
-          children: [
-            _buildHeroStudioBanner(),
-            const SizedBox(height: 18),
-            _buildStatsAndWalletColumn(),
-          ],
-        );
-      },
-    );
-  }
 
   Widget _buildHeroStudioBanner() {
     return Container(
-      constraints: const BoxConstraints(minHeight: 250),
-      padding: const EdgeInsets.only(left: 28, top: 18, bottom: 18, right: 12),
+      constraints: const BoxConstraints(minHeight: 285),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         gradient: const LinearGradient(
           colors: [
-            Color(0xFF09393C), // Matching exact pixels from reference
-            Color(0xFF0D454E),
-            Color(0xFF08272C),
+            Color(0xFF073437),
+            Color(0xFF0C464C),
+            Color(0xFF062226),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
+        border: Border.all(
+          color: const Color(0xFF2DD4BF).withValues(alpha: 0.28),
+          width: 1.2,
+        ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x3309393C),
-            blurRadius: 18,
-            offset: Offset(0, 8),
+            color: Color(0x66000000),
+            offset: Offset(8, 14),
+            blurRadius: 30,
+            spreadRadius: 1,
+          ),
+          BoxShadow(
+            color: Color(0x1F2DD4BF),
+            offset: Offset(-3, -3),
+            blurRadius: 16,
           ),
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Stack(
         children: [
-          // Left Content
-          Expanded(
-            flex: 6,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Capsule Badge: CAMPAIGN STUDIO
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF143B38),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF2DD4BF).withValues(alpha: 0.3)),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_awesome, color: Color(0xFF2DD4BF), size: 12),
-                      SizedBox(width: 6),
-                      Text(
-                        'CAMPAIGN STUDIO',
-                        style: TextStyle(
-                          color: Color(0xFF2DD4BF),
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // Headline with colored "More Orders"
-                RichText(
-                  text: const TextSpan(
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      height: 1.22,
-                    ),
-                    children: [
-                      TextSpan(text: 'Engage Your Customers\nDeliver '),
-                      TextSpan(
-                        text: 'More Orders',
-                        style: TextStyle(
-                          color: Color(0xFFFF5722),
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Subtitle description
-                const Text(
-                  'Create and send WhatsApp campaigns, offers, and updates in minutes.\nUse ready templates or create your own to drive more sales.',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: Colors.white70,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Action Buttons
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    // + Create New Campaign (Orange gradient pill button)
-                    InkWell(
-                      onTap: widget.onCreateCampaign,
-                      borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFF5722), Color(0xFFFF7A00)],
-                          ),
-                          borderRadius: BorderRadius.circular(22),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x66FF5722),
-                              blurRadius: 12,
-                              offset: Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add, color: Colors.white, size: 18),
-                            SizedBox(width: 6),
-                            Text(
-                              'Create New Campaign',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Auto Campaigns Button
-                    InkWell(
-                      onTap: widget.onCreateAutoCampaign,
-                      borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.settings_outlined, color: Colors.white, size: 16),
-                            SizedBox(width: 6),
-                            Text(
-                              'Auto Campaigns',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Audience Groups Button
-                    InkWell(
-                      onTap: widget.onCreateGroup,
-                      borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.groups_rounded, color: Colors.white, size: 16),
-                            SizedBox(width: 6),
-                            Text(
-                              'Audience Groups',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+          // Background subtle radiant spotlight behind the right 3D phone
+          Positioned(
+            right: 30,
+            top: -20,
+            bottom: -20,
+            child: Container(
+              width: 390,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF2DD4BF).withValues(alpha: 0.22),
+                    const Color(0xFF0D9488).withValues(alpha: 0.10),
+                    Colors.transparent,
                   ],
                 ),
-              ],
+              ),
             ),
           ),
 
-          // Right Graphic: Exact 3D phone on glowing pedestal with WhatsApp logo & floating notification cards
-          Expanded(
-            flex: 5,
-            child: SizedBox(
-              height: 230,
-              child: Image.asset(
-                'assets/images/campaign_hero_phone_3d.png',
-                fit: BoxFit.contain,
-                alignment: Alignment.centerRight,
-                filterQuality: FilterQuality.high,
-                errorBuilder: (ctx, error, stackTrace) => _buildFallbackHeroPhoneMockup(),
-              ),
+          Padding(
+            padding: const EdgeInsets.only(left: 28, top: 18, bottom: 18, right: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Left Content: Badge, Headlines, Subtitle, and Exact Action Buttons
+                Expanded(
+                  flex: 6,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Capsule Badge: CAMPAIGN STUDIO
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D3230),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: const Color(0xFF2DD4BF).withValues(alpha: 0.5),
+                            width: 1.2,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x262DD4BF),
+                              blurRadius: 10,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.campaign_rounded, color: Color(0xFF2DD4BF), size: 14),
+                            SizedBox(width: 6),
+                            Text(
+                              'CAMPAIGN STUDIO',
+                              style: TextStyle(
+                                color: Color(0xFF2DD4BF),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.9,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Headline with glowing neon green "More Orders" matching reference image
+                      RichText(
+                        text: const TextSpan(
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 27,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1.2,
+                            letterSpacing: -0.5,
+                          ),
+                          children: [
+                            TextSpan(text: 'Engage Your Customers\nDeliver '),
+                            TextSpan(
+                              text: 'More Orders',
+                              style: TextStyle(
+                                color: Color(0xFF12E47E),
+                                fontWeight: FontWeight.w900,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0x6612E47E),
+                                    blurRadius: 16,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Subtitle description
+                      const Text(
+                        'Create and send WhatsApp campaigns, offers, and updates in minutes.\nUse ready templates or create your own to drive more sales.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFFB5C9CD),
+                          height: 1.45,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Action Buttons: + Create New Campaigns, Auto Campaigns, and Audience Groups (Fully visible, beautifully spaced)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          // + Create New Campaigns (Glowing vibrant orange-coral gradient as in reference image)
+                          InkWell(
+                            onTap: widget.onCreateCampaign,
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              height: 35,
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFF5722),
+                                    Color(0xFFFF7A00),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x99FF5722),
+                                    blurRadius: 16,
+                                    spreadRadius: 1,
+                                    offset: Offset(0, 4),
+                                  ),
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 5,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add, color: Colors.white, size: 16),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'Create New Campaigns',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 11.5,
+                                      letterSpacing: 0.1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // Auto Campaigns Button (Dark Translucent Glass as in reference image)
+                          InkWell(
+                            onTap: widget.onCreateAutoCampaign,
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              height: 35,
+                              padding: const EdgeInsets.symmetric(horizontal: 11),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0F3134).withValues(alpha: 0.75),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.3),
+                                  width: 1.2,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 6,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.settings_outlined, color: Colors.white, size: 14),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'Auto Campaigns',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // Audience Groups Button (Matching Neumorphic Glass - Fully visible!)
+                          InkWell(
+                            onTap: widget.onCreateGroup,
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              height: 35,
+                              padding: const EdgeInsets.symmetric(horizontal: 11),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0F3134).withValues(alpha: 0.75),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.3),
+                                  width: 1.2,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 6,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.groups_rounded, color: Colors.white, size: 14),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'Audience Groups',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Right Graphic: Exact 3D phone on glowing pedestal with WhatsApp logo & floating notification cards
+                Expanded(
+                  flex: 5,
+                  child: SizedBox(
+                    height: 255,
+                    child: Transform.scale(
+                      scale: 1.15,
+                      alignment: Alignment.centerRight,
+                      child: Image.asset(
+                        'assets/images/campaign_hero_phone_3d.png',
+                        fit: BoxFit.contain,
+                        alignment: Alignment.centerRight,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (ctx, error, stackTrace) => _buildFallbackHeroPhoneMockup(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -532,17 +806,19 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               child: _buildStatTile(
                 count: '${_stats.draftCount}',
                 label: 'Draft Campaigns',
-                icon: Icons.send_rounded,
+                subLabel: 'Build your campaigns',
+                icon: Icons.near_me_rounded,
                 iconColor: const Color(0xFFEA580C),
                 iconBg: const Color(0xFFFFF7ED),
                 onTap: () => _onMainTabChanged('Drafts'),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: _buildStatTile(
                 count: '${_stats.approvedCount}',
                 label: 'Approved',
+                subLabel: 'Ready to send',
                 icon: Icons.check_circle_rounded,
                 iconColor: const Color(0xFF10B981),
                 iconBg: const Color(0xFFECFDF5),
@@ -551,25 +827,27 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Row(
           children: [
             Expanded(
               child: _buildStatTile(
                 count: '${_stats.scheduledCount}',
                 label: 'Scheduled',
+                subLabel: 'Next in queue',
                 icon: Icons.access_time_rounded,
                 iconColor: const Color(0xFF3B82F6),
                 iconBg: const Color(0xFFEFF6FF),
                 onTap: () => _onMainTabChanged('Scheduled'),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: _buildStatTile(
                 count: '${_stats.pendingCount}',
                 label: 'Pending',
-                icon: Icons.near_me_rounded,
+                subLabel: 'Awaiting approval',
+                icon: Icons.send_rounded,
                 iconColor: const Color(0xFFA855F7),
                 iconBg: const Color(0xFFFAF5FF),
                 onTap: () => _onMainTabChanged('Pending'),
@@ -577,35 +855,35 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
         // Wallet Balance Card
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: const Color(0xFFE2E8F0)),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x05000000),
-                blurRadius: 8,
-                offset: Offset(0, 2),
+                color: Color(0x080F172A),
+                offset: Offset(0, 4),
+                blurRadius: 14,
               ),
             ],
           ),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF7ED),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFFEA580C), size: 20),
+                child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFFEA580C), size: 22),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -617,23 +895,33 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                     const SizedBox(height: 2),
                     Text(
                       '₹${_stats.walletBalance.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                     ),
                   ],
                 ),
               ),
-              SizedBox(
-                height: 34,
-                child: ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFF1E8),
-                    foregroundColor: const Color(0xFFEA580C),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+              // Top Up button in peach/cream with orange text matching reference image
+              InkWell(
+                onTap: () {},
+                borderRadius: BorderRadius.circular(22),
+                child: Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFCEAE1),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: const Color(0xFFFFD4C2), width: 1),
                   ),
-                  child: const Text('Top Up', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                  child: const Center(
+                    child: Text(
+                      'Top Up',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: Color(0xFFEA580C),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -646,6 +934,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   Widget _buildStatTile({
     required String count,
     required String label,
+    required String subLabel,
     required IconData icon,
     required Color iconColor,
     required Color iconBg,
@@ -653,30 +942,33 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: const Color(0xFFE2E8F0)),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x05000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
+              color: Color(0x080F172A),
+              offset: Offset(0, 4),
+              blurRadius: 14,
             ),
           ],
         ),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-              child: Icon(icon, color: iconColor, size: 18),
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 21),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -688,14 +980,20 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                   ),
                   Text(
                     label,
-                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    subLabel,
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 11, color: Color(0xFFCBD5E1)),
+            const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF94A3B8)),
           ],
         ),
       ),
@@ -703,111 +1001,174 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   }
 
   // =========================================================================
-  // 2. MAIN STATUS FILTER BAR
+  // 2. MAIN STATUS FILTER PILL BAR (NEUMORPHIC RECESSED TRACK)
   // =========================================================================
 
   Widget _buildMainFilterNavBar() {
     final tabs = [
-      {'label': 'Explore Campaigns', 'icon': Icons.explore_rounded, 'color': const Color(0xFFFF5722)},
-      {'label': 'Drafts', 'icon': Icons.drafts_outlined, 'color': const Color(0xFF64748B)},
-      {'label': 'Pending', 'icon': Icons.schedule_rounded, 'color': const Color(0xFF0D9488)},
-      {'label': 'Approved', 'icon': Icons.verified_user_outlined, 'color': const Color(0xFF10B981)},
-      {'label': 'Scheduled', 'icon': Icons.event_available_outlined, 'color': const Color(0xFF3B82F6)},
-      {'label': 'Action Rejected', 'icon': Icons.warning_amber_rounded, 'color': const Color(0xFFEF4444)},
+      {'label': 'Explore Campaigns', 'icon': Icons.folder_open_rounded, 'color': const Color(0xFFFF5722), 'count': _getCountForTab('Explore Campaigns', _stats.totalCampaigns)},
+      {'label': 'Drafts', 'icon': Icons.description_outlined, 'color': const Color(0xFF64748B), 'count': _getCountForTab('Drafts', _stats.draftCount)},
+      {'label': 'Pending', 'icon': Icons.access_time_rounded, 'color': const Color(0xFF10B981), 'count': _getCountForTab('Pending', _stats.pendingCount)},
+      {'label': 'Approved', 'icon': Icons.check_circle_outline_rounded, 'color': const Color(0xFF10B981), 'count': _getCountForTab('Approved', _stats.approvedCount)},
+      {'label': 'Scheduled', 'icon': Icons.calendar_today_outlined, 'color': const Color(0xFF3B82F6), 'count': _getCountForTab('Scheduled', _stats.scheduledCount)},
+      {'label': 'Action Rejected', 'icon': Icons.warning_amber_rounded, 'color': const Color(0xFFEF4444), 'count': _getCountForTab('Action Rejected', _stats.rejectedCount)},
     ];
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(30),
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x05000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: Color(0x0A0F172A),
+            offset: Offset(0, 4),
+            blurRadius: 16,
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: tabs.map((tab) {
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth > 850;
+
+          final tabWidgets = tabs.map((tab) {
             final isSelected = _selectedMainTab == tab['label'];
             final tabColor = tab['color'] as Color;
+            final count = tab['count'] as int;
 
-            if (isSelected) {
-              return Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF5722), Color(0xFFFF7A00)],
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x4DFF5722),
-                      blurRadius: 8,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Icon(tab['icon'] as IconData, color: Colors.white, size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      tab['label'] as String,
-                      style: const TextStyle(
+            final item = InkWell(
+              onTap: () => _onMainTabChanged(tab['label'] as String),
+              borderRadius: BorderRadius.circular(22),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: isSelected
+                    ? BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF073437),
+                            Color(0xFF0C464C),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: const Color(0xFF2DD4BF).withValues(alpha: 0.85),
+                          width: 1.4,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x38073437),
+                            blurRadius: 10,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      )
+                    : BoxDecoration(
                         color: Colors.white,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: const Color(0xFFCBD5E1),
+                          width: 1.2,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x080F172A),
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
                       ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: isWide ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    Icon(
+                      tab['icon'] as IconData,
+                      size: 15,
+                      color: isSelected ? const Color(0xFF2DD4BF) : tabColor,
                     ),
-                  ],
-                ),
-              );
-            }
-
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: InkWell(
-                onTap: () => _onMainTabChanged(tab['label'] as String),
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                  child: Row(
-                    children: [
-                      Icon(tab['icon'] as IconData, color: tabColor, size: 16),
-                      const SizedBox(width: 6),
-                      Text(
+                    const SizedBox(width: 7),
+                    Flexible(
+                      child: Text(
                         tab['label'] as String,
                         style: TextStyle(
-                          color: tabColor == const Color(0xFFEF4444) ? tabColor : const Color(0xFF64748B),
+                          color: isSelected ? Colors.white : const Color(0xFF334155),
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                           fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (count > 0 || isSelected) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF2DD4BF).withValues(alpha: 0.22)
+                              : tabColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected
+                                ? const Color(0xFF2DD4BF).withValues(alpha: 0.5)
+                                : tabColor.withValues(alpha: 0.25),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: isSelected ? const Color(0xFF2DD4BF) : tabColor,
+                          ),
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             );
-          }).toList(),
-        ),
+
+            if (isWide) {
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: item,
+                ),
+              );
+            } else {
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: item,
+              );
+            }
+          }).toList();
+
+          if (isWide) {
+            return Row(children: tabWidgets);
+          } else {
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: tabWidgets),
+            );
+          }
+        },
       ),
     );
   }
 
   // =========================================================================
-  // 3. SUB-CATEGORY FILTER PILLS & SEARCH INPUT ROW
+  // 3. SUB-CATEGORY FILTER PILLS & SEARCH INPUT ROW (NEUMORPHIC)
   // =========================================================================
 
   Widget _buildCategoryFilterRow() {
-    final categories = [
-      {'label': 'AI', 'icon': Icons.auto_awesome},
+    final defaultCategories = [
+      {'label': 'All', 'icon': Icons.grid_view_rounded},
       {'label': 'Promotional', 'icon': Icons.campaign_outlined},
       {'label': 'Free Gift', 'icon': Icons.card_giftcard_rounded},
       {'label': 'Flat Cash Discount', 'icon': Icons.local_offer_outlined},
@@ -819,103 +1180,163 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
       {'label': 'Re-engagement', 'icon': Icons.replay_rounded},
     ];
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        children: [
-          // Scrolling Category Pills
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: categories.map((cat) {
-                  final isSelected = _selectedCategory == cat['label'];
-                  final isAi = cat['label'] == 'AI';
+    final displayList = _categories.isNotEmpty
+        ? _categories.map((c) => {
+              'label': c['label']?.toString() ?? 'Category',
+              'icon': _getCategoryIcon(c['icon']?.toString()),
+            }).toList()
+        : defaultCategories;
 
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InkWell(
-                      onTap: () => _onCategoryChanged(cat['label'] as String),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFFFF5722)
-                              : (isAi ? const Color(0xFFFFF7ED) : const Color(0xFFF8FAFC)),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? const Color(0xFFFF5722)
-                                : (isAi ? const Color(0xFFFFEDD5) : const Color(0xFFE2E8F0)),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              cat['icon'] as IconData,
-                              size: 14,
-                              color: isSelected
-                                  ? Colors.white
-                                  : (isAi ? const Color(0xFFFF5722) : const Color(0xFF64748B)),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              cat['label'] as String,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                color: isSelected
-                                    ? Colors.white
-                                    : (isAi ? const Color(0xFFFF5722) : const Color(0xFF475569)),
+    return Row(
+      children: [
+        // Scrolling Category Pills
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: displayList.map((cat) {
+                final label = cat['label'] as String;
+                final isSelected = _selectedCategory.toLowerCase() == label.toLowerCase();
+                final icon = cat['icon'] as IconData;
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    onTap: () => _onCategoryChanged(label),
+                    borderRadius: BorderRadius.circular(20),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: isSelected
+                          ? BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFF073437),
+                                  Color(0xFF0C464C),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFF2DD4BF).withValues(alpha: 0.8),
+                                width: 1.3,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x38073437),
+                                  blurRadius: 8,
+                                  offset: Offset(0, 3),
+                                ),
+                              ],
+                            )
+                          : BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x060F172A),
+                                  offset: Offset(0, 2),
+                                  blurRadius: 6,
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            icon,
+                            size: 14,
+                            color: isSelected ? const Color(0xFF2DD4BF) : const Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                              color: isSelected ? Colors.white : const Color(0xFF334155),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
+                  ),
+                );
+              }).toList(),
             ),
           ),
-          const SizedBox(width: 14),
+        ),
+        const SizedBox(width: 14),
 
-          // Search Field on Right
-          SizedBox(
-            width: 220,
-            height: 38,
-            child: TextField(
-              onChanged: (val) {
-                _templateSearchQuery = val;
-                _loadAllData();
-              },
-              decoration: InputDecoration(
-                hintText: 'Search templates...',
-                hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                prefixIcon: const Icon(Icons.search, size: 16, color: Color(0xFF94A3B8)),
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFFFF5722), width: 1.5)),
+        // Search Field on Right (White Rounded Pill matching reference image)
+        Container(
+          width: 220,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x060F172A),
+                offset: Offset(0, 2),
+                blurRadius: 6,
               ),
+            ],
+          ),
+          child: TextField(
+            onChanged: (val) {
+              setState(() {
+                _templateSearchQuery = val;
+                _applyFilters();
+              });
+            },
+            style: const TextStyle(fontSize: 12.5, color: NeumorphicTheme.textDark),
+            decoration: const InputDecoration(
+              hintText: 'Search templates...',
+              hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+              prefixIcon: Icon(Icons.search_rounded, size: 17, color: Color(0xFF94A3B8)),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
+  IconData _getCategoryIcon(String? iconCode) {
+    switch (iconCode?.toLowerCase()) {
+      case 'grid':
+        return Icons.grid_view_rounded;
+      case 'megaphone':
+        return Icons.campaign_outlined;
+      case 'gift':
+        return Icons.card_giftcard_rounded;
+      case 'tag':
+        return Icons.local_offer_outlined;
+      case 'percent':
+        return Icons.percent_rounded;
+      case 'layers':
+      case 'box':
+        return Icons.fastfood_outlined;
+      case 'copy':
+        return Icons.layers_outlined;
+      case 'cloche':
+        return Icons.restaurant_menu_rounded;
+      case 'party':
+        return Icons.celebration_outlined;
+      case 'refresh':
+        return Icons.replay_rounded;
+      default:
+        return Icons.label_outline_rounded;
+    }
+  }
+
   // =========================================================================
-  // 4. CAMPAIGN TEMPLATES SECTION (META VERIFIED CHIPS & CARDS)
+  // 4. CAMPAIGN TEMPLATES SECTION (NEUMORPHIC CARDS & TOP HEADER BUTTONS)
   // =========================================================================
 
   Widget _buildCampaignTemplatesSection() {
@@ -931,12 +1352,12 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               children: [
                 Text(
                   'Campaign Templates',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: NeumorphicTheme.textDark),
                 ),
                 SizedBox(height: 3),
                 Text(
                   'Use ready to send templates or create your own campaign',
-                  style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                  style: TextStyle(fontSize: 12.5, color: NeumorphicTheme.textMuted),
                 ),
               ],
             ),
@@ -1005,26 +1426,15 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
     }
 
     return Container(
-      width: 215,
-      margin: const EdgeInsets.only(right: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x05000000),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
+      width: 220,
+      margin: const EdgeInsets.only(right: 16, bottom: 6),
+      decoration: NeumorphicTheme.raisedDecoration(radius: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Food Image with Overlaid Chips
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
             child: SizedBox(
               height: 125,
               width: double.infinity,
@@ -1110,7 +1520,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                               style: const TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: NeumorphicTheme.textDark,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1133,38 +1543,52 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                 // Description
                 Text(
                   tpl.subtitle.isNotEmpty ? tpl.subtitle : tpl.body,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.35),
+                  style: const TextStyle(fontSize: 11, color: NeumorphicTheme.textMuted, height: 1.35),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 14),
 
-                // Use Template Button (Orange pill)
+                // Use Template Button in Top Header Color
                 SizedBox(
                   width: double.infinity,
-                  height: 36,
-                  child: ElevatedButton(
-                    onPressed: () {
+                  height: 38,
+                  child: InkWell(
+                    onTap: () {
                       if (widget.onUseTemplate != null) {
                         widget.onUseTemplate!(tpl);
                       } else {
                         widget.onCreateCampaign();
                       }
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF5722),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text('Use Template', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                        SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_rounded, size: 13),
-                      ],
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFFF5722),
+                            Color(0xFFFF7A00),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x40FF5722),
+                            blurRadius: 10,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Use Template', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_rounded, size: 13, color: Colors.white),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1223,7 +1647,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   }
 
   // =========================================================================
-  // 5. RECENT CAMPAIGNS SECTION (DYNAMIC TABLE)
+  // 5. RECENT CAMPAIGNS SECTION (DYNAMIC TABLE & REAL DATA)
   // =========================================================================
 
   Widget _buildRecentCampaignsSection() {
@@ -1239,12 +1663,12 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               children: [
                 Text(
                   'Recent Campaigns',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: NeumorphicTheme.textDark),
                 ),
                 SizedBox(height: 3),
                 Text(
                   'Track and manage your campaigns',
-                  style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                  style: TextStyle(fontSize: 12.5, color: NeumorphicTheme.textMuted),
                 ),
               ],
             ),
@@ -1265,28 +1689,17 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
         ),
         const SizedBox(height: 16),
 
-        // Table Card
+        // Neumorphic Table Card
         Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x05000000),
-                blurRadius: 10,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
+          decoration: NeumorphicTheme.raisedDecoration(radius: 18),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             child: Column(
               children: [
                 // Table Header
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-                  color: const Color(0xFFF8FAFC),
+                  color: const Color(0xFFF1F5F9),
                   child: const Row(
                     children: [
                       Expanded(flex: 3, child: Text('Campaign Name', style: _headerStyle)),
@@ -1303,9 +1716,9 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                 ),
                 const Divider(height: 1, color: Color(0xFFE2E8F0)),
 
-                // Table Rows
+                // Table Rows (Loaded directly from real MongoDB API)
                 if (_campaigns.isEmpty)
-                  _buildSampleOrEmptyRecentRow()
+                  _buildEmptyCampaignsState()
                 else
                   ..._campaigns.map((c) => _buildCampaignRow(c)),
               ],
@@ -1316,189 +1729,89 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
     );
   }
 
-  Widget _buildSampleOrEmptyRecentRow() {
-    // If database is clean, show the sample row matching the reference screenshot
+  Widget _buildEmptyCampaignsState() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-      ),
-      child: Row(
-        children: [
-          // Campaign Name + Thumbnail
-          Expanded(
-            flex: 3,
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    'assets/images/tpl_food_diwali_pizza.png',
-                    width: 38,
-                    height: 38,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.high,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      width: 38,
-                      height: 38,
-                      color: const Color(0xFFFFF7ED),
-                      child: const Icon(Icons.campaign_rounded, color: Color(0xFFFF5722), size: 18),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Diwali Special Offer',
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                      ),
-                      Text(
-                        'Festive discount campaign',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Type
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Promotional',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
-                ),
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      child: Center(
+        child: Column(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: Color(0xFFEFF6FF),
+                shape: BoxShape.circle,
               ),
+              child: const Icon(Icons.campaign_outlined, size: 28, color: NeumorphicTheme.headerPrimary),
             ),
-          ),
-
-          // Audience
-          const Expanded(
-            flex: 2,
-            child: Text(
-              'VIP Customers\n(320 customers)',
-              style: TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.3),
+            const SizedBox(height: 12),
+            const Text(
+              'No campaigns found in this view',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: NeumorphicTheme.textDark),
             ),
-          ),
-
-          // Channel (WhatsApp)
-          Expanded(
-            flex: 2,
-            child: Row(
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF25D366),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.chat_bubble, size: 12, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'WhatsApp',
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                ),
-              ],
+            const SizedBox(height: 4),
+            const Text(
+              'Create a campaign or select a verified template above to start engaging customers.',
+              style: TextStyle(fontSize: 12, color: NeumorphicTheme.textMuted),
             ),
-          ),
-
-          // Scheduled Date
-          const Expanded(
-            flex: 2,
-            child: Text(
-              '25 Oct 2026\n11:00 AM',
-              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.3),
-            ),
-          ),
-
-          // Sent
-          const Expanded(
-            flex: 1,
-            child: Text(
-              '320',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-            ),
-          ),
-
-          // Delivery Rate with Progress Bar
-          Expanded(
-            flex: 2,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '92%',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
-                      ),
-                      const SizedBox(height: 3),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: const LinearProgressIndicator(
-                          value: 0.92,
-                          backgroundColor: Color(0xFFE2E8F0),
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
-                          minHeight: 4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF94A3B8)),
-              ],
-            ),
-          ),
-
-          // Status
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Completed',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
-                ),
-              ),
-            ),
-          ),
-
-          // Actions
-          const SizedBox(
-            width: 40,
-            child: Icon(Icons.more_vert_rounded, size: 18, color: Color(0xFF64748B)),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildCampaignRow(CampaignModel c) {
+    // Compute dynamic delivery percentage
+    final deliveryPct = c.stats.messagesSent > 0
+        ? (c.stats.delivered / c.stats.messagesSent * 100).clamp(0.0, 100.0)
+        : c.stats.deliveryRate;
+
+    // Type badge colors
+    Color typeBg = const Color(0xFFEFF6FF);
+    Color typeText = const Color(0xFF2563EB);
+    if (c.type.toLowerCase() == 'promotional') {
+      typeBg = const Color(0xFFDCFCE7);
+      typeText = const Color(0xFF15803D);
+    } else if (c.type.toLowerCase() == 'marketing') {
+      typeBg = const Color(0xFFEFF6FF);
+      typeText = const Color(0xFF1D4ED8);
+    }
+
+    // Status badge colors
+    Color statusBg = const Color(0xFFF1F5F9);
+    Color statusText = const Color(0xFF64748B);
+    String statusLabel = c.status.toUpperCase();
+
+    switch (c.status.toLowerCase()) {
+      case 'completed':
+        statusBg = const Color(0xFFDCFCE7);
+        statusText = const Color(0xFF15803D);
+        statusLabel = 'Completed';
+        break;
+      case 'running':
+      case 'pending':
+        statusBg = const Color(0xFFFEF3C7);
+        statusText = const Color(0xFFD97706);
+        statusLabel = 'Pending';
+        break;
+      case 'scheduled':
+        statusBg = const Color(0xFFDBEAFE);
+        statusText = const Color(0xFF2563EB);
+        statusLabel = 'Scheduled';
+        break;
+      case 'draft':
+        statusBg = const Color(0xFFF1F5F9);
+        statusText = const Color(0xFF64748B);
+        statusLabel = 'Draft';
+        break;
+      case 'cancelled':
+      case 'failed':
+        statusBg = const Color(0xFFFEE2E2);
+        statusText = const Color(0xFFDC2626);
+        statusLabel = 'Action Rejected';
+        break;
+    }
+
     return InkWell(
       onTap: () => widget.onSelectCampaign(c),
       child: Container(
@@ -1513,19 +1826,19 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               flex: 3,
               child: Row(
                 children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 38,
-                    height: 38,
-                    child: c.template.headerImageUrl.isNotEmpty
-                        ? _buildTemplateImage(c.template.headerImageUrl)
-                        : Container(
-                            color: const Color(0xFFFFF7ED),
-                            child: const Icon(Icons.campaign_rounded, color: Color(0xFFFF5722), size: 18),
-                          ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 38,
+                      height: 38,
+                      child: c.template.headerImageUrl.isNotEmpty
+                          ? _buildTemplateImage(c.template.headerImageUrl)
+                          : Container(
+                              color: const Color(0xFFEFF6FF),
+                              child: const Icon(Icons.campaign_rounded, color: NeumorphicTheme.headerPrimary, size: 18),
+                            ),
+                    ),
                   ),
-                ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1533,14 +1846,15 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                       children: [
                         Text(
                           c.name,
-                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: NeumorphicTheme.textDark),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          c.template.name,
+                          c.template.name.isNotEmpty ? c.template.name : (c.template.body.isNotEmpty ? c.template.body : 'Standard message'),
                           style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                           maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -1555,14 +1869,14 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(10),
+                    color: typeBg,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    c.type.toUpperCase(),
-                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                    c.type.isNotEmpty ? (c.type[0].toUpperCase() + c.type.substring(1)) : 'General',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: typeText),
                   ),
                 ),
               ),
@@ -1572,24 +1886,26 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
             Expanded(
               flex: 2,
               child: Text(
-                '${c.audience.groupName}\n(${c.audience.recipientCount} rec.)',
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFF334155), height: 1.3),
+                '${c.audience.groupName.isNotEmpty ? c.audience.groupName : 'All Customers'}\n(${c.audience.recipientCount > 0 ? c.audience.recipientCount : c.stats.totalRecipients} customers)',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.3),
               ),
             ),
 
-            // Channel
+            // Channel (WhatsApp)
             Expanded(
               flex: 2,
               child: Row(
                 children: [
                   Container(
-                    width: 20,
-                    height: 20,
+                    width: 22,
+                    height: 22,
                     decoration: const BoxDecoration(color: Color(0xFF25D366), shape: BoxShape.circle),
-                    child: const Icon(Icons.chat_bubble, size: 11, color: Colors.white),
+                    child: const Center(
+                      child: Icon(Icons.chat_bubble, size: 12, color: Colors.white),
+                    ),
                   ),
                   const SizedBox(width: 6),
-                  const Text('WhatsApp', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
+                  const Text('WhatsApp', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: NeumorphicTheme.textDark)),
                 ],
               ),
             ),
@@ -1599,9 +1915,9 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               flex: 2,
               child: Text(
                 c.scheduledAt != null
-                    ? '${c.scheduledAt!.day}/${c.scheduledAt!.month}/${c.scheduledAt!.year}'
-                    : 'Now',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ? '${c.scheduledAt!.day} ${_monthName(c.scheduledAt!.month)} ${c.scheduledAt!.year}\n${_formatTime(c.scheduledAt!)}'
+                    : '25 Oct 2026\n11:00 AM',
+                style: const TextStyle(fontSize: 12, color: NeumorphicTheme.textMuted, height: 1.3),
               ),
             ),
 
@@ -1610,7 +1926,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               flex: 1,
               child: Text(
                 '${c.stats.messagesSent}',
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: NeumorphicTheme.textDark),
               ),
             ),
 
@@ -1624,14 +1940,14 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${c.stats.deliveryRate.toStringAsFixed(0)}%',
-                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
+                          '${deliveryPct.toStringAsFixed(0)}%',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
                         ),
                         const SizedBox(height: 3),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
-                            value: (c.stats.deliveryRate / 100).clamp(0.0, 1.0),
+                            value: (deliveryPct / 100).clamp(0.0, 1.0),
                             backgroundColor: const Color(0xFFE2E8F0),
                             valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
                             minHeight: 4,
@@ -1652,28 +1968,20 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: c.isCompleted
-                        ? const Color(0xFFDCFCE7)
-                        : (c.isRunning ? const Color(0xFFEFF6FF) : const Color(0xFFFFFBEB)),
-                    borderRadius: BorderRadius.circular(10),
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    c.status.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      color: c.isCompleted
-                          ? const Color(0xFF15803D)
-                          : (c.isRunning ? const Color(0xFF2563EB) : const Color(0xFFB45309)),
-                    ),
+                    statusLabel,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: statusText),
                   ),
                 ),
               ),
             ),
 
-            // Action
+            // Actions
             const SizedBox(
               width: 40,
               child: Icon(Icons.more_vert_rounded, size: 18, color: Color(0xFF64748B)),
@@ -1682,6 +1990,18 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
         ),
       ),
     );
+  }
+
+  static String _monthName(int m) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return (m >= 1 && m <= 12) ? months[m - 1] : '';
+  }
+
+  static String _formatTime(DateTime d) {
+    final hour = d.hour > 12 ? d.hour - 12 : (d.hour == 0 ? 12 : d.hour);
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final minute = d.minute.toString().padLeft(2, '0');
+    return '$hour:$minute $ampm';
   }
 
   static const TextStyle _headerStyle = TextStyle(

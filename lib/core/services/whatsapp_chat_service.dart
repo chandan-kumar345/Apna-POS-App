@@ -226,7 +226,9 @@ class WhatsAppConnectionInfo {
   final String phoneNumber;
   final String wabaId;
   final String accessToken;
+  final String appSecret;
   final bool hasCustomToken;
+  final bool hasAppSecret;
   final DateTime? connectedAt;
 
   const WhatsAppConnectionInfo({
@@ -235,7 +237,9 @@ class WhatsAppConnectionInfo {
     this.phoneNumber = '',
     this.wabaId = '',
     this.accessToken = '',
+    this.appSecret = '',
     this.hasCustomToken = false,
+    this.hasAppSecret = false,
     this.connectedAt,
   });
 
@@ -247,6 +251,7 @@ class WhatsAppConnectionInfo {
     }
 
     final token = json['accessToken']?.toString() ?? '';
+    final secret = json['appSecret']?.toString() ?? '';
 
     return WhatsAppConnectionInfo(
       connected: json['connected'] == true,
@@ -254,7 +259,9 @@ class WhatsAppConnectionInfo {
       phoneNumber: json['phoneNumber']?.toString() ?? '',
       wabaId: json['wabaId']?.toString() ?? '',
       accessToken: token,
+      appSecret: secret,
       hasCustomToken: json['hasCustomToken'] == true || token.isNotEmpty,
+      hasAppSecret: json['hasAppSecret'] == true || secret.isNotEmpty,
       connectedAt: parseDate(json['connectedAt']),
     );
   }
@@ -926,6 +933,7 @@ class WhatsAppChatService {
     String? phoneNumber,
     String? wabaId,
     String? accessToken,
+    String? appSecret,
   }) async {
     try {
       final payload = {
@@ -933,6 +941,7 @@ class WhatsAppChatService {
         if (phoneNumber != null && phoneNumber.isNotEmpty) 'phoneNumber': phoneNumber.trim(),
         if (wabaId != null && wabaId.isNotEmpty) 'wabaId': wabaId.trim(),
         if (accessToken != null && accessToken.isNotEmpty) 'accessToken': accessToken.trim(),
+        if (appSecret != null && appSecret.isNotEmpty) 'appSecret': appSecret.trim(),
       };
 
       final response = await _apiClient.post(

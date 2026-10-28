@@ -219,7 +219,7 @@ class WhatsAppChatService {
       user = await User.findById(userId).lean();
     }
 
-    const business = await Business.findById(bId);
+    const business = bId ? await Business.findById(bId) : null;
     const phoneNumberId = user?.whatsappSettings?.phoneNumberId ||
       chat.phoneNumberId ||
       business?.whatsappSettings?.phoneNumberId ||
@@ -227,6 +227,9 @@ class WhatsAppChatService {
     const accessToken = user?.whatsappSettings?.accessToken ||
       business?.whatsappSettings?.accessToken ||
       whatsappService.accessToken;
+    const appSecret = user?.whatsappSettings?.appSecret ||
+      business?.whatsappSettings?.appSecret ||
+      whatsappService.appSecret;
 
     // Send via Meta WhatsApp Cloud API
     const waResult = await whatsappService.sendChatMessage({
@@ -236,6 +239,7 @@ class WhatsAppChatService {
       mediaUrl: mediaUrl || '',
       phoneNumberId,
       accessToken,
+      appSecret,
     });
 
     // Create Outgoing Message log
@@ -286,7 +290,7 @@ class WhatsAppChatService {
     if (userId) {
       user = await User.findById(userId).lean();
     }
-    const business = await Business.findById(bId);
+    const business = bId ? await Business.findById(bId) : null;
 
     const wabaId = (user?.whatsappSettings?.wabaId ||
       business?.whatsappSettings?.wabaId ||
@@ -294,6 +298,9 @@ class WhatsAppChatService {
     const accessToken = user?.whatsappSettings?.accessToken ||
       business?.whatsappSettings?.accessToken ||
       whatsappService.accessToken;
+    const appSecret = user?.whatsappSettings?.appSecret ||
+      business?.whatsappSettings?.appSecret ||
+      whatsappService.appSecret;
 
     const cacheKey = `templates_${wabaId}`;
     const cached = this._templatesCache?.get(cacheKey);
@@ -381,7 +388,11 @@ class WhatsAppChatService {
     ];
 
     try {
-      const url = `https://graph.facebook.com/${whatsappService.apiVersion}/${wabaId}/message_templates?status=APPROVED&limit=100`;
+      const url = whatsappService.buildGraphUrl(`${wabaId}/message_templates`, {
+        accessToken,
+        appSecret,
+        queryParams: { status: 'APPROVED', limit: 100 },
+      });
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -485,7 +496,7 @@ class WhatsAppChatService {
       user = await User.findById(userId).lean();
     }
 
-    const business = await Business.findById(bId);
+    const business = bId ? await Business.findById(bId) : null;
     const phoneNumberId = user?.whatsappSettings?.phoneNumberId ||
       chat.phoneNumberId ||
       business?.whatsappSettings?.phoneNumberId ||
@@ -493,6 +504,9 @@ class WhatsAppChatService {
     const accessToken = user?.whatsappSettings?.accessToken ||
       business?.whatsappSettings?.accessToken ||
       whatsappService.accessToken;
+    const appSecret = user?.whatsappSettings?.appSecret ||
+      business?.whatsappSettings?.appSecret ||
+      whatsappService.appSecret;
 
     const normalizedPhone = whatsappService.normalizePhoneNumber(chat.customerPhone);
     if (!whatsappService.isValidPhoneNumber(normalizedPhone)) {
@@ -513,7 +527,10 @@ class WhatsAppChatService {
       ];
     }
 
-    const url = `https://graph.facebook.com/${whatsappService.apiVersion}/${phoneNumberId}/messages`;
+    const url = whatsappService.buildGraphUrl(`${phoneNumberId}/messages`, {
+      accessToken,
+      appSecret,
+    });
     let activeLanguage = languageCode || 'en_US';
 
     const buildPayload = (lang) => ({
@@ -560,7 +577,7 @@ class WhatsAppChatService {
     }
 
     if (!response.ok) {
-      const errMsg = data?.error?.message || `Meta template dispatch failed: ${response.statusText}`;
+      const errMsg = whatsappService.formatMetaErrorMessage(data, `Meta template dispatch failed: ${response.statusText}`);
       const errCode = data?.error?.code || 'META_TEMPLATE_SEND_FAILED';
       console.error('[whatsappChatService] Send template error:', data?.error || data);
       throw ApiError.badRequest(errMsg, null, errCode);
@@ -764,34 +781,44 @@ class WhatsAppChatService {
   /**
    * Save and connect Meta WhatsApp Phone Number credentials for a user / business
    */
-  async saveConnection(businessId, { phoneNumberId, phoneNumber, wabaId = '', accessToken = '', userId = null }) {
+  async saveConnection(businessId, { phoneNumberId = '', phoneNumber = '', wabaId = '', accessToken = '', appSecret = '', userId = null }) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    if (!phoneNumberId || !phoneNumberId.trim()) {
-      throw ApiError.badRequest('Meta WhatsApp Phone Number ID is required', null, 'PHONE_ID_REQUIRED');
-    }
-
-    const cleanPhoneId = phoneNumberId.trim();
-    const cleanPhone = (phoneNumber || '').trim();
-    const cleanWaba = (wabaId || '').trim();
+    const cleanPhoneId = (phoneNumberId || '').trim() || whatsappService.phoneNumberId || '1284061438133660';
+    const cleanPhone = (phoneNumber || '').trim() || '+91 73036 32949';
+    const cleanWaba = (wabaId || '').trim() || '2525727467906581';
     let cleanToken = (accessToken || '').trim();
+    let cleanSecret = (appSecret || '').trim();
 
-    // Preserve existing access token if caller did not supply a new one
-    if (!cleanToken) {
+    // Preserve existing access token and app secret, or fallback to server defaults
+    if (!cleanToken || !cleanSecret) {
       if (userId) {
         const existingUser = await User.findById(userId).lean();
-        if (existingUser?.whatsappSettings?.accessToken) {
+        if (!cleanToken && existingUser?.whatsappSettings?.accessToken) {
           cleanToken = existingUser.whatsappSettings.accessToken;
         }
-      }
-      if (!cleanToken && bId) {
-        const existingBiz = await Business.findById(bId).lean();
-        if (existingBiz?.whatsappSettings?.accessToken) {
-          cleanToken = existingBiz.whatsappSettings.accessToken;
+        if (!cleanSecret && existingUser?.whatsappSettings?.appSecret) {
+          cleanSecret = existingUser.whatsappSettings.appSecret;
         }
       }
+      if (bId) {
+        const existingBiz = await Business.findById(bId).lean();
+        if (!cleanToken && existingBiz?.whatsappSettings?.accessToken) {
+          cleanToken = existingBiz.whatsappSettings.accessToken;
+        }
+        if (!cleanSecret && existingBiz?.whatsappSettings?.appSecret) {
+          cleanSecret = existingBiz.whatsappSettings.appSecret;
+        }
+      }
+    }
+
+    if (!cleanToken) {
+      cleanToken = whatsappService.accessToken || '';
+    }
+    if (!cleanSecret) {
+      cleanSecret = whatsappService.appSecret || '';
     }
 
     const now = new Date();
@@ -806,6 +833,7 @@ class WhatsAppChatService {
             phoneNumber: cleanPhone,
             wabaId: cleanWaba,
             accessToken: cleanToken,
+            appSecret: cleanSecret,
             webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
             connectedAt: now,
           },
@@ -828,6 +856,7 @@ class WhatsAppChatService {
         phoneNumber: cleanPhone,
         wabaId: cleanWaba,
         accessToken: cleanToken,
+        appSecret: cleanSecret,
         webhookVerifyToken: business.whatsappSettings?.webhookVerifyToken || 'softcode_whatsapp_webhook_verify_2026',
         connectedAt: now,
       };
@@ -841,6 +870,7 @@ class WhatsAppChatService {
       wabaId: cleanWaba,
       accessToken: cleanToken,
       hasCustomToken: Boolean(cleanToken),
+      hasAppSecret: Boolean(cleanSecret),
       connectedAt: now,
     };
   }
@@ -867,6 +897,7 @@ class WhatsAppChatService {
     const activePhoneNumber = userSettings?.phoneNumber || bizSettings?.phoneNumber || '+91 73036 32949';
     const activeWabaId = userSettings?.wabaId || bizSettings?.wabaId || '2525727467906581';
     const activeToken = userSettings?.accessToken || bizSettings?.accessToken || whatsappService.accessToken || '';
+    const activeAppSecret = userSettings?.appSecret || bizSettings?.appSecret || whatsappService.appSecret || '';
     const isConnected = Boolean(activePhoneNumberId && (activeToken || process.env.NODE_ENV === 'production'));
     const connectedAt = userSettings?.connectedAt || bizSettings?.connectedAt || new Date('2026-10-18T00:00:00Z');
 
@@ -879,6 +910,7 @@ class WhatsAppChatService {
           phoneNumber: activePhoneNumber,
           wabaId: activeWabaId,
           accessToken: activeToken,
+          appSecret: activeAppSecret,
           webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
           connectedAt: connectedAt || new Date(),
         };
@@ -891,6 +923,7 @@ class WhatsAppChatService {
           phoneNumber: activePhoneNumber,
           wabaId: activeWabaId,
           accessToken: activeToken,
+          appSecret: activeAppSecret,
           webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
           connectedAt: connectedAt || new Date(),
         };
@@ -905,6 +938,7 @@ class WhatsAppChatService {
       wabaId: activeWabaId,
       accessToken: activeToken,
       hasCustomToken: Boolean(activeToken),
+      hasAppSecret: Boolean(activeAppSecret),
       connectedAt,
     };
   }

@@ -472,8 +472,30 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         lower.contains('phone_number_id');
   }
 
+  bool _isMetaSecretError(String errorStr) {
+    final lower = errorStr.toLowerCase();
+    return lower.contains('appsecret_proof') ||
+        lower.contains('app secret') ||
+        lower.contains('require app secret');
+  }
+
+  bool _is24HourWindowError(String errorStr) {
+    final lower = errorStr.toLowerCase();
+    return lower.contains('24-hour') || lower.contains('24 hour') || lower.contains('131047');
+  }
+
   void _showErrorSnackBar(String message) {
-    final isCredentialError = _isMetaPhoneIdError(message);
+    final isPhoneIdError = _isMetaPhoneIdError(message);
+    final isSecretError = _isMetaSecretError(message);
+    final is24HrError = _is24HourWindowError(message);
+
+    String displayMsg = message;
+    if (isSecretError) {
+      displayMsg = "Meta 'appsecret_proof' required: Provide App Secret in settings or turn OFF 'Require App Secret' in Meta Console.";
+    } else if (isPhoneIdError) {
+      displayMsg = 'Invalid Phone Number ID. Please update your Meta API credentials.';
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -482,25 +504,29 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                isCredentialError
-                    ? 'Invalid Phone Number ID. Please update your Meta API credentials.'
-                    : message,
+                displayMsg,
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
           ],
         ),
-        action: isCredentialError
+        action: is24HrError
             ? SnackBarAction(
-                label: 'Fix',
-                textColor: Colors.white,
-                onPressed: _showConfigureCredentialsDialog,
+                label: 'Send Template',
+                textColor: Colors.amberAccent,
+                onPressed: _openTemplatePicker,
               )
-            : null,
+            : (isPhoneIdError || isSecretError)
+                ? SnackBarAction(
+                    label: 'Fix',
+                    textColor: Colors.white,
+                    onPressed: _showConfigureCredentialsDialog,
+                  )
+                : null,
         backgroundColor: const Color(0xFFDC2626),
         behavior: SnackBarBehavior.floating,
-        duration: isCredentialError
-            ? const Duration(seconds: 6)
+        duration: (isPhoneIdError || isSecretError || is24HrError)
+            ? const Duration(seconds: 7)
             : const Duration(seconds: 4),
       ),
     );
@@ -1156,12 +1182,17 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     final initialToken = (_connectionInfo?.accessToken.isNotEmpty == true)
         ? _connectionInfo!.accessToken
         : _db.whatsAppAccessToken;
+    final initialSecret = (_connectionInfo?.appSecret.isNotEmpty == true)
+        ? _connectionInfo!.appSecret
+        : '';
 
     final phoneIdCtrl = TextEditingController(text: initialPhoneId);
     final phoneNumCtrl = TextEditingController(text: initialPhoneNum);
     final tokenCtrl = TextEditingController(text: initialToken);
+    final secretCtrl = TextEditingController(text: initialSecret);
     bool isSaving = false;
     bool obscureToken = true;
+    bool obscureSecret = true;
 
     showDialog(
       context: context,
@@ -1262,21 +1293,21 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
                   // Helper Hint Banner
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF0FDF4),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: const Color(0xFFBBF7D0)),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
-                        Icon(Icons.info_outline_rounded, color: Color(0xFF15803D), size: 18),
-                        SizedBox(width: 8),
+                        Icon(Icons.verified_rounded, color: Color(0xFF15803D), size: 20),
+                        SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'Find your Phone Number ID in Meta Developer Console:\nWhatsApp > API Setup > Phone number ID (~15 digits).',
-                            style: TextStyle(fontSize: 11.5, color: Color(0xFF166534), height: 1.4),
+                            'Pre-configured server integration is active. You do not need to fill access tokens or app secrets.',
+                            style: TextStyle(fontSize: 12, color: Color(0xFF166534), height: 1.4, fontWeight: FontWeight.w500),
                           ),
                         ),
                       ],
@@ -1284,43 +1315,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Phone Number ID Field
-                  const Text(
-                    'Phone Number ID *',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: phoneIdCtrl,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                    decoration: InputDecoration(
-                      hintText: 'e.g. 1284061438133660',
-                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                      prefixIcon: const Icon(Icons.tag_rounded, size: 19, color: Color(0xFF64748B)),
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF128C7E), width: 1.5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
                   // WhatsApp Mobile Number Field
                   const Text(
-                    'WhatsApp Mobile Number',
+                    'WhatsApp Business Number',
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
                   ),
                   const SizedBox(height: 6),
@@ -1329,9 +1326,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     keyboardType: TextInputType.phone,
                     style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                     decoration: InputDecoration(
-                      hintText: 'e.g. +91 9709593705',
+                      hintText: 'e.g. +91 73036 32949',
                       hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                      prefixIcon: const Icon(Icons.phone_rounded, size: 19, color: Color(0xFF64748B)),
+                      prefixIcon: const Icon(Icons.phone_rounded, size: 19, color: Color(0xFF128C7E)),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       isDense: true,
@@ -1352,47 +1349,112 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Access Token Field (Optional)
-                  const Text(
-                    'Access Token (Optional)',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: tokenCtrl,
-                    obscureText: obscureToken,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
-                    decoration: InputDecoration(
-                      hintText: 'Server default token',
-                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                      prefixIcon: const Icon(Icons.vpn_key_rounded, size: 19, color: Color(0xFF64748B)),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscureToken ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                          size: 19,
-                          color: const Color(0xFF64748B),
+                  // Advanced Developer Settings (Collapsed by default so regular users never have to see or fill it)
+                  Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
+                      title: const Text(
+                        'Advanced Developer Settings (Optional)',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                      ),
+                      subtitle: const Text(
+                        'Leave empty to use official server credentials',
+                        style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+                      ),
+                      children: [
+                        // Phone Number ID Field
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Phone Number ID (Optional)',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                          ),
                         ),
-                        onPressed: () => setDialogState(() => obscureToken = !obscureToken),
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF128C7E), width: 1.5),
-                      ),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: phoneIdCtrl,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                          decoration: InputDecoration(
+                            hintText: 'Default: 1284061438133660',
+                            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                            prefixIcon: const Icon(Icons.tag_rounded, size: 17, color: Color(0xFF64748B)),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Access Token Field (Optional)
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Custom Access Token (Optional)',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: tokenCtrl,
+                          obscureText: obscureToken,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A)),
+                          decoration: InputDecoration(
+                            hintText: 'Server default token is used if blank',
+                            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                            prefixIcon: const Icon(Icons.vpn_key_rounded, size: 17, color: Color(0xFF64748B)),
+                            suffixIcon: IconButton(
+                              icon: Icon(obscureToken ? Icons.visibility_off_rounded : Icons.visibility_rounded, size: 17, color: const Color(0xFF64748B)),
+                              onPressed: () => setDialogState(() => obscureToken = !obscureToken),
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // App Secret Field (Optional)
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Meta App Secret (Optional)',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: secretCtrl,
+                          obscureText: obscureSecret,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A)),
+                          decoration: InputDecoration(
+                            hintText: 'Server default secret is used if blank',
+                            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                            prefixIcon: const Icon(Icons.shield_outlined, size: 17, color: Color(0xFF64748B)),
+                            suffixIcon: IconButton(
+                              icon: Icon(obscureSecret ? Icons.visibility_off_rounded : Icons.visibility_rounded, size: 17, color: const Color(0xFF64748B)),
+                              onPressed: () => setDialogState(() => obscureSecret = !obscureSecret),
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 20),
 
                   // Action Buttons (Cancel / Save)
                   Row(
@@ -1427,6 +1489,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                         phoneNumberId: phoneIdCtrl.text.trim(),
                                         phoneNumber: phoneNumCtrl.text.trim(),
                                         accessToken: tokenCtrl.text.trim(),
+                                        appSecret: secretCtrl.text.trim(),
                                       );
                                       await _db.saveWhatsAppIntegrationSettings(
                                         enabled: true,

@@ -21,12 +21,12 @@ class _CreateAutoCampaignViewState extends State<CreateAutoCampaignView> {
   int _currentStep = 1; // 1: Trigger, 2: Conditions, 3: Message, 4: Schedule, 5: Review
 
   String _selectedTrigger = 'birthday';
-  String _customerType = 'All Customers';
-  String _orderCountCondition = 'Greater Than';
-  int _orderCount = 0;
-  String _lastOrderCondition = 'More than';
-  int _lastOrderDays = 30;
-  String _customerGroup = 'VIP Customers';
+  final String _customerType = 'All Customers';
+  final String _orderCountCondition = 'Greater Than';
+  final int _orderCount = 0;
+  final String _lastOrderCondition = 'More than';
+  final int _lastOrderDays = 30;
+  final String _customerGroup = 'VIP Customers';
   bool _sendOnlyOnce = true;
 
   late TextEditingController _nameController;
@@ -245,7 +245,7 @@ class _CreateAutoCampaignViewState extends State<CreateAutoCampaignView> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: isSelected ? const Color(0x1AF95B1C) : Colors.black.withOpacity(0.02),
+                      color: isSelected ? const Color(0x1AF95B1C) : Colors.black.withValues(alpha: 0.02),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -257,7 +257,7 @@ class _CreateAutoCampaignViewState extends State<CreateAutoCampaignView> {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.12),
+                        color: color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(t['icon'] as IconData, color: color, size: 22),

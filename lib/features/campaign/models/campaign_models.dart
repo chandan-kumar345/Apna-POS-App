@@ -256,6 +256,8 @@ class CampaignTemplateModel {
   });
 
   bool get isApprovedByMeta => metaStatus.toUpperCase() == 'APPROVED' && channel == 'whatsapp';
+  String get title => name;
+  String get description => subtitle.isNotEmpty ? subtitle : body;
 
   factory CampaignTemplateModel.fromJson(Map<String, dynamic> json) {
     final rawParams = json['parameters'] as List<dynamic>? ?? [];
@@ -406,6 +408,138 @@ class DeliveryTimelinePoint {
 }
 
 /// Primary Campaign entity
+class CampaignRewardDetailsModel {
+  final String rewardType; // 'flat_discount', 'percent_discount', 'free_gift', 'bogo', 'cashback'
+  final double discountAmount;
+  final String discountScope; // 'whole_bill', 'chosen_products'
+  final List<Map<String, dynamic>> chosenProducts;
+  final bool hasMinSpend;
+  final double minSpendAmount;
+  final double maxCashbackCap;
+  final String comboOfferTitle;
+  final String campaignTitle;
+  final String description;
+  final String bannerImageUrl;
+  final List<String> termsAndConditions;
+
+  const CampaignRewardDetailsModel({
+    this.rewardType = 'flat_discount',
+    this.discountAmount = 300.0,
+    this.discountScope = 'whole_bill',
+    this.chosenProducts = const [],
+    this.hasMinSpend = true,
+    this.minSpendAmount = 500.0,
+    this.maxCashbackCap = 200.0,
+    this.comboOfferTitle = 'Grab Any 2 Combos & Enjoy 10% OFF!',
+    this.campaignTitle = 'New Year Special - Flat ₹300 OFF',
+    this.description = 'Kick-start the New Year with guaranteed savings. Get a flat ₹300 OFF and enjoy stress-free shopping as you welcome the year with confidence and joy.',
+    this.bannerImageUrl = 'assets/images/campaign_hero_banner_full.png',
+    this.termsAndConditions = const [
+      'Minimum purchase required.',
+      '2 offers cannot be clubbed.',
+    ],
+  });
+
+  factory CampaignRewardDetailsModel.fromJson(Map<String, dynamic> json) {
+    return CampaignRewardDetailsModel(
+      rewardType: json['rewardType']?.toString() ?? 'flat_discount',
+      discountAmount: (json['discountAmount'] is num) ? (json['discountAmount'] as num).toDouble() : 300.0,
+      discountScope: json['discountScope']?.toString() ?? 'whole_bill',
+      chosenProducts: (json['chosenProducts'] as List<dynamic>?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          const [],
+      hasMinSpend: json['hasMinSpend'] != false,
+      minSpendAmount: (json['minSpendAmount'] is num) ? (json['minSpendAmount'] as num).toDouble() : 500.0,
+      maxCashbackCap: (json['maxCashbackCap'] is num) ? (json['maxCashbackCap'] as num).toDouble() : 200.0,
+      comboOfferTitle: json['comboOfferTitle']?.toString() ?? 'Grab Any 2 Combos & Enjoy 10% OFF!',
+      campaignTitle: json['campaignTitle']?.toString() ?? 'New Year Special - Flat ₹300 OFF',
+      description: json['description']?.toString() ?? 'Kick-start the New Year with guaranteed savings. Get a flat ₹300 OFF and enjoy stress-free shopping as you welcome the year with confidence and joy.',
+      bannerImageUrl: json['bannerImageUrl']?.toString() ?? 'assets/images/campaign_hero_banner_full.png',
+      termsAndConditions: (json['termsAndConditions'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          const ['Minimum purchase required.', '2 offers cannot be clubbed.'],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'rewardType': rewardType,
+        'discountAmount': discountAmount,
+        'discountScope': discountScope,
+        'chosenProducts': chosenProducts,
+        'hasMinSpend': hasMinSpend,
+        'minSpendAmount': minSpendAmount,
+        'maxCashbackCap': maxCashbackCap,
+        'comboOfferTitle': comboOfferTitle,
+        'campaignTitle': campaignTitle,
+        'description': description,
+        'bannerImageUrl': bannerImageUrl,
+        'termsAndConditions': termsAndConditions,
+      };
+}
+
+class CampaignCouponSettingsModel {
+  final bool useCustomCouponCode;
+  final String customCouponCode;
+  final bool hasSendSchedule;
+  final DateTime? sendDate;
+  final String sendTime;
+  final bool hasExpiryDate;
+  final DateTime? expiryDate;
+  final String redemptionPerCustomer; // 'only_once' | 'multiple_times'
+  final bool displayCouponInProfile;
+
+  const CampaignCouponSettingsModel({
+    this.useCustomCouponCode = false,
+    this.customCouponCode = '',
+    this.hasSendSchedule = true,
+    this.sendDate,
+    this.sendTime = '8:00 AM',
+    this.hasExpiryDate = true,
+    this.expiryDate,
+    this.redemptionPerCustomer = 'only_once',
+    this.displayCouponInProfile = true,
+  });
+
+  factory CampaignCouponSettingsModel.fromJson(Map<String, dynamic> json) {
+    DateTime? parsedSend;
+    if (json['sendDate'] != null) {
+      try {
+        parsedSend = DateTime.parse(json['sendDate'].toString());
+      } catch (_) {}
+    }
+    DateTime? parsedExpiry;
+    if (json['expiryDate'] != null) {
+      try {
+        parsedExpiry = DateTime.parse(json['expiryDate'].toString());
+      } catch (_) {}
+    }
+
+    return CampaignCouponSettingsModel(
+      useCustomCouponCode: json['useCustomCouponCode'] == true,
+      customCouponCode: json['customCouponCode']?.toString() ?? '',
+      hasSendSchedule: json['hasSendSchedule'] != false,
+      sendDate: parsedSend,
+      sendTime: json['sendTime']?.toString() ?? '8:00 AM',
+      hasExpiryDate: json['hasExpiryDate'] != false,
+      expiryDate: parsedExpiry,
+      redemptionPerCustomer: json['redemptionPerCustomer']?.toString() ?? 'only_once',
+      displayCouponInProfile: json['displayCouponInProfile'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'useCustomCouponCode': useCustomCouponCode,
+        'customCouponCode': customCouponCode,
+        'hasSendSchedule': hasSendSchedule,
+        'sendDate': sendDate?.toIso8601String(),
+        'sendTime': sendTime,
+        'hasExpiryDate': hasExpiryDate,
+        'expiryDate': expiryDate?.toIso8601String(),
+        'redemptionPerCustomer': redemptionPerCustomer,
+        'displayCouponInProfile': displayCouponInProfile,
+      };
+}
+
 class CampaignModel {
   final String id;
   final String campaignId;
@@ -420,6 +554,9 @@ class CampaignModel {
   final String estimatedSendingTime;
   final CampaignCostModel cost;
   final CampaignStatsDetailModel stats;
+  final CampaignRewardDetailsModel? rewardDetails;
+  final CampaignCouponSettingsModel? couponSettings;
+  final List<String> orderTypes;
   final List<DeliveryTimelinePoint> deliveryTimeline;
   final DateTime createdAt;
 
@@ -437,6 +574,9 @@ class CampaignModel {
     this.estimatedSendingTime = '',
     required this.cost,
     required this.stats,
+    this.rewardDetails,
+    this.couponSettings,
+    this.orderTypes = const ['delivery', 'takeaway', 'dine_in'],
     this.deliveryTimeline = const [],
     required this.createdAt,
   });
@@ -464,6 +604,8 @@ class CampaignModel {
 
     final rawTimeline = json['deliveryTimeline'] as List<dynamic>? ?? [];
 
+    final rawOrderTypes = json['orderTypes'] as List<dynamic>? ?? ['delivery', 'takeaway', 'dine_in'];
+
     return CampaignModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       campaignId: json['campaignId']?.toString() ?? '#CMP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
@@ -478,6 +620,13 @@ class CampaignModel {
       estimatedSendingTime: json['schedule']?['estimatedSendingTime']?.toString() ?? '',
       cost: CampaignCostModel.fromJson(json['cost'] as Map<String, dynamic>? ?? {}),
       stats: CampaignStatsDetailModel.fromJson(json['stats'] as Map<String, dynamic>? ?? {}),
+      rewardDetails: json['rewardDetails'] != null
+          ? CampaignRewardDetailsModel.fromJson(json['rewardDetails'] as Map<String, dynamic>)
+          : null,
+      couponSettings: json['couponSettings'] != null
+          ? CampaignCouponSettingsModel.fromJson(json['couponSettings'] as Map<String, dynamic>)
+          : null,
+      orderTypes: rawOrderTypes.map((e) => e.toString()).toList(),
       deliveryTimeline: rawTimeline.map((e) => DeliveryTimelinePoint.fromJson(e as Map<String, dynamic>)).toList(),
       createdAt: parsedCreated,
     );

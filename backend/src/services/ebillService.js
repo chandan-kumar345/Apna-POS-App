@@ -294,18 +294,21 @@ class EbillService {
     // Check if user or business has integrated WhatsApp API
     let customPhoneNumberId = null;
     let customAccessToken = null;
+    let customAppSecret = null;
 
     if (userId) {
       const user = await User.findById(userId).select('whatsappSettings').lean();
       if (user?.whatsappSettings?.enabled && user.whatsappSettings.phoneNumberId && user.whatsappSettings.accessToken) {
         customPhoneNumberId = user.whatsappSettings.phoneNumberId.trim();
         customAccessToken = user.whatsappSettings.accessToken.trim();
+        customAppSecret = (user.whatsappSettings.appSecret || '').trim() || null;
       }
     }
 
     if (!customPhoneNumberId && business?.whatsappSettings?.enabled && business.whatsappSettings.phoneNumberId && business.whatsappSettings.accessToken) {
       customPhoneNumberId = business.whatsappSettings.phoneNumberId.trim();
       customAccessToken = business.whatsappSettings.accessToken.trim();
+      customAppSecret = (business.whatsappSettings.appSecret || '').trim() || null;
     }
 
     // 8. Submit to WhatsApp Cloud API (routes through custom credentials if integrated, else default WhatsApp)
@@ -321,6 +324,7 @@ class EbillService {
         documentUrl: existingEbill.documentUrl,
         customPhoneNumberId,
         customAccessToken,
+        customAppSecret,
       });
 
       // 9. Update eBill on WhatsApp acceptance

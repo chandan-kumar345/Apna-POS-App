@@ -39,7 +39,7 @@ const campaignSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['marketing', 'utility'],
+      enum: ['marketing', 'utility', 'promotional'],
       default: 'marketing',
       index: true,
     },
@@ -108,6 +108,54 @@ const campaignSchema = new mongoose.Schema(
       read: { type: Number, default: 0 },
       deliveryRate: { type: Number, default: 0.0 }, // e.g. 92.4
       completionRate: { type: Number, default: 0.0 }, // e.g. 87.0
+    },
+    rewardDetails: {
+      rewardType: {
+        type: String,
+        enum: ['flat_discount', 'flat_cash', 'percent_discount', 'percentage', 'free_gift', 'bogo', 'cashback'],
+        default: 'flat_discount',
+      },
+      discountAmount: { type: Number, default: 0 },
+      discountScope: {
+        type: String,
+        enum: ['whole_bill', 'chosen_products'],
+        default: 'whole_bill',
+      },
+      chosenProducts: [
+        {
+          productId: { type: String, default: '' },
+          productName: { type: String, default: '' },
+          price: { type: Number, default: 0 },
+        },
+      ],
+      hasMinSpend: { type: Boolean, default: false },
+      minSpendAmount: { type: Number, default: 0 },
+      maxCashbackCap: { type: Number, default: 0 },
+      comboOfferTitle: { type: String, default: '' },
+      campaignTitle: { type: String, default: '' },
+      description: { type: String, default: '' },
+      bannerImageUrl: { type: String, default: '' },
+      termsAndConditions: [{ type: String }],
+    },
+    couponSettings: {
+      useCustomCouponCode: { type: Boolean, default: false },
+      customCouponCode: { type: String, default: '', trim: true, uppercase: true },
+      hasSendSchedule: { type: Boolean, default: false },
+      sendDate: { type: Date, default: null },
+      sendTime: { type: String, default: '' },
+      hasExpiryDate: { type: Boolean, default: true },
+      expiryDate: { type: Date, default: null },
+      redemptionPerCustomer: {
+        type: String,
+        enum: ['only_once', 'multiple_times'],
+        default: 'only_once',
+      },
+      displayCouponInProfile: { type: Boolean, default: false },
+    },
+    orderTypes: {
+      type: [String],
+      enum: ['delivery', 'takeaway', 'dine_in'],
+      default: ['delivery', 'takeaway', 'dine_in'],
     },
     deliveryTimeline: [
       {

@@ -9,6 +9,7 @@ router.use(authMiddleware);
 
 // Meta resources & KPIs
 router.get('/stats', (req, res, next) => campaignController.getDashboardStats(req, res, next));
+router.get('/categories', (req, res, next) => campaignController.getCategories(req, res, next));
 router.get('/templates', (req, res, next) => campaignController.getTemplates(req, res, next));
 router.post('/templates', (req, res, next) => campaignController.createTemplate(req, res, next));
 router.get('/channels', (req, res, next) => campaignController.getChannels(req, res, next));
@@ -33,6 +34,7 @@ router.put('/auto/:id/toggle', (req, res, next) => campaignController.toggleAuto
 router.get('/', (req, res, next) => campaignController.getCampaigns(req, res, next));
 router.post('/', (req, res, next) => campaignController.createCampaign(req, res, next));
 router.get('/:id', (req, res, next) => campaignController.getCampaignById(req, res, next));
+router.put('/:id', (req, res, next) => campaignController.updateCampaign(req, res, next));
 router.put('/:id/pause', (req, res, next) => campaignController.pauseCampaign(req, res, next));
 router.put('/:id/resume', (req, res, next) => campaignController.resumeCampaign(req, res, next));
 

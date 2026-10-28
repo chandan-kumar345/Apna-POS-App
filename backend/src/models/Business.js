@@ -127,6 +127,7 @@ const businessSchema = new mongoose.Schema(
       phoneNumber: { type: String, default: '', trim: true },
       wabaId: { type: String, default: '', trim: true },
       accessToken: { type: String, default: '', trim: true },
+      appSecret: { type: String, default: '', trim: true },
       webhookVerifyToken: { type: String, default: '', trim: true },
       connectedAt: { type: Date, default: null },
     },

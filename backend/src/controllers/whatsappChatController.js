@@ -126,13 +126,14 @@ class WhatsAppChatController {
    */
   async saveConnection(req, res, next) {
     try {
-      const { phoneNumberId, phoneNumber, wabaId, accessToken } = req.body;
+      const { phoneNumberId, phoneNumber, wabaId, accessToken, appSecret } = req.body;
       const userId = req.user?._id || req.user?.id;
       const result = await whatsappChatService.saveConnection(req.businessId, {
         phoneNumberId,
         phoneNumber,
         wabaId,
         accessToken,
+        appSecret,
         userId,
       });
       return ApiResponse.success(res, result, 'Meta WhatsApp integration connected successfully');

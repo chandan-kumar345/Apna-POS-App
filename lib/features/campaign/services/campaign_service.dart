@@ -114,10 +114,15 @@ class CampaignService {
     required String scheduleMode,
     DateTime? scheduledAt,
     String? estimatedSendingTime,
+    String? status,
+    CampaignRewardDetailsModel? rewardDetails,
+    CampaignCouponSettingsModel? couponSettings,
+    List<String>? orderTypes,
   }) async {
-    final payload = {
+    final payload = <String, dynamic>{
       'name': name,
       'type': type,
+      'status': ?status,
       'audience': audience.toJson(),
       'channel': channel.toJson(),
       'template': template.toJson(),
@@ -126,6 +131,9 @@ class CampaignService {
         'scheduledAt': scheduledAt?.toIso8601String(),
         'estimatedSendingTime': estimatedSendingTime,
       },
+      if (rewardDetails != null) 'rewardDetails': rewardDetails.toJson(),
+      if (couponSettings != null) 'couponSettings': couponSettings.toJson(),
+      'orderTypes': ?orderTypes,
     };
 
     try {
@@ -153,13 +161,16 @@ class CampaignService {
       campaignId: '#CMP-${DateTime.now().year.toString().substring(2)}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-${1000 + (DateTime.now().microsecond % 9000)}',
       name: name,
       type: type,
-      status: isSendNow ? 'running' : 'scheduled',
+      status: status ?? (isSendNow ? 'running' : 'scheduled'),
       audience: audience,
       channel: channel,
       template: template,
       scheduleMode: scheduleMode,
       scheduledAt: scheduledAt ?? DateTime.now(),
       estimatedSendingTime: estimatedSendingTime ?? 'Start sending immediately',
+      rewardDetails: rewardDetails,
+      couponSettings: couponSettings,
+      orderTypes: orderTypes ?? const ['delivery', 'takeaway', 'dine_in'],
       cost: CampaignCostModel(
         messages: audience.recipientCount,
         ratePerMessage: rate,
@@ -187,6 +198,27 @@ class CampaignService {
 
     _cachedCampaigns.insert(0, created);
     return created;
+  }
+
+  /// Update campaign
+  Future<CampaignModel?> updateCampaign(String id, Map<String, dynamic> data) async {
+    try {
+      final response = await _apiClient.put('${ApiEndpoints.campaigns}/$id', data: data);
+      if (response != null && response is Map<String, dynamic>) {
+        final resData = response['data'] ?? response;
+        if (resData is Map<String, dynamic>) {
+          final updated = CampaignModel.fromJson(resData);
+          final idx = _cachedCampaigns.indexWhere((c) => c.id == id);
+          if (idx >= 0) {
+            _cachedCampaigns[idx] = updated;
+          }
+          return updated;
+        }
+      }
+    } catch (e) {
+      debugPrint('[CampaignService.updateCampaign] error: $e');
+    }
+    return null;
   }
 
   /// Pause campaign
@@ -240,6 +272,35 @@ class CampaignService {
     }
 
     return _getDefaultMetaVerifiedTemplates(channel: channel, category: category, search: search);
+  }
+
+  /// Fetch dynamic campaign categories from backend
+  Future<List<Map<String, dynamic>>> fetchCategories() async {
+    try {
+      final response = await _apiClient.get(ApiEndpoints.campaignCategories);
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] ?? response;
+        if (data is List) {
+          return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('[CampaignService.fetchCategories] notice: $e');
+    }
+
+    // Default categories matching reference design
+    return [
+      {'id': 'all', 'label': 'All', 'icon': 'grid', 'isDefault': true},
+      {'id': 'promotional', 'label': 'Promotional', 'icon': 'megaphone'},
+      {'id': 'free_gift', 'label': 'Free Gift', 'icon': 'gift'},
+      {'id': 'flat_cash_discount', 'label': 'Flat Cash Discount', 'icon': 'tag'},
+      {'id': 'percent_discount', 'label': 'Percent Discount', 'icon': 'percent'},
+      {'id': 'combo_bundle', 'label': 'Combo / Bundle', 'icon': 'layers'},
+      {'id': 'bogo', 'label': 'Buy 1 Get 1 (BOGO)', 'icon': 'copy'},
+      {'id': 'new_menu', 'label': 'New Menu', 'icon': 'cloche'},
+      {'id': 'festival', 'label': 'Festival', 'icon': 'party'},
+      {'id': 're_engagement', 'label': 'Re-engagement', 'icon': 'refresh'},
+    ];
   }
 
   /// Create and submit a new template for Meta Verification

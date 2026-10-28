@@ -11,6 +11,15 @@ class CampaignController {
     }
   }
 
+  async getCategories(req, res, next) {
+    try {
+      const categories = campaignService.getCategories();
+      return ApiResponse.success(res, categories, 'Campaign categories retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getCampaigns(req, res, next) {
     try {
       const { type, status, search, page, limit } = req.query;
@@ -42,6 +51,16 @@ class CampaignController {
       const userId = req.user?._id || req.user?.id;
       const campaign = await campaignService.createCampaign(req.businessId, req.body, userId);
       return ApiResponse.created(res, campaign, 'Campaign created and scheduled successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateCampaign(req, res, next) {
+    try {
+      const { id } = req.params;
+      const campaign = await campaignService.updateCampaign(req.businessId, id, req.body);
+      return ApiResponse.success(res, campaign, 'Campaign updated successfully');
     } catch (error) {
       next(error);
     }

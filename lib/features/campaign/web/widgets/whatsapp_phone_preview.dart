@@ -29,7 +29,7 @@ class WhatsAppPhonePreview extends StatelessWidget {
         border: Border.all(color: const Color(0xFF33383B), width: 6),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
+            color: Colors.black.withValues(alpha: 0.18),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -127,10 +127,10 @@ class WhatsAppPhonePreview extends StatelessWidget {
                           margin: const EdgeInsets.only(bottom: 10),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(6),
                             boxShadow: [
-                              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4),
+                              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4),
                             ],
                           ),
                           child: const Text(
@@ -158,7 +158,7 @@ class WhatsAppPhonePreview extends StatelessWidget {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 3,
                               offset: const Offset(0, 1),
                             ),
@@ -223,7 +223,7 @@ class WhatsAppPhonePreview extends StatelessWidget {
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(6),
                                 boxShadow: [
-                                  BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 2),
+                                  BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 2),
                                 ],
                               ),
                               child: Center(

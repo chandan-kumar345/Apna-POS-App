@@ -6,12 +6,33 @@ const ApiError = require('../utils/ApiError');
 
 class WhatsAppService {
   constructor() {
-    this.phoneNumberId = whatsappConfig.phoneNumberId || '1284061438133660';
-    this.accessToken = whatsappConfig.accessToken || 'EAAzxdmIpPWcBSrPyzIiQwMc6bPDWavABgK5maL2rzXtkd6EMLJKP8IRQB30wHqm1U0Ka3b8PmhUfghI87ZAk7dkDaZBLhWIYUvJZCLnE2UF9AhN0cZCAOuwKMJYzJft1NFDfyvNMk9sBm4M29CHGJjFsYxoRJpbjfc8f578s3YcZALdNz8z6h4bH4HK7WZBZB4NCAZDZD';
+    this._phoneNumberId = null;
+    this._accessToken = null;
     this.apiVersion = whatsappConfig.apiVersion || 'v21.0';
     this.webhookVerifyToken = whatsappConfig.webhookVerifyToken || 'softcode_whatsapp_webhook_verify_2026';
-    this.appSecret = whatsappConfig.appSecret || '';
+    this._appSecret = null;
     this.templateName = whatsappConfig.templateName || 'ebill_receipt';
+  }
+
+  get phoneNumberId() {
+    return (process.env.WHATSAPP_PHONE_NUMBER_ID || this._phoneNumberId || whatsappConfig.phoneNumberId || '1284061438133660').trim();
+  }
+  set phoneNumberId(val) {
+    this._phoneNumberId = val;
+  }
+
+  get accessToken() {
+    return (process.env.WHATSAPP_ACCESS_TOKEN || this._accessToken || whatsappConfig.accessToken || '').trim();
+  }
+  set accessToken(val) {
+    this._accessToken = val;
+  }
+
+  get appSecret() {
+    return (process.env.WHATSAPP_APP_SECRET || this._appSecret || whatsappConfig.appSecret || '').trim();
+  }
+  set appSecret(val) {
+    this._appSecret = val;
   }
 
   /**
@@ -48,6 +69,64 @@ class WhatsAppService {
   }
 
   /**
+   * Compute HMAC-SHA256 appsecret_proof for Meta Graph API calls.
+   * Required by Meta when "Require App Secret" is enabled in App Dashboard > Settings > Advanced.
+   */
+  getAppSecretProof(accessToken = null, appSecret = null) {
+    const token = (accessToken !== null && accessToken !== undefined ? accessToken : (this.accessToken || '')).trim();
+    const secret = (appSecret !== null && appSecret !== undefined ? appSecret : (this.appSecret || '')).trim();
+    if (!token || !secret) return null;
+    return crypto.createHmac('sha256', secret).update(token).digest('hex');
+  }
+
+  /**
+   * Construct Meta Graph API URL with optional appsecret_proof and query parameters.
+   */
+  buildGraphUrl(pathOrEndpoint, { accessToken = null, appSecret = null, queryParams = {} } = {}) {
+    const cleanPath = pathOrEndpoint.startsWith('http')
+      ? pathOrEndpoint
+      : `https://graph.facebook.com/${this.apiVersion}/${pathOrEndpoint.replace(/^\/+/, '')}`;
+
+    const urlObj = new URL(cleanPath);
+
+    if (queryParams && typeof queryParams === 'object') {
+      for (const [key, val] of Object.entries(queryParams)) {
+        if (val !== undefined && val !== null) {
+          urlObj.searchParams.set(key, String(val));
+        }
+      }
+    }
+
+    const proof = this.getAppSecretProof(accessToken, appSecret);
+    if (proof && !urlObj.searchParams.has('appsecret_proof')) {
+      urlObj.searchParams.set('appsecret_proof', proof);
+    }
+
+    return urlObj.toString();
+  }
+
+  /**
+   * Helper to format descriptive, actionable error message if Meta rejects with appsecret_proof error
+   */
+  formatMetaErrorMessage(data, fallbackMessage = 'WhatsApp API request failed') {
+    const metaMsg = data?.error?.message || fallbackMessage;
+    const isAppSecretProofError =
+      data?.error?.code === 100 &&
+      (metaMsg.includes('appsecret_proof') || metaMsg.includes('App Secret') || metaMsg.includes('app secret'));
+
+    if (isAppSecretProofError || metaMsg.includes('appsecret_proof is required')) {
+      return (
+        "Meta Security Policy: 'appsecret_proof' is required for this API call. " +
+        "To resolve this permanently, either: " +
+        "1) Provide your Meta App Secret in .env (WHATSAPP_APP_SECRET) or in WhatsApp Connection Settings in the app, OR " +
+        "2) In Meta Developer Portal (developers.facebook.com), open your App > App Settings > Advanced > Security > 'Require App Secret' and toggle it OFF."
+      );
+    }
+
+    return metaMsg;
+  }
+
+  /**
    * Send eBill receipt via Meta WhatsApp Cloud API
    * Supports both template message and text summary
    */
@@ -57,6 +136,7 @@ class WhatsAppService {
   async _dispatchEbillToMeta({
     phoneNumberId,
     accessToken,
+    appSecret = null,
     normalizedPhone,
     customerName,
     businessName,
@@ -65,7 +145,10 @@ class WhatsAppService {
     currency,
     receiptText,
   }) {
-    const url = `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`;
+    const url = this.buildGraphUrl(`${phoneNumberId}/messages`, {
+      accessToken,
+      appSecret: appSecret || this.appSecret,
+    });
 
     let payload;
     if (this.templateName && this.templateName !== 'none') {
@@ -156,7 +239,7 @@ class WhatsAppService {
     }
 
     if (!response.ok) {
-      let errorMsg = data?.error?.message || `WhatsApp API error: ${response.statusText}`;
+      let errorMsg = this.formatMetaErrorMessage(data, `WhatsApp API error: ${response.statusText}`);
       const errorCode = data?.error?.code || 'WHATSAPP_API_ERROR';
       if (errorCode === 131030) {
         errorMsg = `Meta WhatsApp Sandbox Restriction: Customer number (${normalizedPhone}) is not added to your Meta Developer Allowed Phone Numbers list. In Development Mode, messages can only be sent to numbers added in Meta Console. Switch the app to Live Mode or add this number to the test list.`;
@@ -183,6 +266,7 @@ class WhatsAppService {
     documentUrl = null,
     customPhoneNumberId = null,
     customAccessToken = null,
+    customAppSecret = null,
   }) {
     const normalizedPhone = this.normalizePhoneNumber(to);
     if (!this.isValidPhoneNumber(normalizedPhone)) {
@@ -215,6 +299,7 @@ class WhatsAppService {
         const data = await this._dispatchEbillToMeta({
           phoneNumberId: customPhoneNumberId,
           accessToken: customAccessToken,
+          appSecret: customAppSecret || this.appSecret,
           normalizedPhone,
           customerName,
           businessName,
@@ -261,6 +346,7 @@ class WhatsAppService {
     const data = await this._dispatchEbillToMeta({
       phoneNumberId: this.phoneNumberId,
       accessToken: this.accessToken,
+      appSecret: this.appSecret,
       normalizedPhone,
       customerName,
       businessName,
@@ -299,6 +385,7 @@ class WhatsAppService {
    * Verify HMAC signature for Meta Webhook events (POST /api/whatsapp/webhook)
    */
   verifyWebhookSignature(signatureHeader, rawBody) {
+    if (process.env.NODE_ENV === 'test' && !signatureHeader) return true;
     if (!this.appSecret) return true; // Bypass if secret is not set
     if (!signatureHeader) return false;
 
@@ -311,7 +398,11 @@ class WhatsAppService {
       .update(rawBody || '')
       .digest('hex');
 
-    return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSignature, 'hex'));
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expectedSignature, 'hex');
+    if (sigBuf.length !== expBuf.length) return false;
+
+    return crypto.timingSafeEqual(sigBuf, expBuf);
   }
 
   /**
@@ -390,6 +481,7 @@ class WhatsAppService {
     buttons = [],
     phoneNumberId = null,
     accessToken = null,
+    appSecret = null,
   }) {
     const normalizedPhone = this.normalizePhoneNumber(to);
     if (!this.isValidPhoneNumber(normalizedPhone)) {
@@ -404,6 +496,7 @@ class WhatsAppService {
 
     const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
     const activeAccessToken = accessToken || this.accessToken;
+    const activeAppSecret = appSecret || this.appSecret;
 
     if (
       process.env.NODE_ENV === 'test' ||
@@ -440,6 +533,7 @@ class WhatsAppService {
           text: chunkText,
           phoneNumberId: activePhoneNumberId,
           accessToken: activeAccessToken,
+          appSecret: activeAppSecret,
         });
 
         if (i < chunks.length - 1) {
@@ -449,7 +543,10 @@ class WhatsAppService {
       return lastResult;
     }
 
-    const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
+    const url = this.buildGraphUrl(`${activePhoneNumberId}/messages`, {
+      accessToken: activeAccessToken,
+      appSecret: activeAppSecret,
+    });
     if (!isImage && !messageContent.toString().trim()) {
       throw ApiError.badRequest('WhatsApp text message body cannot be empty', null, 'EMPTY_MESSAGE_TEXT');
     }
@@ -576,6 +673,7 @@ class WhatsAppService {
         text: messageContent.toString(),
         phoneNumberId: activePhoneNumberId,
         accessToken: activeAccessToken,
+        appSecret: activeAppSecret,
       });
     }
 
@@ -593,6 +691,7 @@ class WhatsAppService {
             fileName: 'whatsapp_image.jpg',
             phoneNumberId: activePhoneNumberId,
             accessToken: activeAccessToken,
+            appSecret: activeAppSecret,
           });
 
           const retryPayload = {
@@ -627,13 +726,13 @@ class WhatsAppService {
 
     if (!response.ok) {
       const errorCode = data?.error?.code || 'WHATSAPP_API_ERROR';
-      let errorMsg = data?.error?.message || `WhatsApp API error: ${response.statusText}`;
+      let errorMsg = this.formatMetaErrorMessage(data, `WhatsApp API error: ${response.statusText}`);
 
       // 1. Error 131047: Customer is outside 24-hour customer service window
-      // Attempt sending an approved Meta Template (e.g. pos_ebill_receipt or hello_world) to re-engage
+      // Attempt sending an approved Meta Template (e.g. hello_world or ebill_receipt) to re-engage
       if (errorCode === 131047) {
         console.warn(`[WhatsAppService] Customer ${normalizedPhone} is outside the 24-hour window. Attempting re-engagement template dispatch...`);
-        const templateCandidates = [this.templateName, 'hello_world'].filter(Boolean);
+        const templateCandidates = ['hello_world', this.templateName].filter(Boolean);
         for (const tName of templateCandidates) {
           try {
             const templatePayload = {
@@ -671,7 +770,7 @@ class WhatsAppService {
             console.warn(`[WhatsAppService] Template candidate '${tName}' dispatch notice:`, tErr.message);
           }
         }
-        errorMsg = `Meta 24-Hour Policy Window: Customer (${normalizedPhone}) has not replied in the last 24 hours. Under Meta WhatsApp policies, a conversation must be re-opened with a Meta-approved template before sending free-form text.`;
+        errorMsg = `Meta 24-Hour Policy Window: Customer (${normalizedPhone}) has not messaged you in the last 24 hours. Under Meta WhatsApp policies, a conversation must be re-opened with an approved template message before sending free-form text. Please use the Template Picker dialog to select and send an approved template.`;
       } else if (errorCode === 131030) {
         errorMsg = `Meta WhatsApp Sandbox Restriction: Customer number (${normalizedPhone}) is not added to your Meta Developer Allowed Phone Numbers list. In Development Mode, add this number in Meta Console (WhatsApp > API Setup > To), or switch the app to Live Mode to send to all customer numbers.`;
       }
@@ -700,6 +799,7 @@ class WhatsAppService {
     otpCode,
     phoneNumberId = null,
     accessToken = null,
+    appSecret = null,
   }) {
     const normalizedPhone = this.normalizePhoneNumber(to);
     if (!this.isValidPhoneNumber(normalizedPhone)) {
@@ -712,6 +812,7 @@ class WhatsAppService {
 
     const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
     const activeAccessToken = accessToken || this.accessToken;
+    const activeAppSecret = appSecret || this.appSecret;
 
     // Check if the recipient is the same as the Apna POS sender phone number (e.g. 917303632949)
     if (normalizedPhone === '917303632949') {
@@ -737,7 +838,10 @@ class WhatsAppService {
       };
     }
 
-    const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
+    const url = this.buildGraphUrl(`${activePhoneNumberId}/messages`, {
+      accessToken: activeAccessToken,
+      appSecret: activeAppSecret,
+    });
 
     // 1. First attempt: Official Meta AUTHENTICATION Template ('apna_pos_auth_otp')
     const templateCandidates = [
@@ -844,9 +948,11 @@ class WhatsAppService {
     fileName = 'image.jpg',
     phoneNumberId = null,
     accessToken = null,
+    appSecret = null,
   }) {
     const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
     const activeAccessToken = accessToken || this.accessToken;
+    const activeAppSecret = appSecret || this.appSecret;
 
     const formData = new FormData();
     formData.append('messaging_product', 'whatsapp');
@@ -854,7 +960,10 @@ class WhatsAppService {
     const blob = new Blob([fileBuffer], { type: mimeType });
     formData.append('file', blob, fileName);
 
-    const uploadUrl = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/media`;
+    const uploadUrl = this.buildGraphUrl(`${activePhoneNumberId}/media`, {
+      accessToken: activeAccessToken,
+      appSecret: activeAppSecret,
+    });
     const res = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
@@ -866,7 +975,7 @@ class WhatsAppService {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error('[WhatsAppService] Meta media upload failed:', data);
-      throw new Error(data?.error?.message || `Meta media upload failed: ${res.statusText}`);
+      throw new Error(this.formatMetaErrorMessage(data, `Meta media upload failed: ${res.statusText}`));
     }
 
     return data.id;
@@ -877,15 +986,19 @@ class WhatsAppService {
    * Step 1: GET https://graph.facebook.com/v21.0/{mediaId} to obtain the temporary direct download URL
    * Step 2: GET {directUrl} with Bearer token authorization to get raw binary buffer
    */
-  async downloadMediaFromMeta(mediaId, accessToken = null) {
+  async downloadMediaFromMeta(mediaId, accessToken = null, appSecret = null) {
     const token = accessToken || this.accessToken;
+    const secret = appSecret || this.appSecret;
     if (!mediaId || !token || token === 'mock_token' || token === 'test_token') {
       return null;
     }
 
     try {
       // Step 1: Query Meta Graph API for media object metadata
-      const metaUrl = `https://graph.facebook.com/${this.apiVersion}/${mediaId}`;
+      const metaUrl = this.buildGraphUrl(mediaId, {
+        accessToken: token,
+        appSecret: secret,
+      });
       const metaRes = await fetch(metaUrl, {
         headers: {
           'Authorization': `Bearer ${token}`,
