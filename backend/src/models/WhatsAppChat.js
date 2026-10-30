@@ -49,6 +49,11 @@ const whatsAppChatSchema = new mongoose.Schema(
       enum: ['INCOMING', 'OUTGOING'],
       default: 'INCOMING',
     },
+    lastIncomingAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     unreadCount: {
       type: Number,
       default: 0,

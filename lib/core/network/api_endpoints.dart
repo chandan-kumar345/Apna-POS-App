@@ -424,6 +424,9 @@ class ApiEndpoints {
   static const String campaignStats = '/campaigns/stats';
   static const String campaignCategories = '/campaigns/categories';
   static const String campaignTemplates = '/campaigns/templates';
+  static const String campaignTemplateSubmitApproval = '/campaigns/templates/submit-approval';
+  static String campaignTemplateStatus(String id) => '/campaigns/templates/$id/status';
+  static String campaignTemplateApprove(String id) => '/campaigns/templates/$id/approve';
   static const String campaignChannels = '/campaigns/channels';
   static const String campaignAudienceGroups = '/campaigns/groups';
   static const String campaignGroups = '/campaigns/groups';

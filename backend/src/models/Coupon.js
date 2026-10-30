@@ -9,6 +9,12 @@ const couponSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    campaignId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Campaign',
+      default: null,
+      index: true,
+    },
     code: {
       type: String,
       required: [true, 'Coupon code is required'],
@@ -27,9 +33,26 @@ const couponSchema = new mongoose.Schema(
     },
     discountType: {
       type: String,
-      enum: ['percentage', 'flat'],
+      enum: ['percentage', 'flat', 'cashback', 'free_gift', 'bogo'],
       default: 'percentage',
       required: true,
+    },
+    rewardScope: {
+      type: String,
+      enum: ['whole_bill', 'chosen_products'],
+      default: 'whole_bill',
+    },
+    freeGiftProductId: {
+      type: String,
+      default: '',
+    },
+    freeGiftProductName: {
+      type: String,
+      default: '',
+    },
+    freeGiftProductPrice: {
+      type: Number,
+      default: 0,
     },
     discountValue: {
       type: Number,

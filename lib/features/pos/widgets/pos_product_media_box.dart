@@ -57,24 +57,25 @@ class _PosMediaPlaybackCoordinator {
   final List<_PosPlaybackClient> _activeClients = [];
 
   int get _maxActiveDecoders {
-    if (kIsWeb) return 2;
+    if (kIsWeb) return 6;
     if (defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS) {
-      return 1;
+      return 3;
     }
-    return 2;
+    return 4;
   }
 
   bool isCurrentSlot(_PosPlaybackClient client) => _activeClients.contains(client);
 
   bool get hasSlotAvailable => _activeClients.length < _maxActiveDecoders;
 
-  /// Acquires a hardware decoder slot.
-  /// If [forcePriority] is true (e.g. user interaction, slide change, or detail modal),
-  /// any existing client is evicted if necessary to give this client immediate priority.
-  /// If [forcePriority] is false (e.g. passive mount in a list), this client will only
-  /// acquire the slot if one is currently available, avoiding decoder churn during list rendering.
+  /// Acquires a hardware decoder slot with LRU eviction.
+  /// When slots are exhausted, the least recently used decoder is evicted cleanly
+  /// to ensure visible and newly mounted cards can always stream smoothly.
   bool acquireSlot(_PosPlaybackClient client, {bool forcePriority = false}) {
+    // Clean up any unmounted clients first
+    _activeClients.removeWhere((c) => !c.isMountedClient);
+
     if (_activeClients.contains(client)) {
       // Move to end (most recently used)
       _activeClients.remove(client);
@@ -82,18 +83,10 @@ class _PosMediaPlaybackCoordinator {
       return true;
     }
 
-    if (!forcePriority && _activeClients.length >= _maxActiveDecoders) {
-      // Clean up any unmounted dead clients
-      _activeClients.removeWhere((c) => !c.isMountedClient);
-      if (_activeClients.length >= _maxActiveDecoders) {
-        return false;
-      }
-    }
-
     _activeClients.add(client);
     while (_activeClients.length > _maxActiveDecoders) {
       final evicted = _activeClients.removeAt(0);
-      if (evicted != client) {
+      if (evicted != client && evicted.isMountedClient) {
         evicted.onPlaybackSlotRevoked();
       }
     }
@@ -321,17 +314,14 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       _pageController = null;
     }
 
-    // If initial slide is video, auto-start stream ONLY if priorityPlayback is requested
-    // (e.g. in detail sheets or dedicated players). Passive list/grid cards stay lightweight!
+    // If initial slide is video, automatically start streaming video immediately
     if (_mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-      if (!widget.isMini && widget.priorityPlayback) {
+      if (!widget.isMini) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _currentPage == 0 && _mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-            _scheduleVideoStreamInit(_mediaList[0].url, forcePriority: true);
+            _scheduleVideoStreamInit(_mediaList[0].url, forcePriority: widget.priorityPlayback);
           }
         });
-      } else if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
-        _scheduleAutoSlideForImages();
       }
     } else if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
       _scheduleAutoSlideForImages();
@@ -342,10 +332,10 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     _streamInitDebounceTimer?.cancel();
     if (widget.isMini) return;
 
-    // Use minimal delay if priority playback is requested, or 280ms debounce for passive cards in lists
+    // Use fast 25ms delay if priority playback is requested, or 120ms debounce for passive cards
     final debounceDuration = forcePriority || widget.priorityPlayback
         ? const Duration(milliseconds: 25)
-        : const Duration(milliseconds: 280);
+        : const Duration(milliseconds: 120);
 
     _streamInitDebounceTimer = Timer(debounceDuration, () {
       if (!mounted) return;
@@ -426,10 +416,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         controller = VideoPlayerController.networkUrl(
           Uri.parse(netUrl),
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-          httpHeaders: const {
-            'Accept': 'video/mp4,video/*,*/*',
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
-          },
+          httpHeaders: kIsWeb
+              ? const {}
+              : const {
+                  'Accept': 'video/mp4,video/*,*/*',
+                  'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+                },
         );
       } else {
         if (kIsWeb) {
@@ -583,24 +575,17 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     if (currentMedia.type == PosMediaType.video) {
       _autoSlideTimer?.cancel();
       _isVideoFinishingSlide = false;
-      // User or priority playback switched to video: acquire decoder slot
-      if (widget.priorityPlayback || _isUserInteracting) {
-        final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(this, forcePriority: true);
-        if (acquired) {
-          if (_videoController != null && _isVideoInitialized) {
-            _videoController!.seekTo(Duration.zero).then((_) {
-              if (mounted && _currentPage == index && _videoController != null) {
-                _videoController!.play();
-              }
-            });
-          } else if (!_isVideoLoading) {
-            _initVideoStream(currentMedia.url);
-          }
-        }
-      } else {
-        // In passive mode, display video thumbnail and auto-slide to next image
-        if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
-          _scheduleAutoSlideForImages();
+      // Auto-slide or user switched to video: acquire decoder slot and auto-play
+      final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(this, forcePriority: true);
+      if (acquired) {
+        if (_videoController != null && _isVideoInitialized) {
+          _videoController!.seekTo(Duration.zero).then((_) {
+            if (mounted && _currentPage == index && _videoController != null) {
+              _videoController!.play();
+            }
+          });
+        } else if (!_isVideoLoading) {
+          _initVideoStream(currentMedia.url);
         }
       }
     } else {
@@ -767,6 +752,14 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       );
     }
 
+    if (widget.onTap != null) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: content,
+      );
+    }
+
     return RepaintBoundary(
       child: SizedBox(
         width: widget.width ?? double.infinity,
@@ -850,63 +843,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       );
     }
 
-    // 2. If Loading or Initializing: show preview thumbnail with subtle buffer indicator
-    if (_isVideoLoading) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          baseThumb,
-          Container(
-            color: Colors.black.withValues(alpha: 0.12),
-            child: const Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.0,
-                  color: Color(0xFF38BDF8),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    // 3. Passive mode: Display dish thumbnail with subtle video indicator badge
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        baseThumb,
-        Positioned(
-          top: 6,
-          right: 6,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.60),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.play_arrow_rounded, color: Colors.white, size: 13),
-                SizedBox(width: 2),
-                Text(
-                  'VIDEO',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 8.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+    // 2. While loading, buffering, or uninitialized: display clean dish photo
+    // Clean preview, 0 blank box, and no "VIDEO" text overlay
+    return baseThumb;
   }
 
   Widget _buildImageSlide(String imagePath, {Key? key}) {

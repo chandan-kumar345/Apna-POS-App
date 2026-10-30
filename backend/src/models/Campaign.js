@@ -45,7 +45,7 @@ const campaignSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['draft', 'scheduled', 'running', 'paused', 'completed', 'failed', 'cancelled'],
+      enum: ['draft', 'scheduled', 'processing', 'running', 'paused', 'completed', 'sent', 'failed', 'cancelled'],
       default: 'draft',
       index: true,
     },
@@ -76,8 +76,23 @@ const campaignSchema = new mongoose.Schema(
       category: { type: String, default: 'MARKETING' },
       language: { type: String, default: 'en' },
       body: { type: String, default: '' },
+      headerType: {
+        type: String,
+        enum: ['IMAGE', 'TEXT', 'VIDEO', 'DOCUMENT', 'NONE'],
+        default: 'IMAGE',
+      },
+      headerMediaUrl: { type: String, default: '' },
       headerText: { type: String, default: '' },
       footerText: { type: String, default: '' },
+      metaStatus: {
+        type: String,
+        enum: ['APPROVED', 'PENDING', 'REJECTED', 'DRAFT'],
+        default: 'PENDING',
+      },
+      displayName: { type: String, default: '' },
+      interactiveType: { type: String, default: 'CTA_URL' },
+      buttonText: { type: String, default: 'Offer details' },
+      buttonUrl: { type: String, default: '' },
       buttons: [{ type: String }],
       parameters: [{ type: String }],
     },
@@ -87,7 +102,7 @@ const campaignSchema = new mongoose.Schema(
         enum: ['now', 'later', 'recurring'],
         default: 'now',
       },
-      scheduledAt: { type: Date, default: Date.now },
+      scheduledAt: { type: Date, default: null },
       estimatedSendingTime: { type: String, default: '' },
       recurringCron: { type: String, default: '' },
     },
@@ -128,6 +143,9 @@ const campaignSchema = new mongoose.Schema(
           price: { type: Number, default: 0 },
         },
       ],
+      freeGiftProductId: { type: String, default: '' },
+      freeGiftProductName: { type: String, default: '' },
+      freeGiftProductPrice: { type: Number, default: 0 },
       hasMinSpend: { type: Boolean, default: false },
       minSpendAmount: { type: Number, default: 0 },
       maxCashbackCap: { type: Number, default: 0 },
@@ -135,23 +153,44 @@ const campaignSchema = new mongoose.Schema(
       campaignTitle: { type: String, default: '' },
       description: { type: String, default: '' },
       bannerImageUrl: { type: String, default: '' },
+      logoUrl: { type: String, default: '' },
+      themeColor: { type: String, default: '#E91E63' },
+      textColor: { type: String, default: '#FFFFFF' },
+      restaurantName: { type: String, default: '' },
       termsAndConditions: [{ type: String }],
     },
     couponSettings: {
       useCustomCouponCode: { type: Boolean, default: false },
       customCouponCode: { type: String, default: '', trim: true, uppercase: true },
+      couponCode: { type: String, default: '', trim: true, uppercase: true },
       hasSendSchedule: { type: Boolean, default: false },
       sendDate: { type: Date, default: null },
       sendTime: { type: String, default: '' },
+      scheduledAt: { type: Date, default: null, index: true },
       hasExpiryDate: { type: Boolean, default: true },
-      expiryDate: { type: Date, default: null },
+      expiryDate: { type: Date, default: null, index: true },
       redemptionPerCustomer: {
         type: String,
         enum: ['only_once', 'multiple_times'],
         default: 'only_once',
       },
+      maxRedemptionsPerCustomer: { type: Number, default: 1, min: 1 },
       displayCouponInProfile: { type: Boolean, default: false },
     },
+    couponId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Coupon',
+      default: null,
+      index: true,
+    },
+    executionLogs: [
+      {
+        timestamp: { type: Date, default: Date.now },
+        status: { type: String, default: '' },
+        message: { type: String, default: '' },
+        executedBy: { type: String, default: 'system' },
+      },
+    ],
     orderTypes: {
       type: [String],
       enum: ['delivery', 'takeaway', 'dine_in'],
@@ -182,6 +221,8 @@ const campaignSchema = new mongoose.Schema(
 campaignSchema.index({ businessId: 1, status: 1 });
 campaignSchema.index({ businessId: 1, createdAt: -1 });
 campaignSchema.index({ businessId: 1, type: 1 });
+campaignSchema.index({ status: 1, 'couponSettings.scheduledAt': 1 });
+campaignSchema.index({ businessId: 1, 'couponSettings.couponCode': 1 });
 
 campaignSchema.plugin(tenantIsolationPlugin);
 

@@ -193,7 +193,7 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(22),
                           child: PosProductMediaBox(
-                            key: ValueKey('detail_media_${widget.item.id}_${widget.item.imageUrl}'),
+                            key: ValueKey('detail_media_${widget.item.id}_${widget.item.imageUrl}_${widget.item.videoUrl}_${widget.item.images.length}'),
                             item: widget.item,
                             fit: BoxFit.cover,
                             borderRadius: BorderRadius.circular(22),

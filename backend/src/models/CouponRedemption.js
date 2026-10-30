@@ -15,6 +15,12 @@ const couponRedemptionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    campaignId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Campaign',
+      default: null,
+      index: true,
+    },
     couponCode: {
       type: String,
       required: true,
@@ -77,6 +83,7 @@ const couponRedemptionSchema = new mongoose.Schema(
 );
 
 couponRedemptionSchema.index({ businessId: 1, couponCode: 1, customerPhone: 1 });
+couponRedemptionSchema.index({ businessId: 1, campaignId: 1, customerPhone: 1 });
 couponRedemptionSchema.index({ businessId: 1, redeemedAt: -1 });
 couponRedemptionSchema.plugin(tenantIsolationPlugin);
 

@@ -19,10 +19,12 @@ class CouponTimeSlot {
 
 class CouponModel {
   final String id;
+  final String? campaignId;
   final String code;
   final String title;
   final String description;
-  final String discountType; // 'percentage' | 'flat'
+  final String discountType; // 'percentage' | 'flat' | 'cashback' | 'free_gift' | 'bogo'
+  final String rewardScope; // 'whole_bill' | 'chosen_products'
   final double discountValue;
   final double? maxDiscountAmount;
   final double minCartAmount;
@@ -46,10 +48,12 @@ class CouponModel {
 
   const CouponModel({
     required this.id,
+    this.campaignId,
     required this.code,
     this.title = '',
     this.description = '',
     this.discountType = 'percentage',
+    this.rewardScope = 'whole_bill',
     required this.discountValue,
     this.maxDiscountAmount,
     this.minCartAmount = 0.0,
@@ -100,10 +104,12 @@ class CouponModel {
   factory CouponModel.fromJson(Map<String, dynamic> json) {
     return CouponModel(
       id: (json['id'] ?? json['_id'] ?? '').toString(),
+      campaignId: json['campaignId']?.toString(),
       code: (json['code'] ?? '').toString().toUpperCase(),
       title: (json['title'] ?? '').toString(),
       description: (json['description'] ?? '').toString(),
       discountType: (json['discountType'] ?? 'percentage').toString(),
+      rewardScope: (json['rewardScope'] ?? 'whole_bill').toString(),
       discountValue: (json['discountValue'] as num?)?.toDouble() ?? 0.0,
       maxDiscountAmount: (json['maxDiscountAmount'] as num?)?.toDouble(),
       minCartAmount: (json['minCartAmount'] as num?)?.toDouble() ?? 0.0,
@@ -136,10 +142,12 @@ class CouponModel {
 
   Map<String, dynamic> toJson() {
     return {
+      if (campaignId != null) 'campaignId': campaignId,
       'code': code.toUpperCase(),
       'title': title,
       'description': description,
       'discountType': discountType,
+      'rewardScope': rewardScope,
       'discountValue': discountValue,
       if (maxDiscountAmount != null) 'maxDiscountAmount': maxDiscountAmount,
       'minCartAmount': minCartAmount,

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+require('./setup');
 const Campaign = require('../src/models/Campaign');
 const campaignService = require('../src/services/campaignService');
 

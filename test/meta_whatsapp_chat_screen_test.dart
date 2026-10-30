@@ -40,10 +40,10 @@ void main() {
       );
       await tester.pump();
 
-      // Verify Apna POS App Bar
-      expect(find.textContaining('WhatsApp Live'), findsOneWidget);
+      // Verify Apna POS App Bar: WhatsApp Live badge and tune icon removed per user instructions
+      expect(find.textContaining('WhatsApp Live'), findsNothing);
       expect(find.byIcon(Icons.arrow_back_rounded), findsWidgets);
-      expect(find.byIcon(Icons.tune_rounded), findsWidgets);
+      expect(find.byIcon(Icons.refresh_rounded), findsWidgets);
 
       // Verify WhatsApp Mobile Title inside phone frame
       expect(find.text('WhatsApp'), findsOneWidget);

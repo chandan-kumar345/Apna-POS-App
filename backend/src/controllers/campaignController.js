@@ -2,6 +2,20 @@ const campaignService = require('../services/campaignService');
 const ApiResponse = require('../utils/ApiResponse');
 
 class CampaignController {
+  async checkCouponCode(req, res, next) {
+    try {
+      const { code, campaignId } = req.query;
+      const isUnique = await campaignService.isCouponCodeUnique(req.businessId, code, campaignId);
+      return ApiResponse.success(
+        res,
+        { unique: isUnique, code: (code || '').toUpperCase() },
+        isUnique ? 'Coupon code is available' : 'Coupon code is already taken'
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getDashboardStats(req, res, next) {
     try {
       const stats = await campaignService.getDashboardStats(req.businessId);
@@ -100,6 +114,33 @@ class CampaignController {
     try {
       const template = await campaignService.createTemplate(req.businessId, req.body);
       return ApiResponse.created(res, template, 'Meta Verified template created successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async submitTemplateApproval(req, res, next) {
+    try {
+      const template = await campaignService.submitTemplateApproval(req.businessId, req.body);
+      return ApiResponse.created(res, template, 'Template submitted to Meta for approval. Status: PENDING');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getTemplateStatus(req, res, next) {
+    try {
+      const status = await campaignService.getTemplateStatus(req.businessId, req.params.id);
+      return ApiResponse.success(res, status, 'Template approval status retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async approveTemplate(req, res, next) {
+    try {
+      const template = await campaignService.approveTemplate(req.businessId, req.params.id);
+      return ApiResponse.success(res, template, 'Template approved successfully. Campaigns can now be dispatched.');
     } catch (error) {
       next(error);
     }

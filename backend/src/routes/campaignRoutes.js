@@ -8,10 +8,14 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // Meta resources & KPIs
+router.get('/check-coupon-code', (req, res, next) => campaignController.checkCouponCode(req, res, next));
 router.get('/stats', (req, res, next) => campaignController.getDashboardStats(req, res, next));
 router.get('/categories', (req, res, next) => campaignController.getCategories(req, res, next));
 router.get('/templates', (req, res, next) => campaignController.getTemplates(req, res, next));
 router.post('/templates', (req, res, next) => campaignController.createTemplate(req, res, next));
+router.post('/templates/submit-approval', (req, res, next) => campaignController.submitTemplateApproval(req, res, next));
+router.get('/templates/:id/status', (req, res, next) => campaignController.getTemplateStatus(req, res, next));
+router.post('/templates/:id/approve', (req, res, next) => campaignController.approveTemplate(req, res, next));
 router.get('/channels', (req, res, next) => campaignController.getChannels(req, res, next));
 
 // Audience Groups CRUD (Isolated per businessId)

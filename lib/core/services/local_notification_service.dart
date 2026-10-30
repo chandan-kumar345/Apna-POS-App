@@ -84,7 +84,8 @@ class LocalNotificationService with WidgetsBindingObserver {
           void tryShowOrderDialog() {
             attempts++;
             final ctx = navigatorKey.currentContext;
-            if (ctx != null) {
+            final isSplash = ctx != null && ctx.widget.toString().contains('SplashScreen');
+            if (ctx != null && !isSplash) {
               WhatsAppOrderActionDialog.show(
                 ctx,
                 orderId: orderId,
@@ -97,7 +98,7 @@ class LocalNotificationService with WidgetsBindingObserver {
                 itemsPayload: itemsPayload,
                 createdAt: createdAt,
               );
-            } else if (attempts < 30) {
+            } else if (attempts < 40) {
               Future.delayed(const Duration(milliseconds: 250), tryShowOrderDialog);
             }
           }

@@ -54,7 +54,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   // New WhatsApp UI State
   String _selectedFilter = 'All'; // 'All' | 'Unread' | 'Groups'
   int _selectedBottomNavIndex = 0; // 0: Chats, 1: Updates, 2: Communities, 3: Calls
-  final bool _showIPhoneFrame = true; // Authentic iPhone Phone Frame
+  bool _useAndroidPhoneMockup = true; // Authentic Android Phone Mockup frame for chat screen
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
@@ -79,19 +79,42 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     // Attach real-time reactive WebSocket stream for sub-50ms message arrival
     _messageSub = _chatService.onMessageReceived.listen((msg) {
       if (!mounted) return;
-      if (_selectedChat != null && _selectedChat!.id == msg.chatId) {
+      if (_selectedChat != null && (_selectedChat!.id == msg.chatId || _isMatchingPhone(_selectedChat!.customerPhone, msg.customerPhone))) {
         final alreadyPresent = _messages.any((m) =>
             m.id == msg.id ||
             (m.whatsappMessageId.isNotEmpty && m.whatsappMessageId == msg.whatsappMessageId));
         if (!alreadyPresent) {
           setState(() {
             _messages.add(msg);
+            _selectedChat = _selectedChat!.copyWith(
+              lastMessage: msg.messageType == 'image' ? '📷 Photo' : (msg.text.isNotEmpty ? msg.text : 'New message'),
+              lastMessageAt: msg.timestamp,
+              lastMessageDirection: msg.direction,
+            );
+            final idx = _chats.indexWhere((c) => c.id == _selectedChat!.id);
+            if (idx != -1) {
+              _chats[idx] = _selectedChat!;
+            }
           });
           _scrollToBottom();
           // Real-time audio feedback for incoming chat message
           SoundService.playNotificationSound();
           // Silently mark as read in background
           _chatService.markRead(msg.chatId);
+        }
+      } else {
+        final idx = _chats.indexWhere((c) => c.id == msg.chatId || _isMatchingPhone(c.customerPhone, msg.customerPhone));
+        if (idx != -1) {
+          setState(() {
+            _chats[idx] = _chats[idx].copyWith(
+              lastMessage: msg.messageType == 'image' ? '📷 Photo' : (msg.text.isNotEmpty ? msg.text : 'New message'),
+              lastMessageAt: msg.timestamp,
+              lastMessageDirection: msg.direction,
+              unreadCount: msg.isIncoming ? _chats[idx].unreadCount + 1 : _chats[idx].unreadCount,
+            );
+            final item = _chats.removeAt(idx);
+            _chats.insert(0, item);
+          });
         }
       }
     });
@@ -101,7 +124,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       setState(() {
         _chats = updatedChats;
         if (_selectedChat != null) {
-          final found = updatedChats.where((c) => c.id == _selectedChat!.id).firstOrNull;
+          final found = updatedChats.where((c) => c.id == _selectedChat!.id || _isMatchingPhone(c.customerPhone, _selectedChat!.customerPhone)).firstOrNull;
           if (found != null) {
             _selectedChat = found;
           }
@@ -243,7 +266,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           _selectedChat = updatedChat;
         }
 
-        final msgs = await _chatService.getChatMessages(_selectedChat!.id);
+        final msgs = await _chatService.getChatMessages(_selectedChat!.id, forceRefresh: true);
         if (!mounted) return;
 
         final bool hasChanged = msgs.length != _messages.length ||
@@ -251,7 +274,23 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.status != _messages.last.status);
 
         if (hasChanged) {
-          setState(() => _messages = msgs);
+          setState(() {
+            _messages = msgs;
+            if (msgs.isNotEmpty) {
+              final latest = msgs.last;
+              _selectedChat = _selectedChat!.copyWith(
+                lastMessage: latest.messageType == 'image'
+                    ? '📷 Photo'
+                    : (latest.text.isNotEmpty ? latest.text : 'New message'),
+                lastMessageAt: latest.timestamp,
+                lastMessageDirection: latest.direction,
+              );
+              final idx = _chats.indexWhere((c) => c.id == _selectedChat!.id);
+              if (idx != -1) {
+                _chats[idx] = _selectedChat!;
+              }
+            }
+          });
           // Only scroll down if merchant is already viewing recent messages
           if (_scrollController.hasClients &&
               _scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
@@ -266,10 +305,33 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     MetaWhatsAppChatScreen.activeChatId = chat.id;
     final int unreadCountAtOpen = chat.unreadCount;
 
+    // Instant synchronous 0ms render from memory cache or last message preview
+    final cachedMsgs = _chatService.getCachedMessages(chat.id);
+    final initialMsgs = (cachedMsgs != null && cachedMsgs.isNotEmpty)
+        ? List<WhatsAppMessageModel>.from(cachedMsgs)
+        : (chat.lastMessage.isNotEmpty
+            ? [
+                WhatsAppMessageModel(
+                  id: 'init_${chat.id}',
+                  chatId: chat.id,
+                  customerPhone: chat.customerPhone,
+                  direction: chat.lastMessageDirection,
+                  text: chat.lastMessage,
+                  status: 'DELIVERED',
+                  timestamp: chat.lastMessageAt,
+                ),
+              ]
+            : <WhatsAppMessageModel>[]);
+
     setState(() {
       _selectedChat = chat;
-      _isLoadingMessages = true;
+      _messages = initialMsgs;
+      _isLoadingMessages = initialMsgs.isEmpty;
     });
+
+    if (initialMsgs.isNotEmpty) {
+      _scrollToBottom(immediate: true);
+    }
 
     // Background silent DP sync if chat currently has no avatar
     if (_resolveChatAvatar(chat) == null || _resolveChatAvatar(chat)!.isEmpty) {
@@ -289,19 +351,40 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     }
 
     try {
-      final msgs = await _chatService.getChatMessages(chat.id);
+      // Fetch fresh messages from server so latest messages (e.g. 2:20 AM Checkout / cart) are always synchronized
+      final freshMsgs = await _chatService.getChatMessages(chat.id, forceRefresh: true);
       if (mounted) {
+        final effectiveMsgs = freshMsgs.isNotEmpty ? freshMsgs : _messages;
+
         setState(() {
-          _messages = msgs;
+          _messages = effectiveMsgs;
           _isLoadingMessages = false;
+
+          // Keep selected chat and chat list preview strictly up to date with the newest message in the conversation
+          if (effectiveMsgs.isNotEmpty) {
+            final latest = effectiveMsgs.last;
+            final updatedChat = chat.copyWith(
+              lastMessage: latest.messageType == 'image'
+                  ? '📷 Photo'
+                  : (latest.text.isNotEmpty ? latest.text : 'New message'),
+              lastMessageAt: latest.timestamp,
+              lastMessageDirection: latest.direction,
+              unreadCount: 0,
+            );
+            _selectedChat = updatedChat;
+            final idx = _chats.indexWhere((c) => c.id == chat.id);
+            if (idx != -1) {
+              _chats[idx] = updatedChat;
+            }
+          }
         });
 
         // Smart scroll algorithm:
         // If there were unread messages, scroll smoothly to the first unread message so the merchant sees what was sent!
         // If all messages were already read, scroll smoothly to the bottom to show the latest message.
         int? unreadMarker;
-        if (unreadCountAtOpen > 0 && msgs.isNotEmpty) {
-          unreadMarker = (msgs.length - unreadCountAtOpen).clamp(0, msgs.length - 1);
+        if (unreadCountAtOpen > 0 && effectiveMsgs.isNotEmpty) {
+          unreadMarker = (effectiveMsgs.length - unreadCountAtOpen).clamp(0, effectiveMsgs.length - 1);
           _scrollToIndex(unreadMarker);
         } else {
           _scrollToBottom();
@@ -341,12 +424,65 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     });
   }
 
+  /// Checks whether phone numbers refer to the same customer contact
+  bool _isMatchingPhone(String a, String b) {
+    final cleanA = a.replaceAll(RegExp(r'\D'), '');
+    final cleanB = b.replaceAll(RegExp(r'\D'), '');
+    if (cleanA.isEmpty || cleanB.isEmpty) return false;
+    if (cleanA == cleanB) return true;
+    final last10A = cleanA.length >= 10 ? cleanA.substring(cleanA.length - 10) : cleanA;
+    final last10B = cleanB.length >= 10 ? cleanB.substring(cleanB.length - 10) : cleanB;
+    return last10A == last10B;
+  }
+
+  /// Checks whether the Meta 24-hour customer service window is OPEN for a given chat
+  bool _isChat24HourWindowActive(WhatsAppChatModel chat, [List<WhatsAppMessageModel>? msgs]) {
+    // 1. Check messages in current conversation
+    if (msgs != null && msgs.isNotEmpty) {
+      final incoming = msgs.reversed.where((m) => m.isIncoming).firstOrNull;
+      if (incoming != null) {
+        final diff = DateTime.now().difference(incoming.timestamp.toLocal());
+        if (diff.isNegative) return true; // Clock skew protection
+        return diff < const Duration(hours: 24);
+      }
+    }
+
+    // 2. Check cached messages in memory
+    final cached = _chatService.getCachedMessages(chat.id);
+    if (cached != null && cached.isNotEmpty) {
+      final incoming = cached.reversed.where((m) => m.isIncoming).firstOrNull;
+      if (incoming != null) {
+        final diff = DateTime.now().difference(incoming.timestamp.toLocal());
+        if (diff.isNegative) return true;
+        return diff < const Duration(hours: 24);
+      }
+    }
+
+    // 3. Check chat.lastIncomingAt (persisted across AI/outgoing bot replies!)
+    if (chat.lastIncomingAt != null) {
+      final diff = DateTime.now().difference(chat.lastIncomingAt!.toLocal());
+      if (diff.isNegative) return true;
+      return diff < const Duration(hours: 24);
+    }
+
+    // 4. Check backend calculated status if available
+    if (chat.is24HourWindowActive != null) {
+      return chat.is24HourWindowActive!;
+    }
+
+    // 5. Fall back to chat model's lastMessageDirection & lastMessageAt
+    if (chat.lastMessageDirection.toUpperCase() == 'INCOMING') {
+      final diff = DateTime.now().difference(chat.lastMessageAt.toLocal());
+      if (diff.isNegative) return true;
+      return diff < const Duration(hours: 24);
+    }
+
+    return false;
+  }
+
   bool get _is24HourWindowActive {
     if (_selectedChat == null) return true;
-    if (_messages.isEmpty) return true;
-    final incoming = _messages.reversed.where((m) => m.direction == 'INCOMING').firstOrNull;
-    if (incoming == null) return false;
-    return DateTime.now().difference(incoming.timestamp) < const Duration(hours: 24);
+    return _isChat24HourWindowActive(_selectedChat!, _messages);
   }
 
   bool get _is24HourWindowClosed => !_is24HourWindowActive;
@@ -403,15 +539,26 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     } catch (_) {}
   }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+  void _scrollToBottom({bool immediate = false}) {
+    void doScroll() {
+      if (!_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      if (max <= 0) return;
+      if (immediate) {
+        _scrollController.jumpTo(max);
+      } else {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 80,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
+          max + 120,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
         );
       }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      doScroll();
+      Future.delayed(const Duration(milliseconds: 60), doScroll);
+      Future.delayed(const Duration(milliseconds: 180), doScroll);
     });
   }
 
@@ -842,25 +989,37 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
                           // 5. Initial WhatsApp Message Field with Character Counter & Approved Template Picker
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Initial WhatsApp Message',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF0F172A),
+                              Flexible(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Flexible(
+                                      child: Text(
+                                        'Initial WhatsApp Message',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      '*',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFEF4444),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 3),
-                              const Text(
-                                '*',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFEF4444),
-                                ),
-                              ),
-                              const Spacer(),
+                              const SizedBox(width: 8),
                               // Header Action Pill to Pick Approved Template
                               InkWell(
                                 onTap: () => openTemplatePickerModal(setSheetState),
@@ -885,7 +1044,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        selectedTemplate != null ? 'Template: ${selectedTemplate!.name}' : 'Use Approved Template',
+                                        selectedTemplate != null ? 'Template' : 'Template',
                                         style: const TextStyle(
                                           fontSize: 10.5,
                                           fontWeight: FontWeight.w700,
@@ -1612,7 +1771,6 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   Widget _buildPosStyleTopHeader() {
     final companyTitle = _db.restaurant?.name ?? _db.currentUser?.companyName ?? 'Apna POS';
-    final phoneId = _connectionInfo?.phoneNumberId ?? _db.whatsAppPhoneId;
 
     return Container(
       width: double.infinity,
@@ -1651,7 +1809,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
           const SizedBox(width: 10),
 
-          // HIGHLIGHTED COMPANY NAME BADGE WITH WHATSAPP LIVE PILL
+          // COMPANY NAME BADGE
           Expanded(
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1663,29 +1821,6 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     isNeumorphic: false,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: phoneId.isNotEmpty ? 'Phone ID: $phoneId' : 'Meta WhatsApp Cloud API',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF25D366).withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF25D366).withValues(alpha: 0.4)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        CircleAvatar(radius: 3, backgroundColor: Color(0xFF25D366)),
-                        SizedBox(width: 4),
-                        Text(
-                          'WhatsApp Live',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF25D366)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1695,17 +1830,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           const GlassConnectionStatusBadge(isDarkTheme: true, compact: true),
           const SizedBox(width: 10),
 
-          // Glass circular action buttons: Refresh and API Settings
+          // Glass circular action button: Refresh Chats
           _buildGlassHeaderButton(
             icon: Icons.refresh_rounded,
             tooltip: 'Refresh Chats',
             onTap: _loadConnectionAndChats,
-          ),
-          const SizedBox(width: 8),
-          _buildGlassHeaderButton(
-            icon: Icons.tune_rounded,
-            tooltip: 'API Credentials',
-            onTap: _showConfigureCredentialsDialog,
           ),
         ],
       ),
@@ -1757,24 +1886,39 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 color: Colors.white,
                 border: Border(right: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
               ),
-              child: _buildWhatsAppMobileChatList(isEmbedded: true),
+              child: _buildWhatsAppMobileChatList(isEmbedded: false),
             ),
           ),
-          // Right Column: Active Conversation or Desktop Empty State
+          // Right Column: Active Conversation inside Simulated Android Phone Mockup or Desktop Empty State
           Expanded(
             child: _selectedChat != null
-                ? (_showIPhoneFrame
-                    ? Container(
-                        color: const Color(0xFFF1F5F9),
-                        child: Center(
-                          child: _buildIPhoneFrame(
-                            maxWidth: 420,
-                            maxHeight: (constraints.maxHeight - 20).clamp(580.0, 840.0),
-                            child: _buildChatConversationView(isMobile: true),
-                          ),
-                        ),
-                      )
-                    : _buildChatConversationView(isMobile: false))
+                ? Container(
+                    color: const Color(0xFFF1F5F9), // Soft slate background emphasizing phone mockup
+                    child: LayoutBuilder(
+                      builder: (context, chatConstraints) {
+                        return Stack(
+                          children: [
+                            Positioned.fill(
+                              child: _useAndroidPhoneMockup
+                                  ? Center(
+                                      child: _buildAndroidPhoneMockup(
+                                        maxHeight: chatConstraints.maxHeight,
+                                        maxWidth: (chatConstraints.maxWidth - 32).clamp(360.0, 480.0),
+                                        child: _buildChatConversationView(isMobile: true),
+                                      ),
+                                    )
+                                  : _buildChatConversationView(isMobile: false),
+                            ),
+                            Positioned(
+                              top: 12,
+                              right: 16,
+                              child: _buildMockupTogglePill(),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  )
                 : _buildDesktopEmptyChatState(),
           ),
         ],
@@ -1783,144 +1927,195 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   Widget _buildCenteredPhoneLayout(BoxConstraints constraints) {
-    final Widget content = _selectedChat != null
-        ? _buildChatConversationView(isMobile: true)
-        : _buildWhatsAppMobileChatList(isEmbedded: false);
-
-    if (!_showIPhoneFrame) {
-      return content;
+    if (_selectedChat != null) {
+      if (constraints.maxWidth >= 520 && _useAndroidPhoneMockup) {
+        return Container(
+          color: const Color(0xFFF1F5F9),
+          child: Center(
+            child: _buildAndroidPhoneMockup(
+              maxHeight: constraints.maxHeight,
+              maxWidth: (constraints.maxWidth - 24).clamp(340.0, 480.0),
+              child: _buildChatConversationView(isMobile: true),
+            ),
+          ),
+        );
+      }
+      return _buildChatConversationView(isMobile: true);
     }
+    return _buildWhatsAppMobileChatList(isEmbedded: false);
+  }
 
-    return Center(
-      child: _buildIPhoneFrame(
-        maxWidth: constraints.maxWidth,
-        maxHeight: constraints.maxHeight,
-        child: content,
+  Widget _buildMockupTogglePill() {
+    return InkWell(
+      onTap: () => setState(() => _useAndroidPhoneMockup = !_useAndroidPhoneMockup),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _useAndroidPhoneMockup ? Icons.phone_android_rounded : Icons.fullscreen_rounded,
+              size: 14,
+              color: const Color(0xFF0F172A),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              _useAndroidPhoneMockup ? 'Android Phone' : 'Full Screen',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  /// Authentic iPhone Device Mockup Frame with Dynamic Island, Titanium Bezel & Home Bar.
-  /// Retains titanium frame, outer bezel, and rounded geometry permanently even when the keyboard opens.
-  Widget _buildIPhoneFrame({required Widget child, required double maxWidth, required double maxHeight}) {
-    final bool isMobile = maxWidth < 500;
+  /// Authentic Android Device Mockup Frame with Punch-Hole Camera, Curved Line, and Sleek Borders.
+  /// Designed specifically for the chat conversation view.
+  Widget _buildAndroidPhoneMockup({
+    required Widget child,
+    required double maxHeight,
+    double? maxWidth,
+  }) {
+    final double targetWidth = (maxWidth ?? 440.0).clamp(350.0, 470.0);
+    final double targetHeight = (maxHeight - 20.0).clamp(540.0, 920.0);
 
-    final double frameWidth = isMobile ? maxWidth : 415.0;
-    final double frameHeight = maxHeight;
-    final double outerRadius = isMobile ? 36.0 : 46.0;
-    final double innerRadius = isMobile ? 28.0 : 38.0;
-    final double borderWidth = isMobile ? 5.0 : 7.5;
-    final EdgeInsets margin = isMobile
-        ? const EdgeInsets.symmetric(horizontal: 4, vertical: 4)
-        : const EdgeInsets.symmetric(horizontal: 12, vertical: 8);
-
-    return Center(
-      child: Container(
-        width: frameWidth,
-        height: frameHeight,
-        margin: margin,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F172A), // Dark Titanium Bezel
-          borderRadius: BorderRadius.circular(outerRadius),
-          border: Border.all(color: const Color(0xFF334155), width: borderWidth),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.38),
-              offset: const Offset(0, 18),
-              blurRadius: 36,
-              spreadRadius: 2,
-            ),
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.18),
-              offset: const Offset(-1, -1),
-              blurRadius: 4,
-            ),
-          ],
+    return Container(
+      width: targetWidth,
+      height: targetHeight,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A), // Dark Android Titanium / Obsidian chassis
+        borderRadius: BorderRadius.circular(38),
+        border: Border.all(
+          color: const Color(0xFF334155), // Sleek metallic phone bezel
+          width: 7.0,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(innerRadius),
-          child: Container(
-            color: Colors.white,
-            child: Column(
-              children: [
-                // Top Status Bar with Dynamic Island notch
-                _buildPhoneStatusBar(),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            offset: const Offset(0, 16),
+            blurRadius: 32,
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.12),
+            offset: const Offset(-1, -1),
+            blurRadius: 4,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: Container(
+          color: const Color(0xFFEFEAE2),
+          child: Column(
+            children: [
+              // 1. Android Status Bar with Real-time Clock, Centered Punch-Hole Camera, and Status Icons
+              _buildAndroidStatusBar(),
 
-                // WhatsApp View Content
-                Expanded(child: child),
+              // 2. Chat Conversation Content
+              Expanded(child: child),
 
-                // Bottom Home Bar Indicator
-                _buildPhoneHomeIndicator(),
-              ],
-            ),
+              // 3. Android Home Gesture Bar Indicator
+              _buildAndroidNavigationBar(),
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// iPhone Status Bar: Time, Dynamic Island with Camera lens, Signal, WiFi, Battery
-  Widget _buildPhoneStatusBar() {
+  /// Android Status Bar with Clock, Centered Punch-Hole Camera, and System Indicators
+  Widget _buildAndroidStatusBar() {
     final now = DateTime.now();
     final timeStr = DateFormat('h:mm').format(now);
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 5),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Clock
+          // Android Time on left
           SizedBox(
-            width: 58,
+            width: 55,
             child: Text(
               timeStr,
               style: const TextStyle(
-                color: Color(0xFF000000),
-                fontSize: 13,
+                color: Color(0xFF1E293B),
+                fontSize: 12.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+                letterSpacing: -0.2,
               ),
             ),
           ),
 
-          // Dynamic Island Notch with glossy front camera
+          // Android Centered Punch-Hole Camera
           Container(
-            width: 108,
-            height: 25,
+            width: 12,
+            height: 12,
             decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  width: 9,
-                  height: 9,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
-                  ),
+              color: const Color(0xFF050505),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFF334155),
+                width: 1.2,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 2,
                 ),
               ],
             ),
+            child: Center(
+              child: Container(
+                width: 3.5,
+                height: 3.5,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1E293B),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
           ),
 
-          // Status Icons
+          // Android System Icons: 5G, Wi-Fi, Battery
           const SizedBox(
-            width: 58,
+            width: 65,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Icon(Icons.signal_cellular_alt_rounded, size: 14, color: Colors.black),
-                SizedBox(width: 3),
-                Icon(Icons.wifi_rounded, size: 14, color: Colors.black),
-                SizedBox(width: 3),
-                Icon(Icons.battery_full_rounded, size: 18, color: Colors.black),
+                Text(
+                  '5G',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                SizedBox(width: 4),
+                Icon(Icons.wifi_rounded, size: 14, color: Color(0xFF475569)),
+                SizedBox(width: 4),
+                Icon(Icons.battery_5_bar_rounded, size: 15, color: Color(0xFF475569)),
               ],
             ),
           ),
@@ -1929,22 +2124,21 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// iPhone Home Indicator Bar
-  Widget _buildPhoneHomeIndicator() {
+  /// Android Gesture Navigation Bar pill
+  Widget _buildAndroidNavigationBar() {
     final hasKeyboard = MediaQuery.of(context).viewInsets.bottom > 0;
     if (hasKeyboard) return const SizedBox.shrink();
 
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.only(bottom: 6, top: 4),
-      child: Center(
-        child: Container(
-          width: 120,
-          height: 4.5,
-          decoration: BoxDecoration(
-            color: const Color(0xFF0F172A),
-            borderRadius: BorderRadius.circular(10),
-          ),
+      color: const Color(0xFFEFEAE2),
+      height: 14,
+      alignment: Alignment.center,
+      child: Container(
+        width: 76,
+        height: 3.5,
+        decoration: BoxDecoration(
+          color: const Color(0xFF94A3B8),
+          borderRadius: BorderRadius.circular(2),
         ),
       ),
     );
@@ -1952,35 +2146,35 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   Widget _buildDesktopEmptyChatState() {
     return Container(
-      color: const Color(0xFFF8FAFC),
-      padding: const EdgeInsets.all(28),
+      color: const Color(0xFFF0F2F5), // Authentic WhatsApp Web desktop surface
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
       child: Center(
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 90,
-                height: 90,
+                width: 96,
+                height: 96,
                 decoration: BoxDecoration(
                   color: const Color(0xFFE8FDF2),
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+                  border: Border.all(color: const Color(0xFFA7F3D0), width: 2),
                   boxShadow: const [
-                    BoxShadow(color: Color(0x14059669), blurRadius: 18, offset: Offset(0, 6)),
+                    BoxShadow(color: Color(0x14059669), blurRadius: 20, offset: Offset(0, 6)),
                   ],
                 ),
                 child: const Center(
-                  child: Icon(Icons.chat_bubble_rounded, size: 44, color: Color(0xFF00A884)),
+                  child: Icon(Icons.chat_bubble_rounded, size: 48, color: Color(0xFF00A884)),
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
               const Text(
-                'Apna POS WhatsApp Live Chat',
+                'WhatsApp Web',
                 style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF41525D),
                   letterSpacing: -0.4,
                 ),
               ),
@@ -1988,7 +2182,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
               const Text(
                 'Send and receive real-time messages with your customers via Meta Cloud API.\nSelect any chat from the left panel or start a new conversation.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B), height: 1.5),
+                style: TextStyle(fontSize: 13.5, color: Color(0xFF667781), height: 1.5),
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
@@ -1999,9 +2193,21 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   backgroundColor: const Color(0xFF00A884),
                   foregroundColor: Colors.white,
                   elevation: 2,
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                 ),
+              ),
+              const SizedBox(height: 36),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.lock_rounded, size: 13, color: Color(0xFF8696A0)),
+                  SizedBox(width: 6),
+                  Text(
+                    'End-to-end encrypted via Meta Cloud API',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF8696A0), fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2465,7 +2671,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           _buildBottomNavItem(
             index: 3,
             label: 'Calls',
-            icon: Icons.call_outlined,
+            icon: Icons.phone_rounded,
             isSelected: _selectedBottomNavIndex == 3,
           ),
         ],
@@ -2727,17 +2933,17 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+        color: const Color(0xFFE2E8F0),
         shape: BoxShape.circle,
         border: Border.all(
-          color: isSelected ? const Color(0xFF10B981) : Colors.white,
-          width: isSelected ? 1.8 : 1.2,
+          color: Colors.white,
+          width: 1.2,
         ),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: (isSelected ? const Color(0xFF10B981) : const Color(0xFF0F172A)).withValues(alpha: 0.08),
+            color: Color(0x140F172A),
             blurRadius: 4,
-            offset: const Offset(0, 1.5),
+            offset: Offset(0, 1.5),
           ),
         ],
       ),
@@ -3352,35 +3558,38 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   /// Floating Neumorphic Chat Card matching reference image
   Widget _buildChatCard(WhatsAppChatModel chat) {
     final isSelected = _selectedChat != null && _selectedChat!.id == chat.id;
+    final isWindowOpen = _isChat24HourWindowActive(chat, isSelected ? _messages : null);
+    final dotColor = isWindowOpen ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFF0FDF4) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
+        color: isSelected ? const Color(0xFFF0F2F5) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          if (isSelected)
+            const BoxShadow(
+              color: Color(0x0A000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
         ],
         border: Border.all(
-          color: isSelected ? const Color(0xFF10B981) : const Color(0xFFF1F5F9),
-          width: isSelected ? 1.5 : 1,
+          color: isSelected ? const Color(0xFFCBD5E1) : const Color(0xFFF1F5F9),
+          width: 1,
         ),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           onTap: () => _selectChat(chat),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                // Soft avatar circle with DP support
+                // Soft avatar circle with DP support (profile badge dot removed per user request)
                 _buildChatAvatar(chat, size: 46, isSelected: isSelected),
                 const SizedBox(width: 14),
                 // Chat Info
@@ -3392,15 +3601,44 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              _resolveChatDisplayName(chat),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                                color: Color(0xFF0F172A),
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _resolveChatDisplayName(chat),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                // 24-hour window status dot (Green if open, Red if closed)
+                                Tooltip(
+                                  message: isWindowOpen
+                                      ? '24h Window OPEN (Green dot)'
+                                      : '24h Window CLOSED (Red dot - Template required)',
+                                  child: Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: dotColor,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: dotColor.withValues(alpha: 0.6),
+                                          blurRadius: 3,
+                                          spreadRadius: 0.5,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -3543,95 +3781,97 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     }
     _previousBottomInset = bottomInset;
 
-    return Column(
-      children: [
-        // 1. Redesigned Conversation Header (Matching Reference Image)
-        _buildConversationHeader(),
+    return Container(
+      color: const Color(0xFFEFEAE2), // Authentic WhatsApp Wallpaper background color
+      child: Column(
+        children: [
+          // 1. WhatsApp Conversation Header
+          _buildConversationHeader(),
 
-        // 2. Message List with dynamic "Today" / "Yesterday" date grouping and Neumorphic Bubble styling
-        Expanded(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFFFAFCFA),
-                  Color(0xFFF1FAF5),
-                  Color(0xFFF8FAFC),
-                ],
-              ),
+          // 2. Message List over WhatsApp Doodle Wallpaper
+          Expanded(
+            child: Stack(
+              children: [
+                // Authentic WhatsApp Doodle Wallpaper Pattern
+                const Positioned.fill(
+                  child: CustomPaint(
+                    painter: WhatsAppDoodlePainter(),
+                  ),
+                ),
+                Positioned.fill(
+                  child: _isLoadingMessages
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A884), strokeWidth: 2.5))
+                      : _messages.isEmpty
+                          ? Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 3)),
+                                  ],
+                                ),
+                                child: const Text(
+                                  'No messages yet',
+                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _scrollController,
+                              addAutomaticKeepAlives: false,
+                              addRepaintBoundaries: true,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              itemCount: _messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = _messages[index];
+                                final bool isFirst = index == 0;
+                                final bool showDateDivider = isFirst || !_isSameDay(_messages[index - 1].timestamp, msg.timestamp);
+                                final bool isUnreadMarker = _unreadMarkerIndex != null && index == _unreadMarkerIndex;
+
+                                final messageContent = Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isUnreadMarker) _buildUnreadDivider(),
+                                    _buildMessageBubble(msg),
+                                  ],
+                                );
+
+                                if (showDateDivider) {
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildDateDivider(_getDateDividerText(msg.timestamp)),
+                                      messageContent,
+                                    ],
+                                  );
+                                }
+                                return messageContent;
+                              },
+                            ),
+                ),
+              ],
             ),
-            child: _isLoadingMessages
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669), strokeWidth: 2.5))
-                : _messages.isEmpty
-                    ? Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: const [
-                              BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 3)),
-                            ],
-                          ),
-                          child: const Text(
-                            'No messages yet',
-                            style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                                                addAutomaticKeepAlives: false,
-                        addRepaintBoundaries: true,
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final msg = _messages[index];
-                          final bool isFirst = index == 0;
-                          final bool isNewDay = isFirst || !_isSameDay(_messages[index - 1].timestamp, msg.timestamp);
-                          final bool isUnreadMarker = _unreadMarkerIndex != null && index == _unreadMarkerIndex;
-
-                          final messageContent = Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isUnreadMarker) _buildUnreadDivider(),
-                              _buildMessageBubble(msg),
-                            ],
-                          );
-
-                          if (isNewDay) {
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildDateDivider(_getDateDividerText(msg.timestamp)),
-                                messageContent,
-                              ],
-                            );
-                          }
-                          return messageContent;
-                        },
-                      ),
           ),
-        ),
 
-        // 2.5 Meta 24-Hour Service Window Notice (shown when window is closed)
-        if (_is24HourWindowClosed)
-          _build24HourWindowBanner(),
+          // 2.5 Meta 24-Hour Service Window Notice (shown when window is closed)
+          if (_is24HourWindowClosed)
+            _build24HourWindowBanner(),
 
-        // 3. Bottom Input Bar: Only plus, text box, and send button lift up on keyboard open, and smoothly drop down on keyboard close
-        AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(bottom: bottomInset),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
-            color: Colors.transparent,
-            child: _buildConversationInputBar(),
+          // 3. Bottom Input Bar: Only plus, text box, and send button lift up on keyboard open, and smoothly drop down on keyboard close
+          AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+              color: Colors.transparent,
+              child: _buildConversationInputBar(),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -3725,11 +3965,29 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Conversation screen header matching uploaded reference image (Call and Video call buttons removed per request)
+  /// Conversation screen header matching authentic WhatsApp UI
   Widget _buildConversationHeader() {
+    final phoneDisplay = _selectedChat!.customerPhone.startsWith('+')
+        ? _selectedChat!.customerPhone
+        : '+${_selectedChat!.customerPhone}';
+    final isWindowOpen = _is24HourWindowActive;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
-      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           // Circular Back Button
@@ -3765,7 +4023,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                      fontSize: 15,
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -3773,23 +4031,21 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   Row(
                     children: [
                       Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF22C55E),
+                        width: 6.5,
+                        height: 6.5,
+                        decoration: BoxDecoration(
+                          color: isWindowOpen ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
-                          _selectedChat!.customerPhone.startsWith('+')
-                              ? _selectedChat!.customerPhone
-                              : '+${_selectedChat!.customerPhone}',
+                          phoneDisplay,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 11,
+                            fontSize: 11.5,
                             color: Color(0xFF64748B),
                             fontWeight: FontWeight.w500,
                           ),
@@ -4789,8 +5045,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Word-adaptive message bubble: bubble hugs short single-line messages tightly
-  /// and wraps multiline messages naturally up to max width without artificial spacers.
+  /// Authentic WhatsApp message bubble with speech tails, compact time, and blue double ticks
   Widget _buildMessageBubble(WhatsAppMessageModel msg) {
     final isOutgoing = msg.isOutgoing;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -4800,7 +5055,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
     final double maxBubbleWidth = (screenWidth >= 900
         ? 340.0
-        : (screenWidth >= 680 ? 320.0 : screenWidth * 0.74)).clamp(210.0, 310.0);
+        : (screenWidth >= 680 ? 320.0 : screenWidth * 0.74)).clamp(210.0, 320.0);
 
     final timeWidget = Row(
       mainAxisSize: MainAxisSize.min,
@@ -4809,7 +5064,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         Text(
           _formatTime(msg.timestamp),
           style: TextStyle(
-            fontSize: 10,
+            fontSize: 10.5,
             color: isOutgoing ? const Color(0xFF166534) : const Color(0xFF64748B),
             fontWeight: FontWeight.w500,
           ),
@@ -4821,163 +5076,168 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       ],
     );
 
+    final Color bubbleColor = isOutgoing ? const Color(0xFFD9FDD3) : Colors.white;
+
+    final bubbleBody = Container(
+      constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: bubbleColor,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(12),
+          topRight: const Radius.circular(12),
+          bottomLeft: Radius.circular(isOutgoing ? 12 : 2),
+          bottomRight: Radius.circular(isOutgoing ? 2 : 12),
+        ),
+        border: Border.all(
+          color: isOutgoing
+              ? const Color(0xFFC7EBC1).withValues(alpha: 0.6)
+              : const Color(0xFFE2E8F0),
+          width: 0.7,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C000000),
+            offset: Offset(0, 1),
+            blurRadius: 3,
+          ),
+        ],
+      ),
+      child: isSingleShortLine && !hasError
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Flexible(
+                  child: Text(
+                    msg.text,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF0F172A),
+                      height: 1.4,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 1),
+                  child: timeWidget,
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (msg.messageType == 'template') ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 5),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1FAE5),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.dashboard_customize_rounded, size: 11, color: Color(0xFF065F46)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Meta Approved Template',
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                if (hasMedia) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220, minWidth: 180),
+                      child: GestureDetector(
+                        onTap: msg.mediaUrl.isNotEmpty
+                            ? () => _openFullScreenImage(msg.mediaUrl, msg.text)
+                            : null,
+                        child: MouseRegion(
+                          cursor: msg.mediaUrl.isNotEmpty
+                              ? SystemMouseCursors.click
+                              : SystemMouseCursors.basic,
+                          child: _buildBubbleImage(msg.mediaUrl),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (msg.text.isNotEmpty) const SizedBox(height: 6),
+                ],
+                if (msg.text.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      msg.text,
+                      textAlign: TextAlign.left,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF0F172A),
+                        height: 1.4,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 3),
+                timeWidget,
+                if (hasError && msg.error != null && msg.error!.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  GestureDetector(
+                    onTap: () => _showReEngagementHelpDialog(msg.error!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFFECACA), width: 0.8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.info_outline_rounded, size: 12, color: Color(0xFFDC2626)),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              _formatErrorMessage(msg.error!),
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                color: Color(0xFFDC2626),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (_isReEngagementError(msg.error!)) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.help_outline_rounded, size: 11, color: Color(0xFFDC2626)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+    );
+
     return Align(
       alignment: isOutgoing ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: maxBubbleWidth,
-        ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 2.5),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: isOutgoing ? const Color(0xFFD9FDD3) : Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(isOutgoing ? 16 : 4),
-              bottomRight: Radius.circular(isOutgoing ? 4 : 16),
-            ),
-            border: Border.all(
-              color: isOutgoing
-                  ? const Color(0xFFBBF7D0).withValues(alpha: 0.8)
-                  : const Color(0xFFE2E8F0),
-              width: 0.8,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isOutgoing ? const Color(0x0A000000) : const Color(0x0C000000),
-                offset: const Offset(0, 1.5),
-                blurRadius: 5,
-              ),
-            ],
-          ),
-          child: isSingleShortLine && !hasError
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        msg.text,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF0F172A),
-                          height: 1.4,
-                          letterSpacing: -0.1,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 1),
-                      child: timeWidget,
-                    ),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (msg.messageType == 'template') ...[
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 5),
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD1FAE5),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.dashboard_customize_rounded, size: 11, color: Color(0xFF065F46)),
-                              SizedBox(width: 4),
-                              Text(
-                                'Meta Approved Template',
-                                style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (hasMedia) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 220, minWidth: 180),
-                          child: GestureDetector(
-                            onTap: msg.mediaUrl.isNotEmpty
-                                ? () => _openFullScreenImage(msg.mediaUrl, msg.text)
-                                : null,
-                            child: MouseRegion(
-                              cursor: msg.mediaUrl.isNotEmpty
-                                  ? SystemMouseCursors.click
-                                  : SystemMouseCursors.basic,
-                              child: _buildBubbleImage(msg.mediaUrl),
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (msg.text.isNotEmpty) const SizedBox(height: 6),
-                    ],
-                    if (msg.text.isNotEmpty)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          msg.text,
-                          textAlign: TextAlign.left,
-                          style: const TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF0F172A),
-                            height: 1.4,
-                            letterSpacing: -0.1,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 3),
-                    timeWidget,
-                    if (hasError && msg.error != null && msg.error!.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      GestureDetector(
-                        onTap: () => _showReEngagementHelpDialog(msg.error!),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFEF2F2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFFECACA), width: 0.8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.info_outline_rounded, size: 12, color: Color(0xFFDC2626)),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  _formatErrorMessage(msg.error!),
-                                  style: const TextStyle(
-                                    fontSize: 10.5,
-                                    color: Color(0xFFDC2626),
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              if (_isReEngagementError(msg.error!)) ...[
-                                const SizedBox(width: 4),
-                                const Icon(Icons.help_outline_rounded, size: 11, color: Color(0xFFDC2626)),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+        constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2.5),
+          child: bubbleBody,
         ),
       ),
     );
@@ -4986,15 +5246,15 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   Widget _buildStatusIcon(String status) {
     switch (status.toUpperCase()) {
       case 'READ':
-        return const Icon(Icons.done_all_rounded, size: 14, color: Color(0xFF38BDF8));
+        return const Icon(Icons.done_all_rounded, size: 15, color: Color(0xFF53BDEB));
       case 'DELIVERED':
-        return const Icon(Icons.done_all_rounded, size: 14, color: Color(0xFF94A3B8));
+        return const Icon(Icons.done_all_rounded, size: 15, color: Color(0xFF8696A0));
       case 'SENT':
-        return const Icon(Icons.check_rounded, size: 14, color: Color(0xFF94A3B8));
+        return const Icon(Icons.check_rounded, size: 15, color: Color(0xFF8696A0));
       case 'FAILED':
         return const Icon(Icons.error_outline_rounded, size: 14, color: Colors.red);
       default:
-        return const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF94A3B8));
+        return const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF8696A0));
     }
   }
 
@@ -5108,4 +5368,191 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       ),
     );
   }
+}
+
+/// Authentic WhatsApp chat bubble speech tail
+class WhatsAppBubbleTail extends StatelessWidget {
+  final bool isOutgoing;
+  final Color color;
+
+  const WhatsAppBubbleTail({
+    super.key,
+    required this.isOutgoing,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(6, 10),
+      painter: _WhatsAppBubbleTailPainter(isOutgoing: isOutgoing, color: color),
+    );
+  }
+}
+
+class _WhatsAppBubbleTailPainter extends CustomPainter {
+  final bool isOutgoing;
+  final Color color;
+
+  _WhatsAppBubbleTailPainter({required this.isOutgoing, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    if (isOutgoing) {
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.quadraticBezierTo(size.width * 0.3, size.height * 0.5, 0, size.height);
+      path.close();
+    } else {
+      path.moveTo(size.width, 0);
+      path.lineTo(0, 0);
+      path.quadraticBezierTo(size.width * 0.7, size.height * 0.5, size.width, size.height);
+      path.close();
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WhatsAppBubbleTailPainter oldDelegate) =>
+      oldDelegate.isOutgoing != isOutgoing || oldDelegate.color != color;
+}
+
+/// Vector WhatsApp Doodle Wallpaper Painter
+/// Draws authentic WhatsApp icons (speech bubble, coffee cup, clock, notes, camera, smiley)
+/// tiled seamlessly with subtle ~5% opacity on top of #EFEAE2 wallpaper.
+class WhatsAppDoodlePainter extends CustomPainter {
+  final Color doodleColor;
+
+  const WhatsAppDoodlePainter({
+    this.doodleColor = const Color(0x0C000000), // ~5% soft black on warm cream
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokePaint = Paint()
+      ..color = doodleColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
+    final fillPaint = Paint()
+      ..color = doodleColor
+      ..style = PaintingStyle.fill;
+
+    const double stepX = 130.0;
+    const double stepY = 130.0;
+
+    int col = 0;
+    for (double y = 18; y < size.height + 40; y += stepY) {
+      int row = 0;
+      final double offsetX = (col % 2 == 1) ? stepX / 2 : 0.0;
+      for (double x = -20 + offsetX; x < size.width + 40; x += stepX) {
+        final int patternIndex = (row + col * 3) % 8;
+        _drawDoodle(canvas, x, y, patternIndex, strokePaint, fillPaint);
+        row++;
+      }
+      col++;
+    }
+  }
+
+  void _drawDoodle(Canvas canvas, double x, double y, int pattern, Paint strokePaint, Paint fillPaint) {
+    switch (pattern) {
+      case 0:
+        // Speech Bubble
+        final rrect = RRect.fromRectAndRadius(Rect.fromLTWH(x, y, 22, 16), const Radius.circular(5));
+        canvas.drawRRect(rrect, strokePaint);
+        final tail = Path()
+          ..moveTo(x + 5, y + 16)
+          ..lineTo(x + 2, y + 21)
+          ..lineTo(x + 10, y + 16)
+          ..close();
+        canvas.drawPath(tail, strokePaint);
+        canvas.drawCircle(Offset(x + 7, y + 8), 1.2, fillPaint);
+        canvas.drawCircle(Offset(x + 11, y + 8), 1.2, fillPaint);
+        canvas.drawCircle(Offset(x + 15, y + 8), 1.2, fillPaint);
+        break;
+      case 1:
+        // Coffee Cup
+        final cup = Path()
+          ..moveTo(x, y + 4)
+          ..lineTo(x + 16, y + 4)
+          ..lineTo(x + 14, y + 16)
+          ..arcToPoint(Offset(x + 2, y + 16), radius: const Radius.circular(4), clockwise: true)
+          ..close();
+        canvas.drawPath(cup, strokePaint);
+        final handle = Path()
+          ..moveTo(x + 15, y + 6)
+          ..arcToPoint(Offset(x + 15, y + 13), radius: const Radius.circular(4), clockwise: false);
+        canvas.drawPath(handle, strokePaint);
+        canvas.drawLine(Offset(x + 5, y + 2), Offset(x + 5, y), strokePaint);
+        canvas.drawLine(Offset(x + 11, y + 2), Offset(x + 11, y), strokePaint);
+        break;
+      case 2:
+        // Clock
+        canvas.drawCircle(Offset(x + 9, y + 9), 9, strokePaint);
+        canvas.drawLine(Offset(x + 9, y + 9), Offset(x + 9, y + 4), strokePaint);
+        canvas.drawLine(Offset(x + 9, y + 9), Offset(x + 13, y + 9), strokePaint);
+        break;
+      case 3:
+        // Musical Note
+        final note = Path()
+          ..moveTo(x + 12, y)
+          ..lineTo(x + 12, y + 12)
+          ..lineTo(x + 4, y + 15)
+          ..moveTo(x + 4, y + 3)
+          ..lineTo(x + 12, y);
+        canvas.drawPath(note, strokePaint);
+        canvas.drawCircle(Offset(x + 3, y + 15), 3, fillPaint);
+        canvas.drawCircle(Offset(x + 11, y + 12), 3, fillPaint);
+        break;
+      case 4:
+        // Heart
+        final heart = Path()
+          ..moveTo(x + 8, y + 14)
+          ..cubicTo(x, y + 9, x, y + 2, x + 8, y + 6)
+          ..cubicTo(x + 16, y + 2, x + 16, y + 9, x + 8, y + 14)
+          ..close();
+        canvas.drawPath(heart, strokePaint);
+        break;
+      case 5:
+        // Camera
+        final cam = RRect.fromRectAndRadius(Rect.fromLTWH(x, y + 4, 18, 12), const Radius.circular(3));
+        canvas.drawRRect(cam, strokePaint);
+        final topBit = Path()
+          ..moveTo(x + 5, y + 4)
+          ..lineTo(x + 7, y + 1)
+          ..lineTo(x + 11, y + 1)
+          ..lineTo(x + 13, y + 4);
+        canvas.drawPath(topBit, strokePaint);
+        canvas.drawCircle(Offset(x + 9, y + 10), 3.5, strokePaint);
+        break;
+      case 6:
+        // Shopping Bag
+        final bag = RRect.fromRectAndRadius(Rect.fromLTWH(x, y + 5, 16, 14), const Radius.circular(3));
+        canvas.drawRRect(bag, strokePaint);
+        final bagHandle = Path()
+          ..moveTo(x + 4, y + 5)
+          ..arcToPoint(Offset(x + 12, y + 5), radius: const Radius.circular(4), clockwise: false);
+        canvas.drawPath(bagHandle, strokePaint);
+        break;
+      case 7:
+        // Smiley Face
+        canvas.drawCircle(Offset(x + 9, y + 9), 8.5, strokePaint);
+        canvas.drawCircle(Offset(x + 6, y + 7), 1, fillPaint);
+        canvas.drawCircle(Offset(x + 12, y + 7), 1, fillPaint);
+        final smile = Path()
+          ..moveTo(x + 6, y + 11)
+          ..arcToPoint(Offset(x + 12, y + 11), radius: const Radius.circular(3.5), clockwise: false);
+        canvas.drawPath(smile, strokePaint);
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant WhatsAppDoodlePainter oldDelegate) => false;
 }

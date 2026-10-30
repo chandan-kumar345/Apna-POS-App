@@ -200,6 +200,30 @@ class CampaignService {
     return created;
   }
 
+  /// Check if a coupon code is unique within the business
+  Future<bool> checkCouponCode(String code, {String? campaignId}) async {
+    if (code.trim().isEmpty) return false;
+    try {
+      final res = await _apiClient.get(
+        '${ApiEndpoints.campaigns}/check-coupon-code',
+        queryParameters: {
+          'code': code.trim().toUpperCase(),
+          'campaignId': ?campaignId,
+        },
+      );
+      if (res != null && res is Map<String, dynamic>) {
+        final data = res['data'] ?? res;
+        if (data is Map<String, dynamic>) {
+          return data['unique'] == true;
+        }
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[CampaignService.checkCouponCode] note: $e');
+      return true;
+    }
+  }
+
   /// Update campaign
   Future<CampaignModel?> updateCampaign(String id, Map<String, dynamic> data) async {
     try {
@@ -315,6 +339,54 @@ class CampaignService {
       }
     } catch (e) {
       debugPrint('[CampaignService.createTemplate] error: $e');
+    }
+    return null;
+  }
+
+  /// Submit template specifically for Meta WhatsApp approval review
+  Future<CampaignTemplateModel?> submitTemplateForApproval(Map<String, dynamic> data) async {
+    try {
+      final response = await _apiClient.post(ApiEndpoints.campaignTemplateSubmitApproval, data: data);
+      if (response != null && response is Map<String, dynamic>) {
+        final created = response['data'] ?? response;
+        if (created is Map<String, dynamic>) {
+          return CampaignTemplateModel.fromJson(created);
+        }
+      }
+    } catch (e) {
+      debugPrint('[CampaignService.submitTemplateForApproval] error: $e');
+    }
+    return null;
+  }
+
+  /// Check live approval status of a template from Meta
+  Future<Map<String, dynamic>?> checkTemplateApprovalStatus(String templateId) async {
+    try {
+      final response = await _apiClient.get(ApiEndpoints.campaignTemplateStatus(templateId));
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] ?? response;
+        if (data is Map<String, dynamic>) {
+          return data;
+        }
+      }
+    } catch (e) {
+      debugPrint('[CampaignService.checkTemplateApprovalStatus] error: $e');
+    }
+    return null;
+  }
+
+  /// Mark template as APPROVED (via Meta Webhook or Sandbox Verification)
+  Future<CampaignTemplateModel?> approveTemplate(String templateId) async {
+    try {
+      final response = await _apiClient.post(ApiEndpoints.campaignTemplateApprove(templateId));
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] ?? response;
+        if (data is Map<String, dynamic>) {
+          return CampaignTemplateModel.fromJson(data);
+        }
+      }
+    } catch (e) {
+      debugPrint('[CampaignService.approveTemplate] error: $e');
     }
     return null;
   }

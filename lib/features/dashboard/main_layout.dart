@@ -34,6 +34,7 @@ import '../staff/screens/staff_management_screen.dart';
 import '../staff/screens/staff_profile_screen.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/services/wallet_service.dart';
+import '../../core/services/local_notification_service.dart';
 
 
 /// Declarative Navigation Item Definition for dynamic sidebar rendering
@@ -494,6 +495,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         SocketService().connect(businessId: bizId);
         SocketService().joinAllRelevantRooms(businessId: bizId, userId: db.currentUser?.id);
       }
+      // Check for incoming orders delivered while app was asleep or closed
+      LocalNotificationService.checkAndShowPendingIncomingOrder();
+      db.checkAndPromptPendingWhatsAppOrders();
     });
   }
 

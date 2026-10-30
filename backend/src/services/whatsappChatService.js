@@ -134,9 +134,91 @@ class WhatsAppChatService {
       }
     }
 
+    // Deduplicate chats by customer phone (last 10 digits) and sync with latest WhatsAppMessage
+    let dedupedChats = [];
+    if (chats && chats.length > 0) {
+      const phoneToChatMap = new Map();
+      for (const ch of chats) {
+        const pClean = (ch.customerPhone || '').replace(/\D/g, '');
+        const last10 = pClean.slice(-10) || ch.customerPhone || ch._id.toString();
+        if (!phoneToChatMap.has(last10)) {
+          phoneToChatMap.set(last10, ch);
+          dedupedChats.push(ch);
+        } else {
+          const existing = phoneToChatMap.get(last10);
+          if (new Date(ch.lastMessageAt) > new Date(existing.lastMessageAt)) {
+            existing.lastMessage = ch.lastMessage;
+            existing.lastMessageAt = ch.lastMessageAt;
+            existing.lastMessageDirection = ch.lastMessageDirection;
+          }
+          existing.unreadCount = (existing.unreadCount || 0) + (ch.unreadCount || 0);
+        }
+      }
+
+      // Check if there are more recent WhatsAppMessage records in the database
+      await Promise.all(
+        dedupedChats.map(async (ch) => {
+          try {
+            const pClean = (ch.customerPhone || '').replace(/\D/g, '');
+            const last10 = pClean.slice(-10);
+            const phoneVariants = [ch.customerPhone, pClean, last10, `+91${last10}`, `91${last10}`].filter(Boolean);
+            const [latestMsg, latestIncoming] = await Promise.all([
+              WhatsAppMessage.findOne({
+                businessId: bId,
+                $or: [
+                  { chatId: ch._id },
+                  { customerPhone: { $in: phoneVariants } },
+                ],
+              }).sort({ timestamp: -1 }).lean(),
+              WhatsAppMessage.findOne({
+                businessId: bId,
+                direction: 'INCOMING',
+                $or: [
+                  { chatId: ch._id },
+                  { customerPhone: { $in: phoneVariants } },
+                ],
+              }).sort({ timestamp: -1 }).lean(),
+            ]);
+
+            if (latestIncoming) {
+              ch.lastIncomingAt = latestIncoming.timestamp;
+            }
+
+            if (latestMsg && (!ch.lastMessageAt || new Date(latestMsg.timestamp) > new Date(ch.lastMessageAt))) {
+              ch.lastMessage = latestMsg.messageType === 'image'
+                ? (latestMsg.text ? `📷 ${latestMsg.text}` : '📷 Photo')
+                : (latestMsg.text || 'Message');
+              ch.lastMessageAt = latestMsg.timestamp;
+              ch.lastMessageDirection = latestMsg.direction;
+            }
+
+            const is24HrOpen = ch.lastIncomingAt
+              ? (Date.now() - new Date(ch.lastIncomingAt).getTime() < 24 * 60 * 60 * 1000)
+              : (ch.lastMessageDirection === 'INCOMING' && (Date.now() - new Date(ch.lastMessageAt).getTime() < 24 * 60 * 60 * 1000));
+            ch.is24HourWindowActive = is24HrOpen;
+
+            WhatsAppChat.updateOne(
+              { _id: ch._id },
+              {
+                $set: {
+                  lastMessage: ch.lastMessage,
+                  lastMessageAt: ch.lastMessageAt,
+                  lastMessageDirection: ch.lastMessageDirection,
+                  ...(ch.lastIncomingAt ? { lastIncomingAt: ch.lastIncomingAt } : {}),
+                },
+              }
+            ).catch(() => {});
+          } catch (_) {}
+        })
+      );
+
+      // Re-sort dedupedChats by lastMessageAt descending
+      dedupedChats.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+    }
+
     return {
-      chats,
-      total,
+      chats: dedupedChats.length > 0 ? dedupedChats : chats,
+      total: dedupedChats.length > 0 ? dedupedChats.length : total,
       page: Number(page),
       limit: Number(limit),
     };
@@ -164,10 +246,58 @@ class WhatsAppChatService {
       await chat.save();
     }
 
-    const messages = await WhatsAppMessage.find({ chatId: cId, businessId: bId })
-      .sort({ timestamp: 1 })
-      .limit(Math.max(1, Number(limit)))
-      .lean();
+    const pClean = (chat.customerPhone || '').replace(/\D/g, '');
+    const last10 = pClean.slice(-10);
+    const phoneVariants = [chat.customerPhone, pClean, last10, `+91${last10}`, `91${last10}`].filter(Boolean);
+
+    const limitNum = Math.max(1, Number(limit) || 100);
+    const [rawMessages, latestIncoming] = await Promise.all([
+      WhatsAppMessage.find({
+        businessId: bId,
+        $or: [
+          { chatId: cId },
+          { customerPhone: { $in: phoneVariants } },
+        ],
+      })
+        .sort({ timestamp: -1 })
+        .limit(limitNum)
+        .lean(),
+      WhatsAppMessage.findOne({
+        businessId: bId,
+        direction: 'INCOMING',
+        $or: [
+          { chatId: cId },
+          { customerPhone: { $in: phoneVariants } },
+        ],
+      })
+        .sort({ timestamp: -1 })
+        .lean(),
+    ]);
+
+    // Reverse to chronological order (oldest to newest) for proper chat rendering
+    const messages = rawMessages.reverse();
+
+    if (latestIncoming) {
+      chat.lastIncomingAt = latestIncoming.timestamp;
+    }
+
+    const is24HrOpen = chat.lastIncomingAt
+      ? (Date.now() - new Date(chat.lastIncomingAt).getTime() < 24 * 60 * 60 * 1000)
+      : (chat.lastMessageDirection === 'INCOMING' && (Date.now() - new Date(chat.lastMessageAt).getTime() < 24 * 60 * 60 * 1000));
+    chat.is24HourWindowActive = is24HrOpen;
+
+    // Ensure conversation header summary reflects latest message in history
+    if (messages && messages.length > 0) {
+      const latestMsg = messages[messages.length - 1];
+      if (latestMsg && (!chat.lastMessageAt || new Date(latestMsg.timestamp) > new Date(chat.lastMessageAt))) {
+        chat.lastMessage = latestMsg.messageType === 'image'
+          ? (latestMsg.text ? `📷 ${latestMsg.text}` : '📷 Photo')
+          : (latestMsg.text || 'Message');
+        chat.lastMessageAt = latestMsg.timestamp;
+        chat.lastMessageDirection = latestMsg.direction;
+      }
+    }
+    await chat.save().catch(() => {});
 
     if (chat && !chat.avatarUrl) {
       const whatsappProfilePicService = require('./whatsappProfilePicService');
@@ -662,10 +792,14 @@ class WhatsAppChatService {
       user = await User.findById(userId).lean();
     }
 
-    // Always query by businessId + customerPhone to adhere strictly to the compound unique index
+    const pClean = (customerPhone || '').replace(/\D/g, '');
+    const last10 = pClean.slice(-10);
+    const phoneVariants = [normalizedPhone, customerPhone, pClean, last10, `+91${last10}`, `91${last10}`].filter(Boolean);
+
+    // Locate existing chat conversation across any phone representation
     let chat = await WhatsAppChat.findOne({
       businessId: bId,
-      customerPhone: normalizedPhone,
+      customerPhone: { $in: phoneVariants },
     });
 
     let resolvedName = customerName || '';
@@ -1103,6 +1237,7 @@ class WhatsAppChatService {
         lastMessage: lastMsgDisplay,
         lastMessageAt: incomingMsg.timestamp || new Date(),
         lastMessageDirection: 'INCOMING',
+        lastIncomingAt: incomingMsg.timestamp || new Date(),
         unreadCount: 1,
         status: 'ACTIVE',
       });
@@ -1119,6 +1254,7 @@ class WhatsAppChatService {
       chat.lastMessage = lastMsgDisplay;
       chat.lastMessageAt = incomingMsg.timestamp || new Date();
       chat.lastMessageDirection = 'INCOMING';
+      chat.lastIncomingAt = incomingMsg.timestamp || new Date();
       chat.unreadCount = (chat.unreadCount || 0) + 1;
       await chat.save();
     }

@@ -80,7 +80,7 @@ describe('Coupons Management & Validation APIs (/api/v1/coupons)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(false);
-    expect(res.body.message).toContain('Minimum eligible cart amount');
+    expect(res.body.message).toContain('Add products worth');
   });
 
   it('POST /api/v1/coupons/validate - should calculate percentage discount correctly with cap', async () => {

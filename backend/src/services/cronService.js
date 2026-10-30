@@ -3,7 +3,9 @@ const Business = require('../models/Business');
 const Order = require('../models/Order');
 const Sale = require('../models/Sale');
 const User = require('../models/User');
+const Campaign = require('../models/Campaign');
 const notificationService = require('./notificationService');
+const campaignService = require('./campaignService');
 
 class CronService {
   constructor() {
@@ -220,10 +222,100 @@ class CronService {
   }
 
   /**
+   * Process scheduled campaigns that have reached their delivery time
+   * Employs atomic locking (findOneAndUpdate { status: 'scheduled' } -> { status: 'processing' })
+   * to guarantee zero duplicate executions across cluster workers or intervals.
+   */
+  async processScheduledCampaignsJob() {
+    try {
+      const now = new Date();
+
+      // Find campaigns due for delivery
+      const dueCampaigns = await Campaign.find({
+        status: 'scheduled',
+        $or: [
+          {
+            'couponSettings.hasSendSchedule': true,
+            'couponSettings.scheduledAt': { $exists: true, $ne: null, $lte: now },
+          },
+          {
+            'couponSettings.hasSendSchedule': { $ne: true },
+            'schedule.scheduledAt': { $exists: true, $ne: null, $lte: now },
+          },
+        ],
+      }).select('_id name businessId couponSettings scheduledAt').lean();
+
+      if (!dueCampaigns || dueCampaigns.length === 0) return;
+
+      console.log(`[CronService] Found ${dueCampaigns.length} scheduled campaign(s) due for dispatch.`);
+
+      for (const camp of dueCampaigns) {
+        // Atomic lock: Only the worker that successfully transitions status executes the dispatch
+        const locked = await Campaign.findOneAndUpdate(
+          { _id: camp._id, status: 'scheduled' },
+          {
+            status: 'processing',
+            $push: {
+              executionLogs: {
+                timestamp: new Date(),
+                status: 'processing',
+                message: 'Scheduler locked campaign for background dispatch',
+                executedBy: 'cron_scheduler',
+              },
+            },
+          },
+          { new: true }
+        );
+
+        if (!locked) {
+          // Another concurrent worker/trigger has already claimed this campaign
+          continue;
+        }
+
+        try {
+          await campaignService.executeScheduledCampaign(camp._id);
+          console.log(`[CronService] Scheduled campaign "${camp.name}" (${camp._id}) executed successfully.`);
+        } catch (execErr) {
+          console.error(`[CronService] Failed executing scheduled campaign ${camp._id}:`, execErr.message);
+        }
+      }
+    } catch (err) {
+      console.error('[CronService] Error in processScheduledCampaignsJob:', err.message);
+    }
+  }
+
+  /**
+   * Recover stuck processing campaigns upon server restart / failover
+   */
+  async recoverStuckCampaignsJob() {
+    try {
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+      const stuck = await Campaign.find({
+        status: 'processing',
+        updatedAt: { $lt: fifteenMinutesAgo },
+      });
+
+      for (const c of stuck) {
+        c.status = 'scheduled';
+        c.executionLogs.push({
+          timestamp: new Date(),
+          status: 'scheduled',
+          message: 'Recovered stuck processing state on server restart; returned to scheduled queue',
+          executedBy: 'server_recovery',
+        });
+        await c.save();
+        console.log(`[CronService] Recovered stuck campaign "${c.name}" (${c._id}).`);
+      }
+    } catch (e) {
+      console.error('[CronService] Error recovering stuck campaigns:', e.message);
+    }
+  }
+
+  /**
    * Initialize server-side scheduler
    */
   initSchedulers() {
-    // Check every minute for midnight 00:00 trigger & hourly subscription check
+    // Check every minute for midnight 00:00 trigger, scheduled campaigns & hourly subscription check
     let lastRunDate = '';
     let lastHourlyCheck = 0;
 
@@ -232,6 +324,9 @@ class CronService {
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+
+      // Check and execute scheduled campaigns every minute
+      await this.processScheduledCampaignsJob();
 
       // Run once at 00:00 (12:00 AM midnight)
       if (currentHour === 0 && currentMinute === 0 && lastRunDate !== todayStr) {
@@ -248,10 +343,12 @@ class CronService {
 
     // Initial check on startup
     setTimeout(() => {
+      this.recoverStuckCampaignsJob().catch(() => {});
+      this.processScheduledCampaignsJob().catch(() => {});
       this.checkExpiringSubscriptionsJob().catch(() => {});
-    }, 15000);
+    }, 10000);
 
-    console.log('[CronService] Schedulers initialized (Daily Midnight summary & Hourly 2-day subscription alerts active)');
+    console.log('[CronService] Schedulers initialized (Campaign Dispatcher, Daily Midnight summary & Hourly 2-day subscription alerts active)');
   }
 
   stopSchedulers() {

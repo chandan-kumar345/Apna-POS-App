@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
+import '../database/database_service.dart';
 import 'socket_service.dart';
 
 class WhatsAppChatModel {
@@ -18,6 +19,8 @@ class WhatsAppChatModel {
   final String status;
   final String phoneNumberId;
   final String? avatarUrl;
+  final DateTime? lastIncomingAt;
+  final bool? is24HourWindowActive;
 
   const WhatsAppChatModel({
     required this.id,
@@ -30,6 +33,8 @@ class WhatsAppChatModel {
     this.status = 'ACTIVE',
     this.phoneNumberId = '',
     this.avatarUrl,
+    this.lastIncomingAt,
+    this.is24HourWindowActive,
   });
 
   WhatsAppChatModel copyWith({
@@ -43,6 +48,8 @@ class WhatsAppChatModel {
     String? status,
     String? phoneNumberId,
     String? avatarUrl,
+    DateTime? lastIncomingAt,
+    bool? is24HourWindowActive,
   }) {
     return WhatsAppChatModel(
       id: id ?? this.id,
@@ -55,6 +62,8 @@ class WhatsAppChatModel {
       status: status ?? this.status,
       phoneNumberId: phoneNumberId ?? this.phoneNumberId,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      lastIncomingAt: lastIncomingAt ?? this.lastIncomingAt,
+      is24HourWindowActive: is24HourWindowActive ?? this.is24HourWindowActive,
     );
   }
 
@@ -81,6 +90,8 @@ class WhatsAppChatModel {
               json['avatar'] ??
               json['photoUrl'])
           ?.toString(),
+      lastIncomingAt: json['lastIncomingAt'] != null ? parseDate(json['lastIncomingAt']) : null,
+      is24HourWindowActive: json['is24HourWindowActive'] as bool?,
     );
   }
 
@@ -95,6 +106,8 @@ class WhatsAppChatModel {
     'status': status,
     'phoneNumberId': phoneNumberId,
     'avatarUrl': avatarUrl,
+    if (lastIncomingAt != null) 'lastIncomingAt': lastIncomingAt!.toIso8601String(),
+    if (is24HourWindowActive != null) 'is24HourWindowActive': is24HourWindowActive,
   };
 
   String get displayName {
@@ -353,6 +366,14 @@ class WhatsAppChatService {
   static const String _prefChatsKey = 'cached_wa_chats_v1';
   static String _prefMsgsKey(String chatId) => 'cached_wa_msgs_v1_$chatId';
 
+  List<WhatsAppChatModel>? get cachedChats => _chatsCache != null ? List.unmodifiable(_chatsCache!) : null;
+
+  /// Returns cached messages for a conversation if available in memory
+  List<WhatsAppMessageModel>? getCachedMessages(String chatId) {
+    final list = _messagesCache[chatId];
+    return list != null ? List.unmodifiable(list) : null;
+  }
+
   /// Hook into real-time socket events for instantaneous (<50ms) message reception
   void _initSocketListeners() {
     try {
@@ -459,10 +480,11 @@ class WhatsAppChatService {
     }
   }
 
-  // --- Local Persistence Helpers (SharedPreferences) ---
+  // --- Local Persistence Helpers (DatabaseService & SharedPreferences) ---
 
   Future<void> _saveChatsToPrefs(List<WhatsAppChatModel> chats) async {
     try {
+      await DatabaseService().saveWhatsAppChats(chats);
       final prefs = await SharedPreferences.getInstance();
       final encoded = jsonEncode(chats.map((c) => c.toJson()).toList());
       await prefs.setString(_prefChatsKey, encoded);
@@ -471,6 +493,9 @@ class WhatsAppChatService {
 
   Future<List<WhatsAppChatModel>> _loadChatsFromPrefs() async {
     try {
+      final dbChats = DatabaseService().getWhatsAppChats();
+      if (dbChats.isNotEmpty) return dbChats;
+
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefChatsKey);
       if (raw != null && raw.isNotEmpty) {
@@ -483,6 +508,7 @@ class WhatsAppChatService {
 
   Future<void> _saveMessagesToPrefs(String chatId, List<WhatsAppMessageModel> messages) async {
     try {
+      await DatabaseService().saveWhatsAppMessages(chatId, messages);
       final prefs = await SharedPreferences.getInstance();
       // Keep most recent 100 messages in local storage for fast instant load
       final slice = messages.length > 100 ? messages.sublist(messages.length - 100) : messages;
@@ -493,6 +519,9 @@ class WhatsAppChatService {
 
   Future<List<WhatsAppMessageModel>> _loadMessagesFromPrefs(String chatId) async {
     try {
+      final dbMsgs = DatabaseService().getWhatsAppMessages(chatId);
+      if (dbMsgs.isNotEmpty) return dbMsgs;
+
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefMsgsKey(chatId));
       if (raw != null && raw.isNotEmpty) {
@@ -608,6 +637,24 @@ class WhatsAppChatService {
 
         _messagesCache[chatId] = parsed;
         _saveMessagesToPrefs(chatId, parsed);
+
+        // Keep chat list preview synchronized with latest message in conversation
+        if (parsed.isNotEmpty && _chatsCache != null) {
+          final idx = _chatsCache!.indexWhere((c) => c.id == chatId);
+          if (idx != -1) {
+            final latest = parsed.last;
+            final updated = _chatsCache![idx].copyWith(
+              lastMessage: latest.messageType == 'image'
+                  ? '📷 Photo'
+                  : (latest.text.isNotEmpty ? latest.text : 'New message'),
+              lastMessageAt: latest.timestamp,
+              lastMessageDirection: latest.direction,
+            );
+            _chatsCache![idx] = updated;
+            _saveChatsToPrefs(_chatsCache!);
+            _chatsStreamController.add(List.from(_chatsCache!));
+          }
+        }
         return parsed;
       }
       return _messagesCache[chatId] ?? [];
@@ -978,6 +1025,7 @@ class WhatsAppChatService {
   /// Mark chat as read with instant optimistic UI update
   Future<void> markRead(String chatId) async {
     try {
+      DatabaseService().markWhatsAppChatReadLocally(chatId);
       // Optimistically clear unread count in local cache
       if (_chatsCache != null) {
         final idx = _chatsCache!.indexWhere((c) => c.id == chatId);

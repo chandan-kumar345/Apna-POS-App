@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Coupon = require('../models/Coupon');
 const CouponRedemption = require('../models/CouponRedemption');
+const Campaign = require('../models/Campaign');
 const Order = require('../models/Order');
 const ApiError = require('../utils/ApiError');
 
@@ -234,43 +235,70 @@ class CouponService {
   }
 
   /**
-   * Comprehensive validation engine for POS checkout
+   * Comprehensive 11-step validation engine for POS / Cart / Online Ordering checkout
    */
-  async validateCoupon(businessId, { code, cartItems = [], subtotal = 0, orderType = 'dineIn', customerPhone = '' }) {
+  async validateCoupon(businessId, payload = {}) {
+    const {
+      code,
+      cartItems = [],
+      subtotal,
+      cartSubtotal,
+      orderType = 'dineIn',
+      customerPhone,
+      customerId,
+    } = payload;
+
     if (!code || !code.trim()) {
       return { valid: false, message: 'Please enter a coupon code' };
     }
 
+    const currentSubtotal = Math.max(0, Number(subtotal ?? cartSubtotal ?? 0));
     const cleanCode = code.trim().toUpperCase();
-    const coupon = await Coupon.findOne({ businessId, code: cleanCode }).lean();
+    const cleanPhone = (customerPhone || customerId || '').toString().trim();
 
+    // 1. Coupon exists & 2. Belongs to current business
+    const coupon = await Coupon.findOne({ businessId, code: cleanCode }).lean();
     if (!coupon) {
-      return { valid: false, message: `Coupon code "${cleanCode}" not found` };
+      return { valid: false, message: 'Coupon not found or inactive for this business.' };
     }
 
     if (!coupon.isActive) {
-      return { valid: false, message: `Coupon "${cleanCode}" is currently inactive` };
+      return { valid: false, message: 'Coupon not found or inactive for this business.' };
     }
 
     const now = new Date();
 
-    // 1. Date range check
+    // 3. Campaign is active (if linked) & 4. Campaign has not expired
+    if (coupon.campaignId) {
+      const campaign = await Campaign.findOne({ _id: coupon.campaignId, businessId }).lean();
+      if (campaign) {
+        if (['paused', 'cancelled', 'failed'].includes(campaign.status)) {
+          return { valid: false, message: 'This campaign is currently not active' };
+        }
+        if (campaign.couponSettings?.hasExpiryDate && campaign.couponSettings.expiryDate) {
+          if (new Date(campaign.couponSettings.expiryDate) < now) {
+            return { valid: false, message: 'This campaign coupon has expired.' };
+          }
+        }
+      }
+    }
+
+    // 5. Coupon has not expired
     if (coupon.startDate && new Date(coupon.startDate) > now) {
       return { valid: false, message: `Coupon "${cleanCode}" is not active yet` };
     }
-
     if (coupon.endDate && new Date(coupon.endDate) < now) {
-      return { valid: false, message: `Coupon "${cleanCode}" has expired` };
+      return { valid: false, message: 'This campaign coupon has expired.' };
     }
 
-    // 2. Day of week check
+    // Day of week check
     const currentDay = now.getDay(); // 0: Sun, 1: Mon, ...
     if (Array.isArray(coupon.validDays) && coupon.validDays.length > 0 && !coupon.validDays.includes(currentDay)) {
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       return { valid: false, message: `Coupon "${cleanCode}" is not valid on ${dayNames[currentDay]}` };
     }
 
-    // 3. Time slot check
+    // Time slot check
     if (Array.isArray(coupon.timeSlots) && coupon.timeSlots.length > 0) {
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMinutes = now.getMinutes().toString().padStart(2, '0');
@@ -286,20 +314,19 @@ class CouponService {
       }
     }
 
-    // 4. Order type check
+    // Order type check
     const normOrderType = orderType.toLowerCase().replace(/[-_]/g, '');
     const allowedTypes = (coupon.orderTypes || ['dineIn', 'takeaway', 'delivery']).map((t) => t.toLowerCase().replace(/[-_]/g, ''));
     if (!allowedTypes.includes(normOrderType)) {
       return { valid: false, message: `Coupon "${cleanCode}" is not valid for ${orderType} orders` };
     }
 
-    // 5. Global usage limit check
+    // Global usage limit check
     if (coupon.totalUsageLimit > 0 && coupon.totalTimesUsed >= coupon.totalUsageLimit) {
       return { valid: false, message: `Coupon "${cleanCode}" total usage limit has been reached` };
     }
 
-    // 6. Customer usage limit and eligibility check
-    const cleanPhone = (customerPhone || '').trim();
+    // 6. Customer is eligible & 7. Customer has not exceeded redemption limits
     if (cleanPhone) {
       // Check customer order history if eligibility requires it
       if (coupon.customerEligibility === 'new') {
@@ -334,30 +361,38 @@ class CouponService {
         }
       }
 
-      // Check per-customer usage limit
-      if (coupon.usageLimitPerCustomer > 0) {
-        const usedCount = await CouponRedemption.countDocuments({
-          businessId,
-          couponCode: cleanCode,
-          customerPhone: cleanPhone,
-        });
-        if (usedCount >= coupon.usageLimitPerCustomer) {
-          return {
-            valid: false,
-            message: `Coupon "${cleanCode}" already used maximum ${coupon.usageLimitPerCustomer} time(s) for this customer`,
-          };
-        }
+      // Check customer redemption limits (Only Once vs Multiple Times)
+      const usedCount = await CouponRedemption.countDocuments({
+        businessId,
+        couponCode: cleanCode,
+        customerPhone: cleanPhone,
+      });
+
+      const maxLimit = coupon.usageLimitPerCustomer != null ? coupon.usageLimitPerCustomer : 1;
+      if (maxLimit === 1 && usedCount >= 1) {
+        return {
+          valid: false,
+          message: 'You have already redeemed this campaign coupon.',
+        };
+      } else if (maxLimit > 1 && usedCount >= maxLimit) {
+        return {
+          valid: false,
+          message: 'You have reached the maximum redemption limit for this coupon.',
+        };
       }
     }
 
-    // 7. Product & Category Restrictions
-    let eligibleSubtotal = Number(subtotal) || 0;
-    if (Array.isArray(cartItems) && cartItems.length > 0) {
+    // 9. Selected products exist in the cart if product-specific rewards are configured
+    let eligibleSubtotal = currentSubtotal;
+    const isSelectedProductsScope = coupon.rewardScope === 'chosen_products' ||
+      (Array.isArray(coupon.applicableProducts) && coupon.applicableProducts.length > 0);
+
+    if (isSelectedProductsScope || (Array.isArray(coupon.applicableCategories) && coupon.applicableCategories.length > 0) || (Array.isArray(coupon.excludedProducts) && coupon.excludedProducts.length > 0)) {
       let filteredSubtotal = 0;
       let matchedAnyItem = false;
 
       const hasCategoryFilter = Array.isArray(coupon.applicableCategories) && coupon.applicableCategories.length > 0;
-      const hasProductFilter = Array.isArray(coupon.applicableProducts) && coupon.applicableProducts.length > 0;
+      const hasProductFilter = isSelectedProductsScope && Array.isArray(coupon.applicableProducts) && coupon.applicableProducts.length > 0;
       const hasExcludedFilter = Array.isArray(coupon.excludedProducts) && coupon.excludedProducts.length > 0;
 
       for (const ci of cartItems) {
@@ -388,33 +423,43 @@ class CouponService {
         }
       }
 
-      if (hasCategoryFilter || hasProductFilter || hasExcludedFilter) {
-        if (!matchedAnyItem) {
-          return { valid: false, message: `Coupon "${cleanCode}" does not apply to the items currently in your cart` };
-        }
-        eligibleSubtotal = filteredSubtotal;
+      if (isSelectedProductsScope && !matchedAnyItem) {
+        return {
+          valid: false,
+          message: 'This coupon applies only to selected products. Please add eligible products to your cart.',
+        };
       }
+      eligibleSubtotal = filteredSubtotal;
     }
 
-    // 8. Minimum Cart Amount Check
+    // 8. Minimum spend requirement is satisfied (evaluated on eligible cart amount!)
     if (coupon.minCartAmount > 0 && eligibleSubtotal < coupon.minCartAmount) {
       return {
         valid: false,
-        message: `Minimum eligible cart amount of ₹${coupon.minCartAmount.toFixed(0)} required to use "${cleanCode}" (current eligible: ₹${eligibleSubtotal.toFixed(0)})`,
+        message: `Add products worth ₹${Math.round(coupon.minCartAmount)} or more to redeem this coupon.`,
       };
     }
 
-    // 9. Calculate exact discount
+    // 10. Reward calculation is valid & 11. Maximum cashback cap is respected
     let discountAmount = 0;
-    if (coupon.discountType === 'flat') {
+    const discType = coupon.discountType || 'percentage';
+
+    if (discType === 'flat') {
       discountAmount = Math.min(coupon.discountValue, eligibleSubtotal);
-    } else {
+    } else if (discType === 'percentage' || discType === 'cashback') {
       const calcDiscount = (eligibleSubtotal * coupon.discountValue) / 100;
-      discountAmount = coupon.maxDiscountAmount ? Math.min(calcDiscount, coupon.maxDiscountAmount) : calcDiscount;
+      discountAmount = (coupon.maxDiscountAmount && coupon.maxDiscountAmount > 0)
+        ? Math.min(calcDiscount, coupon.maxDiscountAmount)
+        : calcDiscount;
       discountAmount = Math.min(discountAmount, eligibleSubtotal);
+    } else if (discType === 'free_gift') {
+      discountAmount = Math.min(Number(coupon.freeGiftProductPrice || coupon.discountValue || 0), eligibleSubtotal);
+    } else {
+      discountAmount = Math.min(coupon.discountValue, eligibleSubtotal);
     }
 
     discountAmount = Math.round(discountAmount * 100) / 100;
+    const finalPayable = Math.max(0, currentSubtotal - discountAmount);
 
     coupon.id = coupon._id ? coupon._id.toString() : coupon.id;
 
@@ -429,9 +474,11 @@ class CouponService {
         discountValue: coupon.discountValue,
         maxDiscountAmount: coupon.maxDiscountAmount,
         minCartAmount: coupon.minCartAmount,
+        rewardScope: coupon.rewardScope || 'whole_bill',
       },
       discountAmount,
       eligibleSubtotal,
+      finalPayableAmount: Math.round(finalPayable * 100) / 100,
       message: `Coupon "${coupon.code}" applied! You save ₹${discountAmount.toFixed(2)}`,
     };
   }
@@ -439,21 +486,22 @@ class CouponService {
   /**
    * Atomically record redemption when an order is completed/paid
    */
-  async recordRedemption(businessId, { couponCode, orderId, orderNumber, customerPhone, customerName, orderSubtotal, discountAmount, finalOrderAmount }) {
+  async recordRedemption(businessId, { couponCode, campaignId, orderId, orderNumber, customerPhone, customerName, orderSubtotal, discountAmount, finalOrderAmount }) {
     if (!couponCode || !discountAmount || discountAmount <= 0) return null;
 
     const cleanCode = couponCode.trim().toUpperCase();
     const coupon = await Coupon.findOne({ businessId, code: cleanCode });
     if (!coupon) return null;
 
-    // Create redemption log
+    // Create redemption log atomically
     const redemption = await CouponRedemption.create({
       businessId,
       couponId: coupon._id,
+      campaignId: campaignId || coupon.campaignId || null,
       couponCode: cleanCode,
       orderId,
       orderNumber: orderNumber || '',
-      customerPhone: customerPhone || '',
+      customerPhone: (customerPhone || '').toString().trim(),
       customerName: customerName || '',
       orderSubtotal: Number(orderSubtotal) || 0,
       discountAmount: Number(discountAmount) || 0,
@@ -461,7 +509,7 @@ class CouponService {
       redeemedAt: new Date(),
     });
 
-    // Increment usage counter on coupon
+    // Increment usage counter on coupon atomically
     await Coupon.findByIdAndUpdate(coupon._id, { $inc: { totalTimesUsed: 1 } });
 
     return redemption;

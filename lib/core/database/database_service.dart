@@ -7389,6 +7389,121 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setDouble('apna_pos_wallet_balance', balance);
     notifyListeners();
   }
+
+  // ============================================================
+  // WHATSAPP CHAT HISTORY & MESSAGE DATABASE STORAGE
+  // ============================================================
+
+  /// Save WhatsApp chats list for active business in database
+  Future<void> saveWhatsAppChats(List<WhatsAppChatModel> chats) async {
+    try {
+      final encoded = jsonEncode(chats.map((c) => c.toJson()).toList());
+      await _prefs?.setString(_businessKey('whatsapp_chats_v2'), encoded);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[DatabaseService] Error saving WhatsApp chats: $e');
+    }
+  }
+
+  /// Retrieve stored WhatsApp chats list for active business
+  List<WhatsAppChatModel> getWhatsAppChats() {
+    try {
+      final raw = _prefs?.getString(_businessKey('whatsapp_chats_v2')) ??
+          _prefs?.getString('cached_wa_chats_v1');
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        return decoded
+            .map((m) => WhatsAppChatModel.fromJson(m as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error loading WhatsApp chats: $e');
+    }
+    return [];
+  }
+
+  /// Save messages for a specific WhatsApp chat conversation
+  Future<void> saveWhatsAppMessages(String chatId, List<WhatsAppMessageModel> messages) async {
+    if (chatId.trim().isEmpty) return;
+    try {
+      // Keep up to 250 recent messages in local database for instant offline/0ms loading
+      final slice = messages.length > 250 ? messages.sublist(messages.length - 250) : messages;
+      final encoded = jsonEncode(slice.map((m) => m.toJson()).toList());
+      await _prefs?.setString(_businessKey('whatsapp_msgs_v2_$chatId'), encoded);
+    } catch (e) {
+      debugPrint('[DatabaseService] Error saving WhatsApp messages for $chatId: $e');
+    }
+  }
+
+  /// Retrieve stored messages for a specific WhatsApp chat conversation
+  List<WhatsAppMessageModel> getWhatsAppMessages(String chatId) {
+    if (chatId.trim().isEmpty) return [];
+    try {
+      final raw = _prefs?.getString(_businessKey('whatsapp_msgs_v2_$chatId')) ??
+          _prefs?.getString('cached_wa_msgs_v1_$chatId');
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        return decoded
+            .map((m) => WhatsAppMessageModel.fromJson(m as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error loading WhatsApp messages for $chatId: $e');
+    }
+    return [];
+  }
+
+  /// Upsert a single WhatsApp message into database and update chat preview summary
+  Future<void> upsertWhatsAppMessage(String chatId, WhatsAppMessageModel message) async {
+    if (chatId.trim().isEmpty) return;
+    try {
+      final existingMsgs = getWhatsAppMessages(chatId);
+      final idx = existingMsgs.indexWhere((m) =>
+          m.id == message.id ||
+          (m.whatsappMessageId.isNotEmpty && m.whatsappMessageId == message.whatsappMessageId));
+      if (idx != -1) {
+        existingMsgs[idx] = message;
+      } else {
+        existingMsgs.add(message);
+      }
+      await saveWhatsAppMessages(chatId, existingMsgs);
+
+      // Update parent chat in list
+      final chats = getWhatsAppChats();
+      final chatIdx = chats.indexWhere((c) => c.id == chatId);
+      if (chatIdx != -1) {
+        final currentChat = chats[chatIdx];
+        final updatedChat = currentChat.copyWith(
+          lastMessage: message.messageType == 'image'
+              ? (message.text.isNotEmpty ? '📷 ${message.text}' : '📷 Photo')
+              : message.text,
+          lastMessageAt: message.timestamp,
+          lastMessageDirection: message.direction,
+          unreadCount: message.isOutgoing ? currentChat.unreadCount : currentChat.unreadCount + 1,
+        );
+        chats.removeAt(chatIdx);
+        chats.insert(0, updatedChat); // Move to top of chat list
+        await saveWhatsAppChats(chats);
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error upserting WhatsApp message: $e');
+    }
+  }
+
+  /// Mark chat as read in local database
+  Future<void> markWhatsAppChatReadLocally(String chatId) async {
+    if (chatId.trim().isEmpty) return;
+    try {
+      final chats = getWhatsAppChats();
+      final chatIdx = chats.indexWhere((c) => c.id == chatId);
+      if (chatIdx != -1) {
+        chats[chatIdx] = chats[chatIdx].copyWith(unreadCount: 0);
+        await saveWhatsAppChats(chats);
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error marking chat read locally: $e');
+    }
+  }
 }
 
 class ManualProductHistoryItem {

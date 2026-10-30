@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/database/database_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/local_notification_service.dart';
 import '../notifications/services/notification_permission_helper.dart';
 
 import '../dashboard/main_layout.dart';
@@ -229,6 +230,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         },
       ),
     );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      LocalNotificationService.checkAndShowPendingIncomingOrder();
+      DatabaseService().checkAndPromptPendingWhatsAppOrders();
+    });
   }
 
   @override

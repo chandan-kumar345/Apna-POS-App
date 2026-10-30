@@ -255,6 +255,50 @@ class CampaignTemplateModel {
     this.sampleParameters = const [],
   });
 
+  CampaignTemplateModel copyWith({
+    String? id,
+    String? name,
+    String? subtitle,
+    String? category,
+    String? channel,
+    String? metaStatus,
+    String? metaTemplateName,
+    String? metaCategory,
+    String? language,
+    String? headerImageUrl,
+    String? iconCode,
+    String? tagLabel,
+    String? tagColor,
+    bool? isMetaVerified,
+    String? body,
+    String? headerText,
+    String? footerText,
+    List<String>? parameters,
+    List<String>? sampleParameters,
+  }) {
+    return CampaignTemplateModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      subtitle: subtitle ?? this.subtitle,
+      category: category ?? this.category,
+      channel: channel ?? this.channel,
+      metaStatus: metaStatus ?? this.metaStatus,
+      metaTemplateName: metaTemplateName ?? this.metaTemplateName,
+      metaCategory: metaCategory ?? this.metaCategory,
+      language: language ?? this.language,
+      headerImageUrl: headerImageUrl ?? this.headerImageUrl,
+      iconCode: iconCode ?? this.iconCode,
+      tagLabel: tagLabel ?? this.tagLabel,
+      tagColor: tagColor ?? this.tagColor,
+      isMetaVerified: isMetaVerified ?? this.isMetaVerified,
+      body: body ?? this.body,
+      headerText: headerText ?? this.headerText,
+      footerText: footerText ?? this.footerText,
+      parameters: parameters ?? this.parameters,
+      sampleParameters: sampleParameters ?? this.sampleParameters,
+    );
+  }
+
   bool get isApprovedByMeta => metaStatus.toUpperCase() == 'APPROVED' && channel == 'whatsapp';
   String get title => name;
   String get description => subtitle.isNotEmpty ? subtitle : body;
@@ -420,6 +464,13 @@ class CampaignRewardDetailsModel {
   final String campaignTitle;
   final String description;
   final String bannerImageUrl;
+  final String logoUrl;
+  final String themeColor;
+  final String textColor;
+  final String restaurantName;
+  final String freeGiftProductId;
+  final String freeGiftProductName;
+  final double freeGiftProductPrice;
   final List<String> termsAndConditions;
 
   const CampaignRewardDetailsModel({
@@ -434,6 +485,13 @@ class CampaignRewardDetailsModel {
     this.campaignTitle = 'New Year Special - Flat ₹300 OFF',
     this.description = 'Kick-start the New Year with guaranteed savings. Get a flat ₹300 OFF and enjoy stress-free shopping as you welcome the year with confidence and joy.',
     this.bannerImageUrl = 'assets/images/campaign_hero_banner_full.png',
+    this.logoUrl = '',
+    this.themeColor = '#E91E63',
+    this.textColor = '#FFFFFF',
+    this.restaurantName = '',
+    this.freeGiftProductId = '',
+    this.freeGiftProductName = '',
+    this.freeGiftProductPrice = 0.0,
     this.termsAndConditions = const [
       'Minimum purchase required.',
       '2 offers cannot be clubbed.',
@@ -452,10 +510,17 @@ class CampaignRewardDetailsModel {
       hasMinSpend: json['hasMinSpend'] != false,
       minSpendAmount: (json['minSpendAmount'] is num) ? (json['minSpendAmount'] as num).toDouble() : 500.0,
       maxCashbackCap: (json['maxCashbackCap'] is num) ? (json['maxCashbackCap'] as num).toDouble() : 200.0,
-      comboOfferTitle: json['comboOfferTitle']?.toString() ?? 'Grab Any 2 Combos & Enjoy 10% OFF!',
+      comboOfferTitle: json['comboOfferTitle']?.toString() ?? '',
       campaignTitle: json['campaignTitle']?.toString() ?? 'New Year Special - Flat ₹300 OFF',
       description: json['description']?.toString() ?? 'Kick-start the New Year with guaranteed savings. Get a flat ₹300 OFF and enjoy stress-free shopping as you welcome the year with confidence and joy.',
       bannerImageUrl: json['bannerImageUrl']?.toString() ?? 'assets/images/campaign_hero_banner_full.png',
+      logoUrl: json['logoUrl']?.toString() ?? '',
+      themeColor: json['themeColor']?.toString() ?? '#E91E63',
+      textColor: json['textColor']?.toString() ?? '#FFFFFF',
+      restaurantName: json['restaurantName']?.toString() ?? '',
+      freeGiftProductId: json['freeGiftProductId']?.toString() ?? '',
+      freeGiftProductName: json['freeGiftProductName']?.toString() ?? '',
+      freeGiftProductPrice: (json['freeGiftProductPrice'] is num) ? (json['freeGiftProductPrice'] as num).toDouble() : 0.0,
       termsAndConditions: (json['termsAndConditions'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
           const ['Minimum purchase required.', '2 offers cannot be clubbed.'],
     );
@@ -473,6 +538,13 @@ class CampaignRewardDetailsModel {
         'campaignTitle': campaignTitle,
         'description': description,
         'bannerImageUrl': bannerImageUrl,
+        'logoUrl': logoUrl,
+        'themeColor': themeColor,
+        'textColor': textColor,
+        'restaurantName': restaurantName,
+        'freeGiftProductId': freeGiftProductId,
+        'freeGiftProductName': freeGiftProductName,
+        'freeGiftProductPrice': freeGiftProductPrice,
         'termsAndConditions': termsAndConditions,
       };
 }
@@ -480,24 +552,30 @@ class CampaignRewardDetailsModel {
 class CampaignCouponSettingsModel {
   final bool useCustomCouponCode;
   final String customCouponCode;
+  final String couponCode;
   final bool hasSendSchedule;
   final DateTime? sendDate;
   final String sendTime;
+  final DateTime? scheduledAt;
   final bool hasExpiryDate;
   final DateTime? expiryDate;
   final String redemptionPerCustomer; // 'only_once' | 'multiple_times'
+  final int maxRedemptionsPerCustomer;
   final bool displayCouponInProfile;
 
   const CampaignCouponSettingsModel({
     this.useCustomCouponCode = false,
     this.customCouponCode = '',
-    this.hasSendSchedule = true,
+    this.couponCode = '',
+    this.hasSendSchedule = false,
     this.sendDate,
     this.sendTime = '8:00 AM',
+    this.scheduledAt,
     this.hasExpiryDate = true,
     this.expiryDate,
     this.redemptionPerCustomer = 'only_once',
-    this.displayCouponInProfile = true,
+    this.maxRedemptionsPerCustomer = 1,
+    this.displayCouponInProfile = false,
   });
 
   factory CampaignCouponSettingsModel.fromJson(Map<String, dynamic> json) {
@@ -513,16 +591,25 @@ class CampaignCouponSettingsModel {
         parsedExpiry = DateTime.parse(json['expiryDate'].toString());
       } catch (_) {}
     }
+    DateTime? parsedScheduledAt;
+    if (json['scheduledAt'] != null) {
+      try {
+        parsedScheduledAt = DateTime.parse(json['scheduledAt'].toString());
+      } catch (_) {}
+    }
 
     return CampaignCouponSettingsModel(
       useCustomCouponCode: json['useCustomCouponCode'] == true,
       customCouponCode: json['customCouponCode']?.toString() ?? '',
-      hasSendSchedule: json['hasSendSchedule'] != false,
+      couponCode: json['couponCode']?.toString() ?? '',
+      hasSendSchedule: json['hasSendSchedule'] == true,
       sendDate: parsedSend,
       sendTime: json['sendTime']?.toString() ?? '8:00 AM',
+      scheduledAt: parsedScheduledAt,
       hasExpiryDate: json['hasExpiryDate'] != false,
       expiryDate: parsedExpiry,
       redemptionPerCustomer: json['redemptionPerCustomer']?.toString() ?? 'only_once',
+      maxRedemptionsPerCustomer: (json['maxRedemptionsPerCustomer'] is num) ? (json['maxRedemptionsPerCustomer'] as num).toInt() : 1,
       displayCouponInProfile: json['displayCouponInProfile'] == true,
     );
   }
@@ -530,12 +617,15 @@ class CampaignCouponSettingsModel {
   Map<String, dynamic> toJson() => {
         'useCustomCouponCode': useCustomCouponCode,
         'customCouponCode': customCouponCode,
+        'couponCode': couponCode,
         'hasSendSchedule': hasSendSchedule,
         'sendDate': sendDate?.toIso8601String(),
         'sendTime': sendTime,
+        'scheduledAt': scheduledAt?.toIso8601String(),
         'hasExpiryDate': hasExpiryDate,
         'expiryDate': expiryDate?.toIso8601String(),
         'redemptionPerCustomer': redemptionPerCustomer,
+        'maxRedemptionsPerCustomer': maxRedemptionsPerCustomer,
         'displayCouponInProfile': displayCouponInProfile,
       };
 }

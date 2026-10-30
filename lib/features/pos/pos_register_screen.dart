@@ -10226,7 +10226,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   color: const Color(0xFFEDF3FA),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: _buildPosProductImage(item, priorityPlayback: false),
+                                child: _buildPosProductImage(item),
                               ),
                               // FoodType Badge (Top Right)
                               Positioned(
