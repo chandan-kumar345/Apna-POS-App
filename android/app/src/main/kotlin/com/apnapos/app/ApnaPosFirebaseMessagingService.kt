@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.PowerManager
+import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService
 import org.json.JSONObject
@@ -47,8 +48,8 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
 
                 // 3. Persist incoming order payload to FlutterSharedPreferences
                 val payloadObj = JSONObject()
-                for ((k, v) in data) {
-                    payloadObj.put(k, v)
+                for (entry in data.entries) {
+                    payloadObj.put(entry.key, entry.value)
                 }
                 val payloadString = payloadObj.toString()
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
@@ -65,8 +66,8 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                     )
                     putExtra("pending_incoming_order_payload", payloadString)
                     putExtra("direct_open", true)
-                    for ((k, v) in data) {
-                        putExtra(k, v)
+                    for (entry in data.entries) {
+                        putExtra(entry.key, entry.value)
                     }
                 }
                 applicationContext.startActivity(launchIntent)
