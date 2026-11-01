@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../security/secure_storage_service.dart';
 
 class AuthInterceptor extends Interceptor {
@@ -22,7 +23,18 @@ class AuthInterceptor extends Interceptor {
         path.contains('/auth/reset-password');
 
     if (!isAuthEndpoint && !options.headers.containsKey('Authorization')) {
-      final accessToken = await _storageService.getAccessToken();
+      var accessToken = await _storageService.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          accessToken = prefs.getString('SEC_KEY_AT_V1') ??
+              prefs.getString('access_token') ??
+              prefs.getString('token');
+          if (accessToken != null && accessToken.isNotEmpty) {
+            await _storageService.saveAccessToken(accessToken);
+          }
+        } catch (_) {}
+      }
       if (accessToken != null && accessToken.isNotEmpty) {
         options.headers['Authorization'] = 'Bearer $accessToken';
       }

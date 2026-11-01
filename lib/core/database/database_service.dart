@@ -1714,8 +1714,8 @@ class DatabaseService extends ChangeNotifier {
             if (diffSec < 600) {
               SoundService.playNotificationSound();
               LocalNotificationService().showPushNotification(
-                title: '🔔 New WhatsApp Order: #${r.orderNumber}',
-                body: '${r.customerName ?? "Customer"} ordered ₹${r.totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+                title: '🔔 #${r.orderNumber} • ₹${r.totalAmount.toStringAsFixed(0)}',
+                body: '${r.customerName ?? "Customer"} • ${r.orderType.name.toUpperCase()} • Tap to Accept/Reject',
                 payload: jsonEncode({
                   'type': 'whatsapp_order_request',
                   'orderId': r.id,
@@ -1728,7 +1728,7 @@ class DatabaseService extends ChangeNotifier {
                   'items': r.items.map((i) => i.toJson()).toList(),
                 }),
                 type: NotificationType.whatsappOrderRequest,
-                channelId: 'apna_pos_whatsapp_orders_v1',
+                channelId: 'apna_pos_whatsapp_orders_v2',
                 playSound: true,
               );
               LocalNotificationService.handlePayloadDirectly({
@@ -4857,8 +4857,8 @@ class DatabaseService extends ChangeNotifier {
             if (diffSec < 600) {
               SoundService.playNotificationSound();
               LocalNotificationService().showPushNotification(
-                title: '🔔 New WhatsApp Order: #${r.orderNumber}',
-                body: '${r.customerName ?? "Customer"} ordered ₹${r.totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+                title: '🔔 #${r.orderNumber} • ₹${r.totalAmount.toStringAsFixed(0)}',
+                body: '${r.customerName ?? "Customer"} • ${r.orderType.name.toUpperCase()} • Tap to Accept/Reject',
                 payload: jsonEncode({
                   'type': 'whatsapp_order_request',
                   'orderId': r.id,
@@ -4871,7 +4871,7 @@ class DatabaseService extends ChangeNotifier {
                   'items': r.items.map((i) => i.toJson()).toList(),
                 }),
                 type: NotificationType.whatsappOrderRequest,
-                channelId: 'apna_pos_whatsapp_orders_v1',
+                channelId: 'apna_pos_whatsapp_orders_v2',
                 playSound: true,
               );
               LocalNotificationService.handlePayloadDirectly({

@@ -4616,6 +4616,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
         'isCustomAccount': _sendCampaignDisplayName != 'Knowwu',
         'wabaId': _sendCampaignDisplayName != 'Knowwu' ? _db.whatsAppWabaId : '',
         'phoneNumberId': _sendCampaignDisplayName != 'Knowwu' ? _db.whatsAppPhoneId : '',
+        'accessToken': _sendCampaignDisplayName != 'Knowwu' ? _db.whatsAppAccessToken : '',
         'buttonText': _interactiveActionsOption == 'all'
             ? _ctaButtonTitleController.text.trim()
             : '',
@@ -4644,12 +4645,24 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
         }
       }
     } catch (e) {
-      debugPrint('[CreateCampaignWizardView] _submitForMetaApproval notice: $e');
+      debugPrint('[CreateCampaignWizardView] _submitForMetaApproval notice: ');
       if (mounted) {
+        final errStr = e.toString().toLowerCase();
+        final isAuthErr = errStr.contains('authorization header') ||
+            errStr.contains('bearer token') ||
+            errStr.contains('token_missing') ||
+            errStr.contains('unauthorized') ||
+            errStr.contains('401');
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Notice: $e'),
+            content: Text(
+              isAuthErr
+                  ? 'Your Apna POS login session has expired. Please log in again to your Apna POS account.'
+                  : 'Notice: ',
+            ),
             backgroundColor: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

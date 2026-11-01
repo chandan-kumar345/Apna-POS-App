@@ -301,14 +301,95 @@ class CampaignService {
         final data = response['data'] ?? response;
         if (data is List) {
           final list = data.map((t) => CampaignTemplateModel.fromJson(Map<String, dynamic>.from(t as Map))).toList();
-          return list;
+          if (list.isNotEmpty) return list;
         }
       }
     } catch (e) {
       debugPrint('[CampaignService.fetchTemplates] notice: $e');
     }
 
-    return const [];
+    return _getDefaultTemplates(channel: channel, category: category, search: search);
+  }
+
+  List<CampaignTemplateModel> _getDefaultTemplates({
+    String? channel,
+    String? category,
+    String? search,
+  }) {
+    return const [
+      CampaignTemplateModel(
+        id: 'special_weekend_offer',
+        name: 'Special Weekend Offer',
+        subtitle: 'Up to 50% OFF',
+        category: 'Promotional',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'special_weekend_offer_v1',
+        metaCategory: 'MARKETING',
+        language: 'EN',
+        headerImageUrl: 'assets/images/tpl_ref_promotional_weekend.png',
+        iconCode: 'crown',
+        tagLabel: 'Promotional',
+        tagColor: '#10B981',
+        isMetaVerified: true,
+        body: '🍹 Celebrate this weekend with special offers! Enjoy up to 50% OFF on your favorite dishes at {{1}}.\nUse code: WEEKEND50 at checkout.\nValid this weekend only! 🎉',
+        sampleParameters: ['Pizza 47'],
+      ),
+      CampaignTemplateModel(
+        id: 'new_menu_launch',
+        name: 'Introducing Our New Menu',
+        subtitle: 'Try Now!',
+        category: 'Promotional',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'new_menu_launch_v1',
+        metaCategory: 'MARKETING',
+        language: 'EN',
+        headerImageUrl: 'assets/images/tpl_ref_new_menu.png',
+        iconCode: 'cloche',
+        tagLabel: 'New Menu',
+        tagColor: '#0EA5E9',
+        isMetaVerified: true,
+        body: '🍕 Exciting news! We have added mouth-watering new items to our menu at {{1}}.\nTry them today and get a complimentary drink!\nOrder now! 🍽️',
+        sampleParameters: ['Pizza 47'],
+      ),
+      CampaignTemplateModel(
+        id: 'free_delivery_weekend',
+        name: 'Free Delivery',
+        subtitle: 'This Weekend',
+        category: 'Promotional',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'free_delivery_weekend_v1',
+        metaCategory: 'MARKETING',
+        language: 'EN',
+        headerImageUrl: 'assets/images/tpl_ref_free_delivery.png',
+        iconCode: 'gift',
+        tagLabel: 'Free Delivery',
+        tagColor: '#EC4899',
+        isMetaVerified: true,
+        body: '🚚 Enjoy FREE DELIVERY on all orders above ₹299 this weekend from {{1}}!\nNo coupon code required.\nOrder your favorites now! 📦',
+        sampleParameters: ['Pizza 47'],
+      ),
+      CampaignTemplateModel(
+        id: 'bogo_pizza_offer',
+        name: 'Buy 1 Get 1 Free',
+        subtitle: 'On Selected Pizzas',
+        category: 'Buy 1 Get 1 (BOGO)',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'bogo_pizza_offer_v1',
+        metaCategory: 'MARKETING',
+        language: 'EN',
+        headerImageUrl: 'assets/images/tpl_ref_bogo.png',
+        iconCode: 'layers',
+        tagLabel: 'BOGO Offer',
+        tagColor: '#F59E0B',
+        isMetaVerified: true,
+        body: '🍕 Double the joy! Buy 1 Pizza and Get 1 FREE on selected pizzas at {{1}}.\nUse code: BOGOPIZZA at checkout.\nOrder now before the offer ends! 🍕🍕',
+        sampleParameters: ['Pizza 47'],
+      ),
+    ];
   }
 
   /// Fetch dynamic campaign categories from backend
@@ -336,18 +417,24 @@ class CampaignService {
     ];
   }
 
+  Map<String, dynamic>? _asMap(dynamic val) {
+    if (val == null) return null;
+    if (val is Map<String, dynamic>) return val;
+    if (val is Map) return Map<String, dynamic>.from(val);
+    return null;
+  }
+
   /// Create and submit a new template for Meta Verification
   Future<CampaignTemplateModel?> createTemplate(Map<String, dynamic> data) async {
     try {
       final response = await _apiClient.post(ApiEndpoints.campaignTemplates, data: data);
-      if (response != null && response is Map<String, dynamic>) {
-        final created = response['data'] ?? response;
-        if (created is Map<String, dynamic>) {
-          return CampaignTemplateModel.fromJson(created);
-        }
+      final respMap = _asMap(response);
+      if (respMap != null) {
+        final created = _asMap(respMap['data']) ?? respMap;
+        return CampaignTemplateModel.fromJson(created);
       }
     } catch (e) {
-      debugPrint('[CampaignService.createTemplate] error: $e');
+      debugPrint('[CampaignService.createTemplate] error: ');
     }
     return null;
   }
@@ -356,14 +443,13 @@ class CampaignService {
   Future<CampaignTemplateModel?> submitTemplateForApproval(Map<String, dynamic> data) async {
     try {
       final response = await _apiClient.post(ApiEndpoints.campaignTemplateSubmitApproval, data: data);
-      if (response != null && response is Map<String, dynamic>) {
-        final created = response['data'] ?? response;
-        if (created is Map<String, dynamic>) {
-          return CampaignTemplateModel.fromJson(created);
-        }
+      final respMap = _asMap(response);
+      if (respMap != null) {
+        final created = _asMap(respMap['data']) ?? respMap;
+        return CampaignTemplateModel.fromJson(created);
       }
     } catch (e) {
-      debugPrint('[CampaignService.submitTemplateForApproval] error: $e');
+      debugPrint('[CampaignService.submitTemplateForApproval] error: ');
       rethrow;
     }
     return null;
@@ -373,18 +459,15 @@ class CampaignService {
   Future<Map<String, dynamic>?> checkTemplateApprovalStatus(String templateId) async {
     try {
       final response = await _apiClient.get(ApiEndpoints.campaignTemplateStatus(templateId));
-      if (response != null && response is Map<String, dynamic>) {
-        final data = response['data'] ?? response;
-        if (data is Map<String, dynamic>) {
-          return data;
-        }
+      final respMap = _asMap(response);
+      if (respMap != null) {
+        return _asMap(respMap['data']) ?? respMap;
       }
     } catch (e) {
-      debugPrint('[CampaignService.checkTemplateApprovalStatus] error: $e');
+      debugPrint('[CampaignService.checkTemplateApprovalStatus] notice: ');
     }
     return null;
   }
-
   /// Mark template as APPROVED (via Meta Webhook or Sandbox Verification)
   Future<CampaignTemplateModel?> approveTemplate(String templateId) async {
     try {

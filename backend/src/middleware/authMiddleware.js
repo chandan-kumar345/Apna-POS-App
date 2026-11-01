@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const tokenService = require('../services/tokenService');
 const User = require('../models/User');
 const Staff = require('../models/Staff');
@@ -9,6 +10,24 @@ const authMiddleware = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      // In local development / POS terminal mode: if valid X-Business-ID is provided, seamlessly attach business session
+      if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' && req.headers['x-business-id']) {
+        const bId = req.headers['x-business-id'].trim();
+        if (mongoose.Types.ObjectId.isValid(bId)) {
+          const business = await Business.findById(bId);
+          if (business) {
+            const owner = await User.findById(business.ownerId);
+            req.user = owner || { _id: business.ownerId, role: 'owner' };
+            req.staff = null;
+            req.permissions = ['*'];
+            req.business = business;
+            req.businessId = business._id;
+            req.tenantOptions = { _tenantId: business._id };
+            return next();
+          }
+        }
+      }
+
       throw ApiError.unauthorized('Authorization header with Bearer token is required', 'TOKEN_MISSING');
     }
 

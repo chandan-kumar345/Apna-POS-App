@@ -559,19 +559,19 @@ class LocalNotificationService with WidgetsBindingObserver {
           ? <AndroidNotificationAction>[
               const AndroidNotificationAction(
                 'accept_order',
-                'Accept',
+                'ACCEPT',
                 showsUserInterface: true,
                 cancelNotification: true,
               ),
               const AndroidNotificationAction(
                 'reject_order',
-                'Reject',
+                'REJECT',
                 showsUserInterface: true,
                 cancelNotification: true,
               ),
               const AndroidNotificationAction(
                 'view_order',
-                'View',
+                'VIEW',
                 showsUserInterface: true,
               ),
             ]

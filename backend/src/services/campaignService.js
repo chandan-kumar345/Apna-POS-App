@@ -890,11 +890,15 @@ class CampaignService {
         ? data.wabaId.trim()
         : (biz?.whatsappSettings?.wabaId?.trim() || '2525727467906581');
 
-      if (biz?.whatsappSettings?.accessToken?.trim()) {
+      if (data.accessToken && data.accessToken.trim().length > 0) {
+        targetToken = data.accessToken.trim();
+      } else if (biz?.whatsappSettings?.accessToken?.trim()) {
         targetToken = biz.whatsappSettings.accessToken.trim();
       }
 
-      if (biz?.whatsappSettings?.appSecret?.trim()) {
+      if (data.appSecret && data.appSecret.trim().length > 0) {
+        targetAppSecret = data.appSecret.trim();
+      } else if (biz?.whatsappSettings?.appSecret?.trim()) {
         targetAppSecret = biz.whatsappSettings.appSecret.trim();
       }
     }

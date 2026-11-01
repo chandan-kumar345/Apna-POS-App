@@ -339,6 +339,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final isWebOrDesktop = screenWidth >= 960;
     final isMobile = screenWidth < 600;
 
     return Container(
@@ -361,10 +362,27 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 1. TOP HERO SECTION (WRAPPED EXACTLY MATCHING DESIGN: Studio on Top, Performance Directly Underneath)
-                    _buildHeroStudioBanner(),
-                    const SizedBox(height: 14),
-                    _buildStatsAndWalletColumn(),
+                    // 1. TOP HERO SECTION: Side-by-side on Web & Windows, stacked on Mobile
+                    if (isWebOrDesktop)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 59,
+                            child: _buildHeroStudioBanner(isWeb: true),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 41,
+                            child: _buildStatsAndWalletColumn(isWeb: true),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      _buildHeroStudioBanner(isWeb: false),
+                      const SizedBox(height: 14),
+                      _buildStatsAndWalletColumn(isWeb: false),
+                    ],
                     const SizedBox(height: 18),
 
                     // 2. MAIN STATUS FILTER PILL BAR
@@ -379,7 +397,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
 
                     // 4. CAMPAIGN TEMPLATES SECTION (Only visible when templates exist)
                     if (_allTemplates.isNotEmpty) ...[
-                      _buildCampaignTemplatesSection(),
+                      _buildCampaignTemplatesSection(isWeb: isWebOrDesktop),
                       const SizedBox(height: 26),
                     ],
 
@@ -399,7 +417,292 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   // 1. HERO STUDIO BANNER & STATS COLUMN
   // =========================================================================
 
-  Widget _buildHeroStudioBanner() {
+  Widget _buildHeroStudioBanner({bool isWeb = false}) {
+    if (isWeb) {
+      return Container(
+        height: 255,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: const Color(0xFFE2E8F0),
+            width: 1.2,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0F172A),
+              offset: Offset(0, 6),
+              blurRadius: 20,
+              spreadRadius: 0,
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Left Content: Capsule, Headline, Subtitle, Row of 3 Buttons
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Capsule Badge: [ 📢 CAMPAIGN STUDIO ]
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFFDDD6FE),
+                            width: 1.0,
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.campaign_rounded, color: Color(0xFF7C3AED), size: 13),
+                            SizedBox(width: 5),
+                            Text(
+                              'CAMPAIGN STUDIO',
+                              style: TextStyle(
+                                color: Color(0xFF7C3AED),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.7,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Headline with vibrant purple "More Orders"
+                      RichText(
+                        text: const TextSpan(
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0F172A),
+                            height: 1.18,
+                            letterSpacing: -0.4,
+                          ),
+                          children: [
+                            TextSpan(text: 'Engage Your Customers\nDeliver '),
+                            TextSpan(
+                              text: 'More Orders',
+                              style: TextStyle(
+                                color: Color(0xFF6366F1),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Subtitle description in slate grey
+                      const Text(
+                        'Create and send WhatsApp campaigns, offers, and updates in minutes.\nUse ready templates or create your own to drive more sales.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Color(0xFF64748B),
+                          height: 1.35,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Horizontal Row of 3 Action Buttons matching reference image
+                  Row(
+                    children: [
+                      // Button 1: + Create New Campaigns (Deep Navy / Top Header Gradient)
+                      InkWell(
+                        onTap: widget.onCreateCampaign,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          height: 38,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF031024),
+                                Color(0xFF072146),
+                                Color(0xFF0A2E5C),
+                              ],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: const Color(0xFF1E3A8A).withValues(alpha: 0.6),
+                              width: 1.0,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x33031024),
+                                blurRadius: 8,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add, color: Colors.white, size: 15),
+                              SizedBox(width: 5),
+                              Text(
+                                'Create New Campaigns',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Button 2: Auto Campaigns
+                      InkWell(
+                        onTap: widget.onCreateAutoCampaign,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          height: 38,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: const Color(0xFFCBD5E1),
+                              width: 1.2,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x060F172A),
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.settings_outlined, color: Color(0xFF0F172A), size: 14),
+                              SizedBox(width: 5),
+                              Text(
+                                'Auto Campaigns',
+                                style: TextStyle(
+                                  color: Color(0xFF0F172A),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Button 3: Audience Groups
+                      InkWell(
+                        onTap: widget.onCreateGroup,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          height: 38,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: const Color(0xFFCBD5E1),
+                              width: 1.2,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x060F172A),
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.groups_rounded, color: Color(0xFF0F172A), size: 16),
+                              SizedBox(width: 5),
+                              Text(
+                                'Audience Groups',
+                                style: TextStyle(
+                                  color: Color(0xFF0F172A),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 14),
+
+            // Right Graphic: 3D phone graphic with seamless glowing presentation
+            Container(
+              width: 225,
+              height: 218,
+              alignment: Alignment.center,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 170,
+                    height: 170,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                          blurRadius: 40,
+                          spreadRadius: 8,
+                        ),
+                        BoxShadow(
+                          color: const Color(0xFF25D366).withValues(alpha: 0.10),
+                          blurRadius: 30,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Image.asset(
+                    'assets/images/campaign_hero_phone_3d.png',
+                    width: 225,
+                    height: 218,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (ctx, error, stackTrace) => _buildFallbackHeroPhoneMockup(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 500;
@@ -531,7 +834,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
 
               const SizedBox(height: 14),
 
-              // Button 1: Full-width + Create New Campaigns (Solid Dark Navy Pill)
+              // Button 1: Full-width + Create New Campaigns (Matching Top Header Color)
               InkWell(
                 onTap: widget.onCreateCampaign,
                 borderRadius: BorderRadius.circular(22),
@@ -539,11 +842,23 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                   width: double.infinity,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFF031024),
+                        Color(0xFF072146),
+                        Color(0xFF0A2E5C),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
                     borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.6),
+                      width: 1.0,
+                    ),
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0x330F172A),
+                        color: Color(0x33031024),
                         blurRadius: 10,
                         offset: Offset(0, 3),
                       ),
@@ -800,18 +1115,22 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
     );
   }
 
-  Widget _buildStatsAndWalletColumn() {
+  Widget _buildStatsAndWalletColumn({bool isWeb = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      height: isWeb ? 255 : null,
+      padding: EdgeInsets.symmetric(horizontal: isWeb ? 18 : 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        borderRadius: BorderRadius.circular(isWeb ? 24 : 22),
+        border: Border.all(
+          color: isWeb ? const Color(0xFFE2E8F0) : const Color(0xFFCBD5E1),
+          width: isWeb ? 1.2 : 1.3,
+        ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0A0F172A),
-            offset: Offset(0, 6),
-            blurRadius: 20,
+            color: Color(0x0C0F172A),
+            offset: Offset(0, 4),
+            blurRadius: 14,
             spreadRadius: 0,
           ),
         ],
@@ -828,9 +1147,10 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: isWeb ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: isWeb ? MainAxisAlignment.spaceBetween : MainAxisAlignment.start,
         children: [
-          // Header: Orange Chart Icon + "Campaign Performance" matching reference image
+          // Header: Orange Chart Icon + "Campaign Performance" styled as interactive button
           InkWell(
             onTap: _onViewCampaignPerformance,
             borderRadius: BorderRadius.circular(12),
@@ -862,10 +1182,12 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                     letterSpacing: -0.2,
                   ),
                 ),
+                const Spacer(),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 18),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: isWeb ? 6 : 12),
 
           // 2x2 Grid of Stat Cards with real dynamic counts
           Row(
@@ -897,7 +1219,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: isWeb ? 6 : 10),
           Row(
             children: [
               // SCHEDULED
@@ -927,9 +1249,9 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: isWeb ? 8 : 12),
 
-          // Wallet Balance Row at bottom of card
+          // Live Campaign Performance Summary Row (Replacing removed wallet balance)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -939,66 +1261,113 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFEDD5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFFEA580C), size: 18),
-                ),
-                const SizedBox(width: 10),
+                // 1. Sent
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                  child: Row(
                     children: [
-                      const Text(
-                        'Wallet Balance',
-                        style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.send_rounded, color: Color(0xFF6366F1), size: 15),
                       ),
-                      const SizedBox(height: 1),
-                      Text(
-                        '₹${_stats.walletBalance > 0 ? _stats.walletBalance.toStringAsFixed(2) : "98.95"}',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Sent',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              '${_stats.messagesSent}',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-                // Top Up button in Solid Dark Navy matching reference image
-                InkWell(
-                  onTap: () {},
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    height: 34,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x280F172A),
-                          blurRadius: 8,
-                          offset: Offset(0, 3),
+                Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                const SizedBox(width: 8),
+
+                // 2. Delivered
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDCFCE7),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_card_rounded, color: Colors.white, size: 13),
-                        SizedBox(width: 5),
-                        Text(
-                          'Top Up',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                            color: Colors.white,
-                          ),
+                        child: const Icon(Icons.done_all_rounded, color: Color(0xFF16A34A), size: 15),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Delivered',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              _stats.deliveredCount > 0
+                                  ? '${_stats.deliveredCount}'
+                                  : (_stats.deliveryRate > 0 ? '${_stats.deliveryRate.toStringAsFixed(0)}%' : '0'),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF16A34A)),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                const SizedBox(width: 8),
+
+                // 3. Opened
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0F9FF),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.mark_email_read_rounded, color: Color(0xFF0EA5E9), size: 15),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Opened',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              _stats.readCount > 0
+                                  ? '${_stats.readCount}'
+                                  : (_stats.openRate > 0 ? '${_stats.openRate.toStringAsFixed(0)}%' : '0'),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0EA5E9)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1022,24 +1391,24 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
         ),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 color: iconBg,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Icon(icon, color: iconColor, size: 17),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1048,10 +1417,10 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                   Text(
                     label,
                     style: const TextStyle(
-                      fontSize: 9.5,
+                      fontSize: 9.0,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF64748B),
-                      letterSpacing: 0.5,
+                      letterSpacing: 0.4,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1059,14 +1428,17 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                   const SizedBox(height: 1),
                   Text(
                     count,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), height: 1.1),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), height: 1.1),
                   ),
                   const SizedBox(height: 1),
-                  Text(
-                    subtext,
-                    style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      subtext,
+                      style: const TextStyle(fontSize: 8.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                    ),
                   ),
                 ],
               ),
@@ -1161,11 +1533,23 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: isSelected
                     ? BoxDecoration(
-                        color: const Color(0xFF082559),
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF031024),
+                            Color(0xFF072146),
+                            Color(0xFF0A2E5C),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: const Color(0xFF1E3A8A).withValues(alpha: 0.6),
+                          width: 1.0,
+                        ),
                         boxShadow: const [
                           BoxShadow(
-                            color: Color(0x28082559),
+                            color: Color(0x33031024),
                             blurRadius: 8,
                             offset: Offset(0, 2),
                           ),
@@ -1295,11 +1679,11 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: isSelected
                           ? BoxDecoration(
-                              color: const Color(0xFF082559),
+                              color: const Color(0xFF0B63E5),
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: const [
                                 BoxShadow(
-                                  color: Color(0x28082559),
+                                  color: Color(0x280B63E5),
                                   blurRadius: 8,
                                   offset: Offset(0, 2),
                                 ),
@@ -1414,7 +1798,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   // 4. CAMPAIGN TEMPLATES SECTION (EXACT LANDSCAPE CARDS MATCHING REFERENCE)
   // =========================================================================
 
-  Widget _buildCampaignTemplatesSection() {
+  Widget _buildCampaignTemplatesSection({bool isWeb = false}) {
     if (_templates.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1454,25 +1838,109 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
         ),
         const SizedBox(height: 18),
 
-        // Responsive Horizontal Banner Cards Row matching reference image
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: Row(
+        // 4 Landscape Banner Cards: Row of 4 Expanded on Web & Windows, Scrollable on Mobile
+        if (isWeb && _templates.length <= 4)
+          Row(
             children: _templates.map((tpl) {
-              return Container(
-                width: 235,
-                margin: const EdgeInsets.only(right: 12),
-                child: _buildBannerTemplateCard(tpl),
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: tpl == _templates.last ? 0 : 14,
+                  ),
+                  child: _buildBannerTemplateCard(tpl),
+                ),
               );
             }).toList(),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: _templates.map((tpl) {
+                return Container(
+                  width: 250,
+                  margin: const EdgeInsets.only(right: 14),
+                  child: _buildBannerTemplateCard(tpl),
+                );
+              }).toList(),
+            ),
           ),
-        ),
       ],
     );
   }
 
   Widget _buildBannerTemplateCard(CampaignTemplateModel tpl) {
+    final isPreMadeRef = tpl.headerImageUrl.contains('tpl_ref_');
+
+    if (isPreMadeRef) {
+      return Container(
+        height: 115,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              offset: Offset(0, 4),
+              blurRadius: 10,
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              if (widget.onUseTemplate != null) {
+                widget.onUseTemplate!(tpl);
+              } else {
+                widget.onCreateCampaign();
+              }
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  tpl.headerImageUrl,
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.high,
+                ),
+                // Sleek "Use Template" action badge in bottom right
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white24, width: 0.8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Use Template',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(width: 3),
+                        Icon(Icons.arrow_forward_rounded, size: 10, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final lowerName = tpl.name.toLowerCase();
     final lowerTag = tpl.tagLabel.toLowerCase();
 
@@ -1481,7 +1949,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
     final isFreeDelivery = lowerName.contains('free delivery') || lowerTag.contains('free delivery');
     final isBogo = lowerName.contains('buy 1') || lowerTag.contains('bogo');
 
-    // 1. Color Theme & Gradients matching reference image
+    // Color Theme & Gradients for custom templates
     LinearGradient cardGradient;
     Color badgeBg;
     Color badgeText;
@@ -1564,31 +2032,24 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               widget.onCreateCampaign();
             }
           },
-          child: isSpecialWeekend
-              // Card 1: Drinks image on the LEFT, text on the RIGHT
-              ? Row(
-                  children: [
-                    SizedBox(
-                      width: 110,
-                      height: double.infinity,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
-                        child: _buildTemplateImage(tpl.headerImageUrl),
-                      ),
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 12, right: 10, top: 12, bottom: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildPillBadge(badgeLabel, badgeBg, badgeText, badgeIcon),
-                            const SizedBox(height: 7),
-                            Text(
+          child: Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 14, right: 6, top: 12, bottom: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildPillBadge(badgeLabel, badgeBg, badgeText, badgeIcon),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
                               tpl.name,
                               style: const TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
                                 height: 1.15,
@@ -1596,168 +2057,61 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 5),
+                          ),
+                          if (tpl.isApprovedByMeta) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF10B981)),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        tpl.subtitle.isNotEmpty ? tpl.subtitle : tpl.body,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFFACC15),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEA580C),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             Text(
-                              tpl.subtitle.isNotEmpty ? tpl.subtitle : 'Up to 50% OFF',
-                              style: const TextStyle(
-                                fontSize: 13.5,
+                              'Use Template',
+                              style: TextStyle(
+                                fontSize: 10,
                                 fontWeight: FontWeight.w900,
-                                color: Color(0xFFFACC15),
+                                color: Colors.white,
                               ),
                             ),
+                            SizedBox(width: 4),
+                            Icon(Icons.arrow_forward_rounded, size: 11, color: Colors.white),
                           ],
                         ),
                       ),
-                    ),
-                  ],
-                )
-              // Cards 2, 3, 4 & Custom templates: Text on LEFT, Image on RIGHT
-              : Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 14, right: 6, top: 12, bottom: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildPillBadge(badgeLabel, badgeBg, badgeText, badgeIcon),
-                            const SizedBox(height: 6),
-                            if (isNewMenu) ...[
-                              const Text(
-                                'Introducing\nOur New Menu',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  height: 1.15,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFACC15),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Text(
-                                  'Try Now!',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ),
-                            ] else if (isFreeDelivery) ...[
-                              const Text(
-                                'Free\nDelivery',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  height: 1.1,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              const Text(
-                                'This Weekend',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFFF43F5E),
-                                ),
-                              ),
-                            ] else if (isBogo) ...[
-                              const Text(
-                                'Buy 1\nGet 1 Free',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  height: 1.1,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              const Text(
-                                'On Selected Pizzas',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFFFB923C),
-                                ),
-                              ),
-                            ] else ...[
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      tpl.name,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
-                                        height: 1.15,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  if (tpl.isApprovedByMeta) ...[
-                                    const SizedBox(width: 4),
-                                    const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF10B981)),
-                                  ],
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                tpl.subtitle.isNotEmpty ? tpl.subtitle : tpl.body,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFFFACC15),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEA580C),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Use Template',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(width: 4),
-                                    Icon(Icons.arrow_forward_rounded, size: 11, color: Colors.white),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 115,
-                      height: double.infinity,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
-                        child: _buildTemplateImage(tpl.headerImageUrl),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+              ),
+              SizedBox(
+                width: 115,
+                height: double.infinity,
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
+                  child: _buildTemplateImage(tpl.headerImageUrl),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

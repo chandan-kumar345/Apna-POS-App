@@ -69,6 +69,14 @@ class MainActivity : FlutterActivity() {
                 "bringToFront" -> {
                     try {
                         wakeAndShowOverLockScreen()
+                        val bringToFrontIntent = Intent(this@MainActivity, MainActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            )
+                        }
+                        startActivity(bringToFrontIntent)
                         result.success(true)
                     } catch (e: Exception) {
                         result.success(false)
