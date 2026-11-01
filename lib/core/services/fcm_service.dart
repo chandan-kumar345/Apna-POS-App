@@ -235,8 +235,8 @@ class FcmService {
             },
           );
 
-          if (response.statusCode == 200 || response.statusCode == 201) {
-            debugPrint('[FcmService] ✅ Registered device FCM push token with backend (attempt $attempt)');
+          if (response != null) {
+            debugPrint('[FcmService] ✅ Registered device FCM push token with backend (attempt $attempt): $token');
             return true;
           }
         } catch (e) {
