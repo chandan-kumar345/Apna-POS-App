@@ -397,6 +397,8 @@ class SocketService {
           );
 
           // 3. Trigger interactive Accept / Reject screen modal
+          SoundService.boostHardwareVolume();
+          SoundService.bringAppToFront();
           LocalNotificationService.handlePayloadDirectly({
             'type': 'whatsapp_order_request',
             'orderId': orderModel.id,
@@ -636,6 +638,8 @@ class SocketService {
       );
 
       // 3. Resiliently trigger the incoming WhatsApp order action dialog & full-screen accept
+      SoundService.boostHardwareVolume();
+      SoundService.bringAppToFront();
       LocalNotificationService.handlePayloadDirectly({
         'type': 'whatsapp_order_request',
         'orderId': orderId,

@@ -29,7 +29,6 @@ class SoundService {
   int _lastButtonClickTime = 0;
   int _lastKeyPressTime = 0;
   int _lastNotificationSoundTime = 0;
-  int _lastOrderRingtoneTime = 0;
 
   /// Initialize sound service and preload audio sources lazily
   Future<void> init() async {
@@ -52,13 +51,34 @@ class SoundService {
         await _buttonPlayer?.setPlayerMode(PlayerMode.lowLatency);
         await _keyPlayer?.setPlayerMode(PlayerMode.lowLatency);
         await _notificationPlayer?.setPlayerMode(PlayerMode.lowLatency);
-        await _ringtonePlayer?.setPlayerMode(PlayerMode.lowLatency);
+        await _ringtonePlayer?.setPlayerMode(PlayerMode.mediaPlayer);
       }
 
       await _buttonPlayer?.setReleaseMode(ReleaseMode.stop);
       await _keyPlayer?.setReleaseMode(ReleaseMode.stop);
       await _notificationPlayer?.setReleaseMode(ReleaseMode.stop);
-      await _ringtonePlayer?.setReleaseMode(ReleaseMode.stop);
+      await _ringtonePlayer?.setReleaseMode(ReleaseMode.loop);
+
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await _ringtonePlayer?.setAudioContext(
+          AudioContext(
+            android: const AudioContextAndroid(
+              isSpeakerphoneOn: true,
+              stayAwake: true,
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.alarm,
+              audioFocus: AndroidAudioFocus.gainTransientExclusive,
+            ),
+            iOS: AudioContextIOS(
+              category: AVAudioSessionCategory.playback,
+              options: {
+                AVAudioSessionOptions.duckOthers,
+                AVAudioSessionOptions.defaultToSpeaker,
+              },
+            ),
+          ),
+        );
+      }
 
       await _buttonPlayer?.setSource(AssetSource('sounds/ios_click.wav'));
       await _keyPlayer?.setSource(AssetSource('sounds/ios_keypress.wav'));
@@ -77,6 +97,26 @@ class SoundService {
     }
   }
 
+  static const MethodChannel _nativeAlertChannel = MethodChannel('com.apnapos.app/order_alert');
+
+  /// Force phone hardware volume to maximum (alarm + media streams)
+  static Future<void> boostHardwareVolume() async {
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await _nativeAlertChannel.invokeMethod('setMaxVolume');
+      }
+    } catch (_) {}
+  }
+
+  /// Bring Android app / MainActivity directly over lock screen or home screen
+  static Future<void> bringAppToFront() async {
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await _nativeAlertChannel.invokeMethod('bringToFront');
+      }
+    } catch (_) {}
+  }
+
   /// Toggle sound enabled/disabled setting
   static Future<void> setSoundEnabled(bool enabled) async {
     soundEnabled = enabled;
@@ -86,19 +126,16 @@ class SoundService {
     } catch (_) {}
   }
 
-  /// Play incoming order receive ringtone when an order arrives
+  /// Play incoming order receive ringtone continuously in a loop at full volume until accepted or rejected
   static void playOrderRingtone() {
     if (!soundEnabled) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastOrderRingtoneTime < 3000) {
-      return;
-    }
-    _instance._lastOrderRingtoneTime = now;
 
     try {
       HapticFeedback.heavyImpact();
     } catch (_) {}
+
+    // Force Android hardware alarm and media streams to 100% full volume
+    boostHardwareVolume();
 
     if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       return;
@@ -114,6 +151,9 @@ class SoundService {
   void _playOrderRingtoneAsset() async {
     try {
       await _ringtonePlayer?.stop();
+      await _ringtonePlayer?.setPlayerMode(PlayerMode.mediaPlayer);
+      await _ringtonePlayer?.setReleaseMode(ReleaseMode.loop);
+      await _ringtonePlayer?.setVolume(1.0);
       await _ringtonePlayer?.play(AssetSource('sounds/order_recieve_ringtone.mp3'));
     } catch (_) {
       _playNotificationAsset();

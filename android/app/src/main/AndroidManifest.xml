@@ -86,15 +86,14 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="apna_pos_general_v2" />
 
-        <!-- Direct screen wake & order accept receiver on incoming FCM order alerts -->
-        <receiver
-            android:name=".OrderWakeBroadcastReceiver"
-            android:exported="true"
-            android:permission="com.google.android.c2dm.permission.SEND">
+        <!-- High-priority FCM service that wakes screen, sets max volume & pops up order accept screen -->
+        <service
+            android:name=".ApnaPosFirebaseMessagingService"
+            android:exported="false">
             <intent-filter android:priority="999">
-                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
-        </receiver>
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

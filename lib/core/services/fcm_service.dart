@@ -7,6 +7,7 @@ import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import '../security/secure_storage_service.dart';
 import 'local_notification_service.dart';
+import 'sound_service.dart';
 import '../../features/notifications/models/notification_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -39,6 +40,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       } catch (err) {
         debugPrint('[FCM Background] Error caching pending order in prefs: $err');
       }
+      try {
+        SoundService.boostHardwareVolume();
+        SoundService.bringAppToFront();
+      } catch (_) {}
     }
     await LocalNotificationService.showNotificationFromRemoteMessage(message);
   } catch (e) {
@@ -192,6 +197,8 @@ class FcmService {
 
     // If order alert received, directly trigger the action screen
     if (isOrder) {
+      SoundService.boostHardwareVolume();
+      SoundService.bringAppToFront();
       LocalNotificationService.handlePayloadDirectly(data);
     }
   }

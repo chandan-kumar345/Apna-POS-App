@@ -84,6 +84,8 @@ class LocalNotificationService with WidgetsBindingObserver {
             metadata['orderId'] != null;
 
         if (isOrder) {
+          SoundService.boostHardwareVolume();
+          SoundService.bringAppToFront();
           if (SplashScreen.isSplashActive) {
             debugPrint('[LocalNotificationService] ⏳ SplashScreen active. Queueing order payload for display post-splash.');
             _pendingIncomingOrderPayload = decoded;
