@@ -118,22 +118,6 @@ class CronService {
         idempotencyKey,
       });
 
-      // Dispatch push notification
-      const pushNotificationService = require('./pushNotificationService');
-      pushNotificationService.sendPushNotification({
-        userId: business.ownerId,
-        title,
-        message,
-        data: {
-          type: 'daily_sales_summary',
-          date: dateStr,
-          totalSales,
-          ordersCount: orderCount,
-          avgOrderValue,
-          orders: orderBreakdown,
-        },
-      }).catch(() => {});
-
       return notification;
     } catch (error) {
       console.error(`[CronService] Error generating summary for business ${business._id}: ${error.message}`);

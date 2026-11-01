@@ -165,7 +165,7 @@ class PushNotificationService {
   /**
    * Send push notification asynchronously (non-blocking)
    */
-  async sendPushNotification({ userId, token: explicitToken, platform: explicitPlatform, title, message, data = {} }) {
+  async sendPushNotification({ userId, token: explicitToken, platform: explicitPlatform, title, message, data = {}, sentTokens = null }) {
     try {
       const uid = userId ? userId.toString() : null;
       let token = explicitToken || (uid ? this.deviceTokens.get(uid) : null);
@@ -194,6 +194,31 @@ class PushNotificationService {
         return;
       }
 
+      // Check if this token was already dispatched in the current batch
+      if (sentTokens && sentTokens.has(token)) {
+        console.log(`[PushNotificationService] Push skipped (duplicate token in batch for ${token.slice(0, 15)}...): "${title}"`);
+        return;
+      }
+      if (sentTokens) {
+        sentTokens.add(token);
+      }
+
+      // In-flight debounce: prevent identical message sent to the same device within 10s
+      if (!this._recentPushDedupe) this._recentPushDedupe = new Map();
+      const dedupeKey = `${token}::${title}::${message}`;
+      const now = Date.now();
+      const lastSent = this._recentPushDedupe.get(dedupeKey);
+      if (lastSent && now - lastSent < 10000) {
+        console.log(`[PushNotificationService] Push skipped (debounced duplicate within 10s): "${title}"`);
+        return;
+      }
+      this._recentPushDedupe.set(dedupeKey, now);
+      if (this._recentPushDedupe.size > 200) {
+        for (const [k, ts] of this._recentPushDedupe.entries()) {
+          if (now - ts > 30000) this._recentPushDedupe.delete(k);
+        }
+      }
+
       const isOrderRequest =
         data.type === 'whatsapp_order_request' ||
         data.type === 'whatsapp_new_order' ||
@@ -210,6 +235,16 @@ class PushNotificationService {
       const channelId = isOrderRequest
         ? 'apna_pos_whatsapp_orders_v2'
         : (isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2');
+
+      // Android notification tag to natively update/replace notifications in system shade
+      let androidTag = null;
+      if (data.type === 'daily_sales_summary' || data.entityType === 'sales_report') {
+        androidTag = `daily_sales_summary_${data.date || 'today'}`;
+      } else if (isOrderRequest) {
+        androidTag = `order_${data.orderId || data.orderNumber || 'incoming'}`;
+      } else if (isWhatsApp) {
+        androidTag = `chat_${data.chatId || data.customerPhone || 'msg'}`;
+      }
 
       // Sanitize all data entries into strings (FCM requirement for data payload)
       const sanitizedData = {};
@@ -236,6 +271,7 @@ class PushNotificationService {
           sound: 'notification_sound',
           android_channel_id: channelId,
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          ...(androidTag ? { tag: androidTag } : {}),
         },
         data: sanitizedData,
       };
@@ -247,6 +283,7 @@ class PushNotificationService {
         visibility: 'public',
         default_vibrate_timings: true,
         default_light_settings: true,
+        ...(androidTag ? { tag: androidTag } : {}),
       };
 
       // 1. Try FCM HTTP v1 using Service Account JSON (recommended by Firebase)
@@ -277,6 +314,7 @@ class PushNotificationService {
                     default_vibrate_timings: true,
                     default_light_settings: true,
                     click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                    ...(androidTag ? { tag: androidTag } : {}),
                   },
                 },
                 apns: {

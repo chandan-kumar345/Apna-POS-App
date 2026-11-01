@@ -57,19 +57,31 @@ class NotificationService {
         setImmediate(async () => {
           try {
             const targetUserIds = new Set();
-            if (userId) targetUserIds.add(userId.toString());
-            if (businessId) {
-              const Business = mongoose.models.Business || require('../models/Business');
-              const [biz, users] = await Promise.all([
-                Business.findById(businessId).select('ownerId').lean().catch(() => null),
-                User.find({ businessId }).select('_id').lean().catch(() => []),
-              ]);
-              if (biz?.ownerId) targetUserIds.add(biz.ownerId.toString());
-              for (const u of users) {
-                if (u._id) targetUserIds.add(u._id.toString());
+            if (notification.type === 'daily_sales_summary') {
+              // Daily sales summary is strictly for the business owner
+              if (userId) {
+                targetUserIds.add(userId.toString());
+              } else if (businessId) {
+                const Business = mongoose.models.Business || require('../models/Business');
+                const biz = await Business.findById(businessId).select('ownerId').lean().catch(() => null);
+                if (biz?.ownerId) targetUserIds.add(biz.ownerId.toString());
+              }
+            } else {
+              if (userId) targetUserIds.add(userId.toString());
+              if (businessId) {
+                const Business = mongoose.models.Business || require('../models/Business');
+                const [biz, users] = await Promise.all([
+                  Business.findById(businessId).select('ownerId').lean().catch(() => null),
+                  User.find({ businessId }).select('_id').lean().catch(() => []),
+                ]);
+                if (biz?.ownerId) targetUserIds.add(biz.ownerId.toString());
+                for (const u of users) {
+                  if (u._id) targetUserIds.add(u._id.toString());
+                }
               }
             }
 
+            const dispatchedTokens = new Set();
             for (const uid of targetUserIds) {
               pushNotificationService.sendPushNotification({
                 userId: uid,
@@ -83,6 +95,7 @@ class NotificationService {
                   entityId: notification.entityId || '',
                   ...notification.metadata,
                 },
+                sentTokens: dispatchedTokens,
               });
             }
           } catch (pushErr) {

@@ -426,20 +426,41 @@ class LocalNotificationService with WidgetsBindingObserver {
         );
       }
 
+      final isDailySummary = typeStr == 'daily_sales_summary' ||
+          data['entityType'] == 'sales_report' ||
+          data['type'] == 'daily_sales_summary';
+
+      final notifId = isDailySummary
+          ? 9991
+          : (isWhatsAppOrder && data['orderId'] != null
+              ? data['orderId'].toString().hashCode.abs().remainder(100000)
+              : 0);
+
       final instance = LocalNotificationService();
       await instance.init();
 
       await instance.showPushNotification(
+        id: notifId,
         title: finalTitle,
         body: finalBody,
         payload: jsonEncode(data),
         styleInformation: bigTextStyle,
         type: isWhatsAppOrder
             ? NotificationType.whatsappOrderRequest
-            : instance.resolveNotificationType(typeStr),
-        channelId: isWhatsAppOrder
-            ? 'apna_pos_whatsapp_orders_v2'
-            : (typeStr.contains('whatsapp') ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2'),
+            : (isDailySummary
+                ? NotificationType.dailySalesSummary
+                : instance.resolveNotificationType(typeStr)),
+        channelId: isDailySummary
+            ? 'apna_pos_sales_v2'
+            : (isWhatsAppOrder
+                ? 'apna_pos_whatsapp_orders_v2'
+                : (typeStr.contains('whatsapp') ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2')),
+        channelName: isDailySummary
+            ? 'Sales & Business Reports'
+            : (isWhatsAppOrder ? 'WhatsApp Orders & Alerts' : 'General Alerts & Orders'),
+        channelDescription: isDailySummary
+            ? 'Extended high-priority daily sales summaries and business metrics'
+            : 'Real-time notifications for orders, leads, and daily summaries',
         entityType: data['entityType']?.toString(),
         entityId: data['entityId']?.toString(),
         metadata: data,
@@ -479,14 +500,14 @@ class LocalNotificationService with WidgetsBindingObserver {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (_recentNotificationDedupe.containsKey(dedupeKey)) {
       final prev = _recentNotificationDedupe[dedupeKey]!;
-      if (nowMs - prev < 1200) {
+      if (nowMs - prev < 20000) {
         debugPrint('[LocalNotificationService] Suppressing duplicate push: "$title" within debounce window');
         return;
       }
     }
     _recentNotificationDedupe[dedupeKey] = nowMs;
     if (_recentNotificationDedupe.length > 50) {
-      _recentNotificationDedupe.removeWhere((_, time) => nowMs - time > 10000);
+      _recentNotificationDedupe.removeWhere((_, time) => nowMs - time > 30000);
     }
 
     // 1. Play in-app audio feedback ONLY on platforms without native channel sound
@@ -609,8 +630,19 @@ class LocalNotificationService with WidgetsBindingObserver {
             'metadata': metadata,
           });
 
+      final int effectiveId;
+      if (type == NotificationType.dailySalesSummary ||
+          metadata['type'] == 'daily_sales_summary' ||
+          entityType == 'sales_report') {
+        effectiveId = 9991;
+      } else if (id != 0) {
+        effectiveId = id;
+      } else {
+        effectiveId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+      }
+
       await _notificationsPlugin.show(
-        id == 0 ? DateTime.now().millisecondsSinceEpoch.remainder(100000) : id,
+        effectiveId,
         title,
         body,
         platformDetails,

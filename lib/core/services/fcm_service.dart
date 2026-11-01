@@ -155,17 +155,39 @@ class FcmService {
         data['entityType'] == 'order' ||
         data['orderId'] != null;
 
+    final isDailySummary = typeStr == 'daily_sales_summary' ||
+        data['entityType'] == 'sales_report' ||
+        data['type'] == 'daily_sales_summary';
+
+    final notifId = isDailySummary
+        ? 9991
+        : (isWhatsAppOrder && data['orderId'] != null
+            ? data['orderId'].toString().hashCode.abs().remainder(100000)
+            : 0);
+
     LocalNotificationService().showPushNotification(
+      id: notifId,
       title: title,
       body: body,
       payload: jsonEncode(data),
       type: isWhatsAppOrder
           ? NotificationType.whatsappOrderRequest
-          : LocalNotificationService().resolveNotificationType(typeStr),
+          : (isDailySummary
+              ? NotificationType.dailySalesSummary
+              : LocalNotificationService().resolveNotificationType(typeStr)),
       entityType: data['entityType']?.toString(),
       entityId: data['entityId']?.toString(),
       metadata: data,
       playSound: true,
+      channelId: isDailySummary
+          ? 'apna_pos_sales_v2'
+          : (isWhatsAppOrder ? 'apna_pos_whatsapp_orders_v2' : 'apna_pos_general_v2'),
+      channelName: isDailySummary
+          ? 'Sales & Business Reports'
+          : (isWhatsAppOrder ? 'WhatsApp Orders & Alerts' : 'General Alerts & Orders'),
+      channelDescription: isDailySummary
+          ? 'Extended high-priority daily sales summaries and business metrics'
+          : 'Real-time notifications for orders, leads, and daily summaries',
     );
 
     // If order alert received, directly trigger the action screen

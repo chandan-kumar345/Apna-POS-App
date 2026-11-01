@@ -470,6 +470,24 @@ class SocketService {
 
       debugPrint('[SocketService] 🔔 Instant notification received via socket: "$title"');
 
+      if (type == 'daily_sales_summary' || notifData['entityType'] == 'sales_report') {
+        LocalNotificationService().showPushNotification(
+          id: 9991,
+          title: title,
+          body: message,
+          payload: jsonEncode(notifData),
+          type: NotificationType.dailySalesSummary,
+          entityType: notifData['entityType']?.toString(),
+          entityId: notifData['entityId']?.toString(),
+          metadata: metadata,
+          playSound: true,
+          channelId: 'apna_pos_sales_v2',
+          channelName: 'Sales & Business Reports',
+          channelDescription: 'Extended high-priority daily sales summaries and business metrics',
+        );
+        return;
+      }
+
       LocalNotificationService().showPushNotification(
         title: title,
         body: message,
