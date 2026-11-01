@@ -93,13 +93,32 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   int _currentStep = 1; // 1: Edit Reward, 2: Edit Theme, 3: Whatsapp Review
 
   // Step 2: Edit Theme state
-  String _bannerImageUrl = 'assets/images/campaign_hero_banner_full.png';
+  String _bannerImageUrl = 'assets/images/knowwu_offer_landing_banner.png';
   String _logoUrl = '';
-  Color _themeColor = const Color(0xFFE91E63);
+  Color _themeColor = const Color(0xFFF95721);
   Color _textColor = Colors.white;
 
   // Step 3: Whatsapp Review state
-  String _sendCampaignDisplayName = 'Knowwu'; // 'Loyalty Restaurant' | 'Knowwu'
+  String _sendCampaignDisplayName = 'Knowwu';
+
+  String get _businessDisplayName {
+    final restName = _db.restaurant?.name.trim();
+    if (restName != null && restName.isNotEmpty) {
+      return restName;
+    }
+    final compName = _db.currentUser?.companyName?.trim();
+    if (compName != null && compName.isNotEmpty) {
+      return compName;
+    }
+    return 'Restaurant Business Account';
+  }
+
+  bool get _hasCustomMetaIntegration {
+    return _db.isWhatsAppIntegrationEnabled ||
+        _db.whatsAppPhoneId.trim().isNotEmpty ||
+        _db.whatsAppWabaId.trim().isNotEmpty ||
+        _db.whatsAppAccessToken.trim().isNotEmpty;
+  }
   String _messageCategory = 'Marketing';
   String _templateLanguage = 'en';
   late TextEditingController _whatsappBodyController;
@@ -152,10 +171,10 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
     super.initState();
 
     final tpl = widget.initialTemplate;
-    final initialTitle = tpl?.name ?? '🥂 Weekend Special - Flat ₹300 OFF';
+    final initialTitle = tpl?.name ?? 'Order 1 Pav Bhaji and Get 1 Tawa Pulav absolutely FREE!';
     final initialDesc = (tpl?.subtitle.isNotEmpty == true ? tpl!.subtitle : null) ??
         (tpl?.body.isNotEmpty == true ? tpl!.body : null) ??
-        'Kick-start the celebrations with guaranteed savings. Enjoy our exclusive dining reward with confidence and joy.';
+        'Celebrate Diwali with delicious food and exciting festive offers! Enjoy this festive treat with your loved ones and make your celebrations even more special.';
 
     _discountValueController = TextEditingController(text: '300');
     _minSpendController = TextEditingController(text: '500');
@@ -168,6 +187,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
     _whatsappFooterController = TextEditingController(text: '');
     _ctaButtonTitleController = TextEditingController(text: 'Offer details');
     _ctaButtonUrlController = TextEditingController(text: 'https://loyalty.knowwu.me/b/{{1}}');
+    _sendCampaignDisplayName = _hasCustomMetaIntegration ? _businessDisplayName : 'Knowwu';
 
     // Attach listeners so live preview reacts immediately as user types
     _campaignTitleController.addListener(() => setState(() {}));
@@ -481,7 +501,25 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
       recipientCount: _selectedGroup?.count ?? 320,
     );
 
-    final channel = _selectedChannel ?? const CampaignChannelModel();
+    CampaignChannelModel channel = _selectedChannel ?? const CampaignChannelModel();
+    if (_sendCampaignDisplayName == 'Knowwu') {
+      channel = channel.copyWith(
+        id: 'softcode_shared',
+        channelType: 'softcode_shared',
+        name: 'Knowwu Official Verified WhatsApp',
+        businessName: 'Knowwu',
+        badge: 'Official Verified',
+      );
+    } else {
+      channel = channel.copyWith(
+        id: 'business_whatsapp',
+        channelType: 'business_whatsapp',
+        name: '$_businessDisplayName WhatsApp',
+        businessName: _businessDisplayName,
+        badge: _hasCustomMetaIntegration ? 'Connected' : 'Setup in Settings',
+        phoneNumberId: _db.whatsAppPhoneId,
+      );
+    }
     final template = _submittedTemplate ?? widget.initialTemplate ??
         CampaignTemplateModel(
           id: 'custom_reward_tpl',
@@ -808,14 +846,14 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   }
 
   // =========================================================================
-  // 2. LEFT COLUMN: REALISTIC SMARTPHONE PREVIEW (Matching Image 2)
+  // 2. LEFT COLUMN: LIVE AUTHENTIC LANDING PREVIEW (Matching Image 1)
   // =========================================================================
   Widget _buildLeftPhonePreviewColumn() {
     final restName = (_db.restaurant?.name != null && _db.restaurant!.name.isNotEmpty)
         ? _db.restaurant!.name
         : ((_db.currentUser?.companyName != null && _db.currentUser!.companyName!.isNotEmpty)
             ? _db.currentUser!.companyName!
-            : 'Apna Restaurant');
+            : 'Swaad Chowpatty');
 
     final discountVal = _discountValueController.text.trim().isNotEmpty
         ? _discountValueController.text.trim()
@@ -835,7 +873,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
         discountBadgeText = 'FREE: ${_selectedFreeGiftProduct?.name ?? "Complimentary Item"}';
         break;
       case 'Buy 1 Get 1 (BOGO)':
-        discountBadgeText = 'Buy 1 Get 1 FREE';
+        discountBadgeText = 'Order 1 Pav Bhaji | Get 1 Tawa Pulav FREE';
         break;
       case 'Flat Cash Discount':
       default:
@@ -844,174 +882,216 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
 
     final campaignTitle = _campaignTitleController.text.trim().isNotEmpty
         ? _campaignTitleController.text.trim()
-        : 'New Year Special - Flat ₹300 OFF';
-
-    final campaignDesc = _descriptionController.text.trim().isNotEmpty
-        ? _descriptionController.text.trim()
-        : 'Kick-start your shopping with guaranteed savings. Get our exclusive reward and enjoy premium dining!';
+        : (_selectedRewardType == 'Buy 1 Get 1 (BOGO)'
+            ? 'Order 1 Pav Bhaji and Get 1 Tawa Pulav absolutely FREE!'
+            : 'Order Now & Enjoy $discountBadgeText');
 
     final couponCode = _couponCodeController.text.trim().isNotEmpty
         ? _couponCodeController.text.trim().toUpperCase()
         : 'FLAT300';
 
+    final orderTypesStr = _selectedOrderTypes.isNotEmpty
+        ? _selectedOrderTypes.map((t) => t.replaceAll(' ', '')).join(' ')
+        : 'DineIn TakeAway Delivery';
+
+    final productSummary = _discountScope == 'chosen_products' && _selectedProducts.isNotEmpty
+        ? _selectedProducts.map((p) => p.name).take(3).join(', ')
+        : (_selectedFreeGiftProduct != null
+            ? _selectedFreeGiftProduct!.name
+            : (_selectedRewardType == 'Buy 1 Get 1 (BOGO)' ? 'Tawa Pulav' : 'All Menu Items'));
+
+    final storeAddress = _db.restaurant?.address.isNotEmpty == true
+        ? _db.restaurant!.address
+        : 'AUSA Road, Latur - 413512';
+
+    final minSpendVal = _minSpendController.text.trim().isNotEmpty
+        ? _minSpendController.text.trim()
+        : '199';
+
     return Center(
       child: Container(
-        width: 330,
-        height: 680,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(42),
-          border: Border.all(color: const Color(0xFF334155), width: 5),
+          color: const Color(0xFFFBF6F1),
+          borderRadius: BorderRadius.circular(46),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 28,
-              offset: Offset(0, 14),
+              color: Color(0x14F95721),
+              blurRadius: 36,
+              offset: Offset(0, 16),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(37),
-          child: Container(
-            color: const Color(0xFFF8FAFC),
-            child: Column(
-              children: [
-                // Phone Status Bar & Dynamic Island
-                Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.only(top: 8, left: 16, right: 16, bottom: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        '9:41',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                      ),
-                      Container(
-                        width: 86,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      const Row(
-                        children: [
-                          Icon(Icons.signal_cellular_4_bar_rounded, size: 12, color: Color(0xFF0F172A)),
-                          SizedBox(width: 4),
-                          Icon(Icons.wifi_rounded, size: 12, color: Color(0xFF0F172A)),
-                          SizedBox(width: 4),
-                          Icon(Icons.battery_5_bar_rounded, size: 13, color: Color(0xFF0F172A)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // In-App Header & Voucher View
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        child: Container(
+          width: 326,
+          height: 680,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(40),
+            border: Border.all(color: const Color(0xFF1E293B), width: 4.5),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 24,
+                offset: Offset(0, 12),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(35),
+            child: Container(
+              color: const Color(0xFFFAF7F2),
+              child: Column(
+                children: [
+                  // 1. Phone Top Status Bar
+                  Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.only(top: 8, left: 16, right: 16, bottom: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Restaurant profile bar
+                        const Text(
+                          '9:41',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                        ),
                         Container(
-                          color: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          child: Row(
-                            children: [
-                              InkWell(
-                                onTap: _currentStep == 2 ? _showChangeLogoDialog : null,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: BoxDecoration(
-                                        color: _primaryNavy,
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: _cardBorder),
-                                      ),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: _logoUrl.isNotEmpty
-                                          ? (_logoUrl.startsWith('http')
-                                              ? Image.network(_logoUrl, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => const Icon(Icons.storefront_rounded, size: 20, color: Colors.white))
-                                              : Image.asset(_logoUrl, fit: BoxFit.cover, errorBuilder: (ctx, err, st) => const Icon(Icons.storefront_rounded, size: 20, color: Colors.white)))
-                                          : const Center(
-                                              child: Icon(Icons.storefront_rounded, size: 18, color: Colors.white),
-                                            ),
-                                    ),
-                                    if (_currentStep == 2)
-                                      Positioned(
-                                        right: -2,
-                                        bottom: -2,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(3),
-                                          decoration: const BoxDecoration(
-                                            color: _primaryNavy,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(Icons.edit, size: 8, color: Colors.white),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  restName,
-                                  style: const TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                          width: 80,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
+                        const Row(
+                          children: [
+                            Icon(Icons.signal_cellular_4_bar_rounded, size: 11, color: Color(0xFF0F172A)),
+                            SizedBox(width: 4),
+                            Icon(Icons.wifi_rounded, size: 11, color: Color(0xFF0F172A)),
+                            SizedBox(width: 4),
+                            Icon(Icons.battery_5_bar_rounded, size: 12, color: Color(0xFF0F172A)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
 
-                        // Promotional Banner
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: InkWell(
+                  // 2. Real Browser URL Header (loyalty.knowwu.me/c/...)
+                  Container(
+                    color: const Color(0xFF15221B),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_rounded, size: 11, color: Color(0xFF6EE7B7)),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            'loyalty.knowwu.me/c/oNOI888TudK/LwDVKYGmzes',
+                            style: TextStyle(
+                              color: Color(0xFFD1D5DB),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.refresh_rounded, size: 12, color: Colors.grey[400]),
+                      ],
+                    ),
+                  ),
+
+                  // 3. Scrollable Mobile Landing Voucher Content
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Hero Banner with Overlaid Store Badge
+                          InkWell(
                             onTap: _currentStep == 2 ? _showChangeBannerDialog : null,
-                            borderRadius: BorderRadius.circular(16),
                             child: Stack(
+                              clipBehavior: Clip.none,
                               children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: SizedBox(
-                                    height: 130,
-                                    width: double.infinity,
-                                    child: _bannerImageUrl.startsWith('http')
-                                        ? Image.network(
-                                            _bannerImageUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (ctx, err, st) => Container(
-                                              color: const Color(0xFF0C464C),
-                                              child: const Center(
-                                                child: Icon(Icons.restaurant_rounded, size: 40, color: Color(0xFF2DD4BF)),
-                                              ),
-                                            ),
-                                          )
-                                        : Image.asset(
-                                            _bannerImageUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (ctx, err, st) => Container(
-                                              color: const Color(0xFF0C464C),
-                                              child: const Center(
-                                                child: Icon(Icons.restaurant_rounded, size: 40, color: Color(0xFF2DD4BF)),
-                                              ),
-                                            ),
+                                SizedBox(
+                                  height: 148,
+                                  width: double.infinity,
+                                  child: _bannerImageUrl.startsWith('http')
+                                      ? Image.network(
+                                          _bannerImageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (ctx, err, st) => Container(
+                                            color: const Color(0xFFEA580C),
+                                            child: const Center(child: Icon(Icons.restaurant_rounded, size: 40, color: Colors.white70)),
                                           ),
+                                        )
+                                      : Image.asset(
+                                          _bannerImageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (ctx, err, st) => Container(
+                                            color: const Color(0xFFEA580C),
+                                            child: const Center(child: Icon(Icons.restaurant_rounded, size: 40, color: Colors.white70)),
+                                          ),
+                                        ),
+                                ),
+
+                                // Overlaid Store Logo & Name Pill (Bottom of Banner)
+                                Positioned(
+                                  bottom: 8,
+                                  left: 12,
+                                  right: 12,
+                                  child: Row(
+                                    children: [
+                                      InkWell(
+                                        onTap: _currentStep == 2 ? _showChangeLogoDialog : null,
+                                        child: Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: Colors.white, width: 2),
+                                            boxShadow: const [
+                                              BoxShadow(color: Color(0x3D000000), blurRadius: 6, offset: Offset(0, 2)),
+                                            ],
+                                          ),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: _logoUrl.isNotEmpty
+                                              ? (_logoUrl.startsWith('http')
+                                                  ? Image.network(_logoUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.storefront_rounded, size: 18, color: Color(0xFFF95721)))
+                                                  : Image.asset(_logoUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.storefront_rounded, size: 18, color: Color(0xFFF95721))))
+                                              : Center(
+                                                  child: Image.asset(
+                                                    'assets/images/apna_pos_brand_logo.png',
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder: (c, e, s) => const Icon(Icons.restaurant_rounded, size: 18, color: Color(0xFFF95721)),
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          restName,
+                                          style: const TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w900,
+                                            color: Colors.white,
+                                            shadows: [
+                                              Shadow(color: Colors.black87, blurRadius: 6, offset: Offset(0, 1)),
+                                              Shadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 1)),
+                                            ],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
+
                                 if (_currentStep == 2)
                                   Positioned(
                                     right: 8,
@@ -1025,9 +1105,9 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                                       child: const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.camera_alt_rounded, size: 12, color: Colors.white),
+                                          Icon(Icons.camera_alt_rounded, size: 11, color: Colors.white),
                                           SizedBox(width: 4),
-                                          Text('Change', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                          Text('Change', style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold)),
                                         ],
                                       ),
                                     ),
@@ -1035,181 +1115,155 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                               ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
 
-                        // Vibrant Reward Voucher Card (Styled with _themeColor and _textColor)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  _themeColor, _themeColor.withValues(alpha: 0.85),
+                          // Vibrant Festive Offer Voucher Card (Image 1 replica)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 8, 10, 16),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    _themeColor,
+                                    _themeColor.withValues(alpha: 0.92),
+                                  ],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                                borderRadius: BorderRadius.circular(18),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: _themeColor.withValues(alpha: 0.35),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 8),
+                                  ),
                                 ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
                               ),
-                              borderRadius: BorderRadius.circular(18),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _themeColor.withValues(alpha: 0.35),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Badge & Campaign Title
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('🥂 ', style: TextStyle(fontSize: 18)),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Container(
-                                            margin: const EdgeInsets.only(bottom: 6),
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
-                                            child: Text(
-                                              discountBadgeText,
-                                              style: TextStyle(
-                                                color: _themeColor,
-                                                fontWeight: FontWeight.w900,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                          Text(
-                                            campaignTitle,
-                                            style: TextStyle(
-                                              color: _textColor,
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 14,
-                                              height: 1.25,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-
-                                // Description
-                                Text(
-                                  campaignDesc,
-                                  style: TextStyle(
-                                    color: _textColor.withValues(alpha: 0.92),
-                                    fontSize: 11,
-                                    height: 1.35,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-
-                                // Dotted / subtle divider
-                                Divider(color: _textColor.withValues(alpha: 0.25), height: 1),
-                                const SizedBox(height: 10),
-
-                                // Terms & Conditions section
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(3),
-                                      decoration: BoxDecoration(
-                                        color: _textColor.withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Icon(Icons.verified_outlined, size: 12, color: _textColor),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Terms & conditions',
-                                      style: TextStyle(
-                                        color: _textColor,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 11.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                if (_hasMinSpend)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 4, bottom: 3),
-                                    child: Text(
-                                      '✓ Minimum purchase of ₹${_minSpendController.text.trim()} required.',
-                                      style: TextStyle(color: _textColor.withValues(alpha: 0.9), fontSize: 10.5),
-                                    ),
-                                  ),
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 4, bottom: 3),
-                                  child: Text(
-                                    '✓ 2 offers cannot be clubbed.',
-                                    style: TextStyle(color: _textColor.withValues(alpha: 0.9), fontSize: 10.5),
-                                  ),
-                                ),
-                                if (_selectedOrderTypes.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 4, bottom: 3),
-                                    child: Text(
-                                      '✓ Valid on: ${_selectedOrderTypes.join(", ")}',
-                                      style: TextStyle(color: _textColor.withValues(alpha: 0.9), fontSize: 10.5),
-                                    ),
-                                  ),
-                                if (_hasExpiryDate)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 4, bottom: 3),
-                                    child: Text(
-                                      '✓ Valid until ${DateFormat("dd MMM yyyy").format(_expiryDate)}',
-                                      style: TextStyle(color: _textColor.withValues(alpha: 0.9), fontSize: 10.5),
-                                    ),
-                                  ),
-
-                                const SizedBox(height: 12),
-                                // Coupon Code Box
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Headline
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Icon(Icons.confirmation_num_outlined, size: 14, color: _themeColor),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'CODE: $couponCode',
-                                        style: TextStyle(
-                                          color: _themeColor,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 12,
-                                          letterSpacing: 0.5,
+                                      const Text('🎁 ', style: TextStyle(fontSize: 16)),
+                                      Expanded(
+                                        child: Text(
+                                          campaignTitle,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 13,
+                                            height: 1.25,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 10),
+
+                                  // Festive Body Paragraph
+                                  Text(
+                                    '🎆 Celebrate Diwali with delicious food and exciting festive offers at $restName! 🍧\n'
+                                    '✨ 🧿 Special Diwali Offer: 🎁 $discountBadgeText 💰\n'
+                                    '${_hasMinSpend ? "Minimum Order Value: ₹$minSpendVal 🌟\n" : ""}'
+                                    'Enjoy this festive treat with your loved ones and make your Diwali even more special! 📍 Visit Us: $storeAddress 🗺️ Visit $restName and celebrate Diwali with delicious food and festive savings! T&C Apply',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.95),
+                                      fontSize: 10,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // Applicable Channels & Products
+                                  Text(
+                                    'Order by $orderTypesStr There is offer on these products:- $productSummary.',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.92),
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+
+                                  // CTA Unlock Button
+                                  Container(
+                                    width: double.infinity,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(22),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x28000000),
+                                          blurRadius: 8,
+                                          offset: Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.card_giftcard_rounded, size: 15, color: _themeColor),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Unlock & Order Now',
+                                          style: TextStyle(
+                                            color: _themeColor,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+
+                                  // Perforated Divider
+                                  Row(
+                                    children: [
+                                      Expanded(child: Container(height: 1, color: Colors.white.withValues(alpha: 0.3))),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        child: Icon(Icons.confirmation_num_outlined, size: 11, color: Colors.white.withValues(alpha: 0.7)),
+                                      ),
+                                      Expanded(child: Container(height: 1, color: Colors.white.withValues(alpha: 0.3))),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // Coupon Code Pill
+                                  Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1),
+                                      ),
+                                      child: Text(
+                                        'CODE: $couponCode',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 11,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1223,9 +1277,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   Widget _buildWhatsappPhonePreviewColumn() {
     final senderName = _sendCampaignDisplayName == 'Knowwu'
         ? 'Knowwu'
-        : ((_db.restaurant?.name != null && _db.restaurant!.name.isNotEmpty)
-            ? _db.restaurant!.name
-            : 'Loyalty Restaurant');
+        : _businessDisplayName;
 
     final discountVal = _discountValueController.text.trim().isNotEmpty
         ? _discountValueController.text.trim()
@@ -1544,29 +1596,21 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section A: Order Types Selection
-        _buildOrderTypesCard(),
-        const SizedBox(height: 18),
+        // Section A: Channels & Order Types Selection (clean white, no wasted space)
+        _buildMarketingAndOrderTypesCard(),
+        const SizedBox(height: 16),
 
-        // Section B: Offer & Reward Details (Fixed interactive selector + dynamic fields)
+        // Section B: Offer & Reward Details (Dropdown + Dynamic Inputs + Scope + Title)
         _buildOfferDetailsCard(),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
 
-        // Section C: Favorite Coupon Code (Toggle Custom vs Auto-Generate)
-        _buildCouponSettingsCard(),
-        const SizedBox(height: 18),
+        // Section C: Coupon Code & Customer Redemption Limits
+        _buildCouponAndRedemptionCard(),
+        const SizedBox(height: 16),
 
-        // Section D: Campaign Send Date & Time (Schedule toggle OFF by default)
-        _buildScheduleSettingsCard(),
-        const SizedBox(height: 18),
-
-        // Section E: Campaign Expires Date
-        _buildExpirySettingsCard(),
-        const SizedBox(height: 18),
-
-        // Section F: Redemption Per Customer (Only Once vs Multiple Times)
-        _buildRedemptionRulesCard(),
-        const SizedBox(height: 36),
+        // Section D: Dispatch Timing & Validity Expiry
+        _buildScheduleAndExpiryCard(),
+        const SizedBox(height: 32),
       ],
     );
   }
@@ -1603,52 +1647,95 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   }
 
   // -------------------------------------------------------------------------
-  // CARD 1: SELECT MARKETING CHANNELS & ORDER TYPES (Phase 1)
+  // CARD 1: MARKETING CHANNELS & ORDER TYPES (Phase 1)
   // -------------------------------------------------------------------------
-  Widget _buildOrderTypesCard() {
+  Widget _buildMarketingAndOrderTypesCard() {
     return _buildNeumorphicCard(
-      color: const Color(0xFFF0FDF4),
-      border: Border.all(color: const Color(0xFF34D399), width: 1.3),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Select Marketing channels',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
-            ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.hub_rounded, size: 16, color: _primaryNavy),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Marketing Channels & Order Types',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    Text(
+                      'Select order fulfillment types supported for this campaign dispatch.',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF16A34A)),
+                    SizedBox(width: 4),
+                    Text(
+                      'WhatsApp Cloud (Active)',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
 
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFA7F3D0)),
+              border: Border.all(color: _cardBorder),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
                 const Text(
-                  'Choose order type selection',
+                  'Applicable for:',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF334155),
+                    color: Color(0xFF475569),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _buildOrderTypeButton('Delivery'),
-                    _buildOrderTypeButton('Take Away'),
-                    _buildOrderTypeButton('Dine In'),
-                  ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: [
+                      _buildOrderTypeButton('Delivery'),
+                      _buildOrderTypeButton('Take Away'),
+                      _buildOrderTypeButton('Dine In'),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1710,41 +1797,61 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   // -------------------------------------------------------------------------
   Widget _buildOfferDetailsCard() {
     return _buildNeumorphicCard(
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Here's what the campaign is all about",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Configure your reward type and dynamic parameters below.',
-            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.card_giftcard_rounded, size: 16, color: _primaryNavy),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Offer & Reward Configuration",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    Text(
+                      'Configure your reward type, discount parameters, and applicability.',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 18),
 
-          // 1. Tactile Reward Type Selector (Options clearly visible!)
+          // 1. Reward Type Dropdown (User requested dropdown)
           const Text(
             'Select reward type',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
           ),
-          const SizedBox(height: 10),
-          _buildRewardTypeTiles(),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
+          _buildRewardTypeDropdown(),
+          const SizedBox(height: 16),
 
           // 2. Dynamic Input Fields based on selected reward type
           _buildDynamicRewardInputs(),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
           // 3. Whole Bill vs Chosen Products Toggle (Phase 3)
           const Text(
             'Reward Application Scope',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
           ),
           const SizedBox(height: 8),
           Row(
@@ -1754,7 +1861,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                   onTap: () => setState(() => _discountScope = 'whole_bill'),
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: _discountScope == 'whole_bill' ? _primaryNavy : Colors.white,
                       borderRadius: BorderRadius.circular(10),
@@ -1767,13 +1874,13 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         if (_discountScope == 'whole_bill') ...[
-                          const Icon(Icons.check_rounded, color: Colors.white, size: 16),
+                          const Icon(Icons.check_rounded, color: Colors.white, size: 15),
                           const SizedBox(width: 5),
                         ],
                         Text(
                           'Whole bill',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                             color: _discountScope == 'whole_bill' ? Colors.white : const Color(0xFF334155),
                           ),
@@ -1789,7 +1896,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                   onTap: () => setState(() => _discountScope = 'chosen_products'),
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: _discountScope == 'chosen_products' ? _primaryNavy : Colors.white,
                       borderRadius: BorderRadius.circular(10),
@@ -1802,13 +1909,13 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         if (_discountScope == 'chosen_products') ...[
-                          const Icon(Icons.check_rounded, color: Colors.white, size: 16),
+                          const Icon(Icons.check_rounded, color: Colors.white, size: 15),
                           const SizedBox(width: 5),
                         ],
                         Text(
                           'Chosen products',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w700,
                             color: _discountScope == 'chosen_products' ? Colors.white : const Color(0xFF334155),
                           ),
@@ -1825,79 +1932,34 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
             const SizedBox(height: 14),
             _buildProductSelectorSection(),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // 4. Set Minimum Spend Checkbox & Amount (Phase 4)
-          Row(
-            children: [
-              Checkbox(
-                value: _hasMinSpend,
-                activeColor: _primaryNavy,
-                onChanged: (val) => setState(() => _hasMinSpend = val ?? true),
-              ),
-              const Expanded(
-                child: Text(
-                  'Set minimum spend for redemption',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                ),
-              ),
-            ],
-          ),
-          if (_hasMinSpend) ...[
-            const Padding(
-              padding: EdgeInsets.only(left: 12, bottom: 8),
-              child: Text(
-                'Define the lowest eligible cart purchase required to redeem this coupon.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-              ),
-            ),
-            TextField(
-              controller: _minSpendController,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-              decoration: InputDecoration(
-                hintText: '500',
-                prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 16, color: Color(0xFF64748B)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Customer message on low cart: "Add products worth ₹${_minSpendController.text.trim()} or more to redeem this coupon."',
-              style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFF059669)),
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          // 5. Campaign Title
-          const Text('Campaign title', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+          // 4. Campaign Title
+          const Text('Campaign title', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
           const SizedBox(height: 6),
           TextField(
             controller: _campaignTitleController,
             style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
             decoration: InputDecoration(
-              hintText: '🥂 Weekend Special - Flat ₹300 OFF',
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              hintText: 'Order 1 Pav Bhaji and Get 1 Tawa Pulav absolutely FREE!',
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          // 6. Description
-          const Text('Description', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+          // 5. Description
+          const Text('Description', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
           const SizedBox(height: 6),
           TextField(
             controller: _descriptionController,
-            maxLines: 3,
+            maxLines: 2,
             style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155), height: 1.35),
             decoration: InputDecoration(
               hintText: 'Enter a clear description of the offer for your customers...',
-              contentPadding: const EdgeInsets.all(14),
+              contentPadding: const EdgeInsets.all(12),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
@@ -1908,77 +1970,94 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
     );
   }
 
-  // Tactile Claymorphic Reward Tiles (Phase 2)
-  Widget _buildRewardTypeTiles() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _rewardTypeOptions.map((opt) {
-            final isSelected = _selectedRewardType == opt;
-            IconData icon;
-            String subtitle;
-
-            switch (opt) {
-              case 'Percentage Discount':
-                icon = Icons.percent_rounded;
-                subtitle = '% off order total';
-                break;
-              case 'Cashback':
-                icon = Icons.account_balance_wallet_outlined;
-                subtitle = 'Wallet cashback reward';
-                break;
-              case 'Free Product':
-                icon = Icons.card_giftcard_rounded;
-                subtitle = 'Complimentary gift item';
-                break;
-              case 'Buy 1 Get 1 (BOGO)':
-                icon = Icons.local_offer_outlined;
-                subtitle = 'Buy item & get 1 free';
-                break;
-              case 'Flat Cash Discount':
-              default:
-                icon = Icons.currency_rupee_rounded;
-                subtitle = 'Fixed ₹ cash deduction';
+  // Tactile Reward Type Dropdown (User requested dropdown)
+  Widget _buildRewardTypeDropdown() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _borderGrey, width: 1.2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06082559),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedRewardType,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _primaryNavy, size: 24),
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          elevation: 4,
+          onChanged: (String? newVal) {
+            if (newVal != null && newVal != _selectedRewardType) {
+              setState(() {
+                _selectedRewardType = newVal;
+                _syncAutoCouponCodeIfNeeded();
+              });
             }
-
-            return InkWell(
-              onTap: () {
-                setState(() {
-                  _selectedRewardType = opt;
-                  _syncAutoCouponCodeIfNeeded();
-                });
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: constraints.maxWidth > 500 ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected ? _primaryNavy : _borderGrey,
-                    width: isSelected ? 1.8 : 1.0,
+          },
+          selectedItemBuilder: (BuildContext context) {
+            return _rewardTypeOptions.map((opt) {
+              final (icon, subtitle) = _getRewardTypeMeta(opt);
+              return Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, size: 17, color: _primaryNavy),
                   ),
-                  boxShadow: isSelected
-                      ? const [
-                          BoxShadow(color: Color(0x14082559), offset: Offset(0, 3), blurRadius: 8),
-                        ]
-                      : null,
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          opt,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }).toList();
+          },
+          items: _rewardTypeOptions.map((opt) {
+            final isSelected = opt == _selectedRewardType;
+            final (icon, subtitle) = _getRewardTypeMeta(opt);
+            return DropdownMenuItem<String>(
+              value: opt,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
                         color: isSelected ? _primaryNavy : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
                         icon,
-                        size: 18,
+                        size: 16,
                         color: isSelected ? Colors.white : const Color(0xFF475569),
                       ),
                     ),
@@ -1986,6 +2065,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             opt,
@@ -1995,7 +2075,6 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                               color: isSelected ? _primaryNavy : const Color(0xFF0F172A),
                             ),
                           ),
-                          const SizedBox(height: 2),
                           Text(
                             subtitle,
                             style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
@@ -2010,9 +2089,25 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               ),
             );
           }).toList(),
-        );
-      },
+        ),
+      ),
     );
+  }
+
+  (IconData, String) _getRewardTypeMeta(String opt) {
+    switch (opt) {
+      case 'Percentage Discount':
+        return (Icons.percent_rounded, '% off order total');
+      case 'Cashback':
+        return (Icons.account_balance_wallet_outlined, 'Wallet cashback reward');
+      case 'Free Product':
+        return (Icons.card_giftcard_rounded, 'Complimentary gift item');
+      case 'Buy 1 Get 1 (BOGO)':
+        return (Icons.local_offer_outlined, 'Buy item & get 1 free');
+      case 'Flat Cash Discount':
+      default:
+        return (Icons.currency_rupee_rounded, 'Fixed ₹ cash deduction');
+    }
   }
 
   // Progressive Disclosure: Dynamic fields per reward type
@@ -2027,7 +2122,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Discount Percentage (%)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                    const Text('Discount Percentage (%)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _discountValueController,
@@ -2036,7 +2131,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                       decoration: InputDecoration(
                         hintText: '20',
                         prefixIcon: const Icon(Icons.percent_rounded, size: 16, color: Color(0xFF64748B)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
@@ -2050,7 +2145,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Maximum Discount Cap (₹)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                    const Text('Maximum Discount Cap (₹)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _maxCashbackController,
@@ -2059,7 +2154,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                       decoration: InputDecoration(
                         hintText: '200',
                         prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 16, color: Color(0xFF64748B)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
@@ -2070,6 +2165,8 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _buildMinSpendInlineRow(),
         ],
       );
     } else if (_selectedRewardType == 'Cashback') {
@@ -2082,7 +2179,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Cashback Percentage (%)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                    const Text('Cashback Percentage (%)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _discountValueController,
@@ -2091,7 +2188,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                       decoration: InputDecoration(
                         hintText: '10',
                         prefixIcon: const Icon(Icons.percent_rounded, size: 16, color: Color(0xFF64748B)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
@@ -2105,7 +2202,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Maximum Cashback Cap (₹)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                    const Text('Maximum Cashback Cap (₹)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _maxCashbackController,
@@ -2114,7 +2211,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                       decoration: InputDecoration(
                         hintText: '100',
                         prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 16, color: Color(0xFF64748B)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
@@ -2125,113 +2222,217 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'The cashback will automatically be capped at the configured maximum amount on the backend.',
-            style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-          ),
+          const SizedBox(height: 12),
+          _buildMinSpendInlineRow(),
         ],
       );
     } else if (_selectedRewardType == 'Free Product') {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _borderGrey),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _cardBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Complimentary Gift Product', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
-                TextButton.icon(
-                  onPressed: _showFreeGiftPickerDialog,
-                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 16, color: _primaryNavy),
-                  label: Text(
-                    _selectedFreeGiftProduct == null ? 'Select Gift Product' : 'Change Product',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _primaryNavy),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Complimentary Gift Product', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
+                    TextButton.icon(
+                      onPressed: _showFreeGiftPickerDialog,
+                      icon: const Icon(Icons.add_shopping_cart_rounded, size: 15, color: _primaryNavy),
+                      label: Text(
+                        _selectedFreeGiftProduct == null ? 'Select Gift Product' : 'Change Product',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _primaryNavy),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_selectedFreeGiftProduct == null)
+                  const Text('No free gift item selected yet. Tap above to pick from your business menu.', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)))
+                else
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _accentTeal),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.card_giftcard_rounded, size: 16, color: _accentTeal),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${_selectedFreeGiftProduct!.name} (Value: ₹${_selectedFreeGiftProduct!.price.toInt()})',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 16, color: Colors.grey),
+                          onPressed: () => setState(() => _selectedFreeGiftProduct = null),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildMinSpendInlineRow(),
+        ],
+      );
+    } else if (_selectedRewardType == 'Buy 1 Get 1 (BOGO)') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _cardBorder),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.local_offer_outlined, size: 18, color: _primaryNavy),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Buy 1 Get 1 (BOGO) Offer: Customers receive a free matching item when buying qualifying items.',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
                   ),
                 ),
               ],
             ),
-            if (_selectedFreeGiftProduct == null)
-              const Text('No free gift item selected yet. Tap above to pick from your business menu.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B)))
-            else
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _accentTeal),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.card_giftcard_rounded, size: 18, color: _accentTeal),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${_selectedFreeGiftProduct!.name} (Value: ₹${_selectedFreeGiftProduct!.price.toInt()})',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 16, color: Colors.grey),
-                      onPressed: () => setState(() => _selectedFreeGiftProduct = null),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      );
-    } else if (_selectedRewardType == 'Buy 1 Get 1 (BOGO)') {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _borderGrey),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.local_offer_outlined, size: 20, color: _primaryNavy),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Buy 1 Get 1 (BOGO) Offer: Customers will get one free item when purchasing qualifying items from your menu.',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          _buildMinSpendInlineRow(),
+        ],
       );
     } else {
-      // Flat Cash Discount
-      return Column(
+      // Flat Cash Discount - Compact 2-column Row (Value + Min Spend side-by-side)
+      return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Discount Cash (₹)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _discountValueController,
-            keyboardType: TextInputType.number,
-            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-            decoration: InputDecoration(
-              hintText: '300',
-              prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 16, color: Color(0xFF64748B)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Discount Cash (₹)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _discountValueController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                  decoration: InputDecoration(
+                    hintText: '300',
+                    prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 16, color: Color(0xFF64748B)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: Checkbox(
+                        value: _hasMinSpend,
+                        activeColor: _primaryNavy,
+                        onChanged: (val) => setState(() => _hasMinSpend = val ?? true),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text('Min Spend (₹)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _minSpendController,
+                  enabled: _hasMinSpend,
+                  keyboardType: TextInputType.number,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: _hasMinSpend ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '500',
+                    prefixIcon: const Icon(Icons.shopping_bag_outlined, size: 16, color: Color(0xFF64748B)),
+                    filled: !_hasMinSpend,
+                    fillColor: const Color(0xFFF1F5F9),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       );
     }
+  }
+
+  Widget _buildMinSpendInlineRow() {
+    return Row(
+      children: [
+        SizedBox(
+          width: 18,
+          height: 18,
+          child: Checkbox(
+            value: _hasMinSpend,
+            activeColor: _primaryNavy,
+            onChanged: (val) => setState(() => _hasMinSpend = val ?? true),
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Text('Minimum purchase requirement (₹):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 120,
+          child: TextField(
+            controller: _minSpendController,
+            enabled: _hasMinSpend,
+            keyboardType: TextInputType.number,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: _hasMinSpend ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+            ),
+            decoration: InputDecoration(
+              hintText: '500',
+              prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 14, color: Color(0xFF64748B)),
+              filled: !_hasMinSpend,
+              fillColor: const Color(0xFFF1F5F9),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _borderGrey)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _borderGrey)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildProductSelectorSection() {
@@ -2729,25 +2930,40 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   }
 
   // -------------------------------------------------------------------------
-  // CARD 3: FAVORITE COUPON CODE (Phase 3)
+  // CARD 3: FAVORITE COUPON CODE & REDEMPTION RULES (Phase 3 & 8)
   // -------------------------------------------------------------------------
-  Widget _buildCouponSettingsCard() {
+  Widget _buildCouponAndRedemptionCard() {
     return _buildNeumorphicCard(
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Section 1: Favorite Coupon Code
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Favorite Coupon Code',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.confirmation_num_outlined, size: 16, color: _primaryNavy),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Favorite Coupon Code',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  ),
+                ],
               ),
               Row(
                 children: [
                   Text(
                     _useCustomCouponCode ? 'Custom Code' : 'Auto-Generate',
-                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
                   ),
                   const SizedBox(width: 8),
                   Switch(
@@ -2772,47 +2988,39 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            _useCustomCouponCode
-                ? 'Enter your unique custom coupon code. Uniqueness is automatically validated within your business.'
-                : 'A unique coupon code is automatically generated for this campaign based on your offer.',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           if (!_useCustomCouponCode)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFFBFDBFE)),
               ),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: const Color(0xFF2563EB),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.white),
+                    child: const Icon(Icons.auto_awesome_rounded, size: 14, color: Colors.white),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Auto-Generated Coupon Code:',
-                          style: TextStyle(fontSize: 11, color: Color(0xFF1E40AF), fontWeight: FontWeight.w600),
+                          'Auto-Generated Code:',
+                          style: TextStyle(fontSize: 10.5, color: Color(0xFF1E40AF), fontWeight: FontWeight.w600),
                         ),
-                        const SizedBox(height: 2),
                         Text(
                           _couponCodeController.text.toUpperCase(),
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF1E40AF), letterSpacing: 0.5),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF1E40AF), letterSpacing: 0.5),
                         ),
                       ],
                     ),
@@ -2838,21 +3046,21 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                 TextField(
                   controller: _couponCodeController,
                   textCapitalization: TextCapitalization.characters,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 0.5),
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 0.5),
                   decoration: InputDecoration(
                     hintText: 'e.g. DIWALI300, FESTIVE20',
-                    prefixIcon: const Icon(Icons.confirmation_num_outlined, size: 18, color: Color(0xFF64748B)),
+                    prefixIcon: const Icon(Icons.confirmation_num_outlined, size: 16, color: Color(0xFF64748B)),
                     suffixIcon: _isCheckingCode
                         ? const Padding(
                             padding: EdgeInsets.all(12),
                             child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
                           )
                         : (_isCodeUnique == true
-                            ? const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 20)
+                            ? const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 18)
                             : (_isCodeUnique == false
-                                ? const Icon(Icons.cancel_rounded, color: Color(0xFFDC2626), size: 20)
+                                ? const Icon(Icons.cancel_rounded, color: Color(0xFFDC2626), size: 18)
                                 : null)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
                     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
@@ -2860,11 +3068,11 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                 ),
                 if (_codeCheckMessage.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.only(top: 6, left: 4),
+                    padding: const EdgeInsets.only(top: 4, left: 4),
                     child: Text(
                       _codeCheckMessage,
                       style: TextStyle(
-                        fontSize: 11.5,
+                        fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: _isCodeUnique == true ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
                       ),
@@ -2872,31 +3080,181 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                   ),
               ],
             ),
+
+          const SizedBox(height: 18),
+          const Divider(height: 1, color: _cardBorder),
+          const SizedBox(height: 18),
+
+          // Section 2: Redemption Per Customer
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.repeat_rounded, size: 16, color: _primaryNavy),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Customer Redemption Limit',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    ),
+                    Text(
+                      'Control how many times an individual customer can redeem this offer.',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _redemptionPerCustomer = 'only_once'),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _redemptionPerCustomer == 'only_once' ? _primaryNavy : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _redemptionPerCustomer == 'only_once' ? _primaryNavy : _borderGrey,
+                        width: _redemptionPerCustomer == 'only_once' ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_redemptionPerCustomer == 'only_once') ...[
+                          const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                          const SizedBox(width: 5),
+                        ],
+                        Text(
+                          'Only Once',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: _redemptionPerCustomer == 'only_once' ? Colors.white : const Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _redemptionPerCustomer = 'multiple_times'),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _redemptionPerCustomer == 'multiple_times' ? _primaryNavy : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _redemptionPerCustomer == 'multiple_times' ? _primaryNavy : _borderGrey,
+                        width: _redemptionPerCustomer == 'multiple_times' ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_redemptionPerCustomer == 'multiple_times') ...[
+                          const Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                          const SizedBox(width: 5),
+                        ],
+                        Text(
+                          'Multiple Times',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: _redemptionPerCustomer == 'multiple_times' ? Colors.white : const Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          if (_redemptionPerCustomer == 'multiple_times') ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Max redemptions:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 100,
+                  child: TextField(
+                    controller: _maxRedemptionsPerCustomerController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                    decoration: InputDecoration(
+                      hintText: '5',
+                      prefixIcon: const Icon(Icons.repeat_rounded, size: 14, color: Color(0xFF64748B)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _borderGrey)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _borderGrey)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
   // -------------------------------------------------------------------------
-  // CARD 4: CAMPAIGN SEND DATE & TIME (Phase 6 - OFF by default)
+  // CARD 4: CAMPAIGN SEND SCHEDULE & EXPIRY DATE (Phase 6 & 7)
   // -------------------------------------------------------------------------
-  Widget _buildScheduleSettingsCard() {
+  Widget _buildScheduleAndExpiryCard() {
     return _buildNeumorphicCard(
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Section 1: Campaign Dispatch
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Campaign Send Date & Time',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.send_rounded, size: 16, color: _primaryNavy),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Campaign Dispatch Timing',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  ),
+                ],
               ),
               Row(
                 children: [
                   Text(
                     _hasSendSchedule ? 'Schedule Send' : 'Send Immediately',
-                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
                   ),
                   const SizedBox(width: 8),
                   Switch(
@@ -2909,18 +3267,11 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            _hasSendSchedule
-                ? 'Campaign will be stored and automatically dispatched at the selected date and time.'
-                : 'Campaign will be sent out immediately upon publishing.',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           if (!_hasSendSchedule)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFFF0FDF4),
                 borderRadius: BorderRadius.circular(10),
@@ -2928,12 +3279,12 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.bolt_rounded, size: 18, color: Color(0xFF16A34A)),
+                  Icon(Icons.bolt_rounded, size: 16, color: Color(0xFF16A34A)),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '⚡ Immediate Delivery: Campaign message will start sending immediately when you click Next / Publish.',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
+                      '⚡ Immediate Delivery: Campaign message will start sending immediately when you publish.',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
                     ),
                   ),
                 ],
@@ -2942,13 +3293,12 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
           else
             Row(
               children: [
-                // Date Picker Field
                 Expanded(
                   child: InkWell(
                     onTap: _pickSendDate,
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: _borderGrey),
@@ -2960,21 +3310,19 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                             DateFormat('MM/dd/yyyy').format(_sendDate),
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                           ),
-                          const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF64748B)),
+                          const Icon(Icons.calendar_today_rounded, size: 15, color: Color(0xFF64748B)),
                         ],
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 14),
-
-                // Time Picker Field
                 Expanded(
                   child: InkWell(
                     onTap: _pickSendTime,
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: _borderGrey),
@@ -2986,7 +3334,7 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                             _sendTime.format(context),
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                           ),
-                          const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF64748B)),
+                          const Icon(Icons.access_time_rounded, size: 15, color: Color(0xFF64748B)),
                         ],
                       ),
                     ),
@@ -2994,6 +3342,64 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                 ),
               ],
             ),
+
+          const SizedBox(height: 18),
+          const Divider(height: 1, color: _cardBorder),
+          const SizedBox(height: 18),
+
+          // Section 2: Expiry Date
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.event_busy_rounded, size: 16, color: _primaryNavy),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Campaign Expiry Date',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  ),
+                ],
+              ),
+              Switch(
+                value: _hasExpiryDate,
+                activeThumbColor: _primaryNavy,
+                activeTrackColor: _primaryNavy.withValues(alpha: 0.5),
+                onChanged: (val) => setState(() => _hasExpiryDate = val),
+              ),
+            ],
+          ),
+          if (_hasExpiryDate) ...[
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: _pickExpiryDate,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _borderGrey),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Valid until: ${DateFormat("dd MMM yyyy").format(_expiryDate)} (11:59 PM)',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                    ),
+                    const Icon(Icons.calendar_today_rounded, size: 15, color: Color(0xFF64748B)),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -3033,63 +3439,6 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
     if (picked != null) setState(() => _sendTime = picked);
   }
 
-  // -------------------------------------------------------------------------
-  // CARD 5: CAMPAIGN EXPIRES DATE (Phase 7)
-  // -------------------------------------------------------------------------
-  Widget _buildExpirySettingsCard() {
-    return _buildNeumorphicCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Campaign Expires Date',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-              ),
-              Switch(
-                value: _hasExpiryDate,
-                activeThumbColor: _primaryNavy,
-                activeTrackColor: _primaryNavy.withValues(alpha: 0.5),
-                onChanged: (val) => setState(() => _hasExpiryDate = val),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Choose the final date by which customers can redeem this campaign. The offer will end at 11:59 PM on the selected date.',
-            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-          ),
-          if (_hasExpiryDate) ...[
-            const SizedBox(height: 14),
-            InkWell(
-              onTap: _pickExpiryDate,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _borderGrey),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      DateFormat('MM/dd/yyyy').format(_expiryDate),
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                    ),
-                    const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF64748B)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Future<void> _pickExpiryDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -3106,136 +3455,6 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
       },
     );
     if (picked != null) setState(() => _expiryDate = picked);
-  }
-
-  // -------------------------------------------------------------------------
-  // CARD 6: REDEMPTION PER CUSTOMER (Phase 8 - Only Once vs Multiple Times)
-  // -------------------------------------------------------------------------
-  Widget _buildRedemptionRulesCard() {
-    return _buildNeumorphicCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Redemption Per Customer',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Control how many times an individual customer can redeem this campaign offer.',
-            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 14),
-
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => _redemptionPerCustomer = 'only_once'),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _redemptionPerCustomer == 'only_once' ? _primaryNavy : Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: _redemptionPerCustomer == 'only_once' ? _primaryNavy : _borderGrey,
-                        width: _redemptionPerCustomer == 'only_once' ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (_redemptionPerCustomer == 'only_once') ...[
-                          const Icon(Icons.check_rounded, color: Colors.white, size: 16),
-                          const SizedBox(width: 5),
-                        ],
-                        Text(
-                          'Only Once',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _redemptionPerCustomer == 'only_once' ? Colors.white : const Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => _redemptionPerCustomer = 'multiple_times'),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _redemptionPerCustomer == 'multiple_times' ? _primaryNavy : Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: _redemptionPerCustomer == 'multiple_times' ? _primaryNavy : _borderGrey,
-                        width: _redemptionPerCustomer == 'multiple_times' ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (_redemptionPerCustomer == 'multiple_times') ...[
-                          const Icon(Icons.check_rounded, color: Colors.white, size: 16),
-                          const SizedBox(width: 5),
-                        ],
-                        Text(
-                          'Multiple Times',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _redemptionPerCustomer == 'multiple_times' ? Colors.white : const Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          if (_redemptionPerCustomer == 'multiple_times') ...[
-            const SizedBox(height: 14),
-            const Text(
-              'Maximum Redemptions Per Customer',
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _maxRedemptionsPerCustomerController,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-              decoration: InputDecoration(
-                hintText: '5',
-                prefixIcon: const Icon(Icons.repeat_rounded, size: 16, color: Color(0xFF64748B)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _borderGrey)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.5)),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Once a customer reaches this limit, further redemption attempts will be rejected.',
-              style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-            ),
-          ] else ...[
-            const SizedBox(height: 10),
-            const Text(
-              'Customers will be restricted to exactly 1 redemption. Repeat attempts will be rejected with: "You have already redeemed this campaign coupon."',
-              style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: Color(0xFF64748B)),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   // =========================================================================
@@ -3801,7 +4020,13 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  _buildDisplayNameOption('Loyalty Restaurant', 'Restaurant Business Account'),
+                  _buildDisplayNameOption(
+                    _businessDisplayName,
+                    _hasCustomMetaIntegration
+                        ? 'Restaurant Business Account (Connected)'
+                        : 'Restaurant Business Account',
+                    isVerified: _hasCustomMetaIntegration,
+                  ),
                   const SizedBox(width: 12),
                   _buildDisplayNameOption('Knowwu', 'Official Verified Business Account', isVerified: true),
                 ],
@@ -4179,7 +4404,8 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
   }
 
   Widget _buildDisplayNameOption(String title, String subtitle, {bool isVerified = false}) {
-    final isSelected = _sendCampaignDisplayName == title;
+    final isSelected = _sendCampaignDisplayName == title ||
+        (_sendCampaignDisplayName != 'Knowwu' && title == _businessDisplayName);
     return Expanded(
       child: InkWell(
         onTap: () => setState(() => _sendCampaignDisplayName = title),
@@ -4387,6 +4613,9 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
             ? _bannerImageUrl
             : _customHeaderMediaUrl,
         'displayName': _sendCampaignDisplayName,
+        'isCustomAccount': _sendCampaignDisplayName != 'Knowwu',
+        'wabaId': _sendCampaignDisplayName != 'Knowwu' ? _db.whatsAppWabaId : '',
+        'phoneNumberId': _sendCampaignDisplayName != 'Knowwu' ? _db.whatsAppPhoneId : '',
         'buttonText': _interactiveActionsOption == 'all'
             ? _ctaButtonTitleController.text.trim()
             : '',
@@ -4759,7 +4988,25 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
       recipientCount: _selectedGroup?.count ?? 320,
     );
 
-    final channel = _selectedChannel ?? const CampaignChannelModel();
+    CampaignChannelModel channel = _selectedChannel ?? const CampaignChannelModel();
+    if (_sendCampaignDisplayName == 'Knowwu') {
+      channel = channel.copyWith(
+        id: 'softcode_shared',
+        channelType: 'softcode_shared',
+        name: 'Knowwu Official Verified WhatsApp',
+        businessName: 'Knowwu',
+        badge: 'Official Verified',
+      );
+    } else {
+      channel = channel.copyWith(
+        id: 'business_whatsapp',
+        channelType: 'business_whatsapp',
+        name: '$_businessDisplayName WhatsApp',
+        businessName: _businessDisplayName,
+        badge: _hasCustomMetaIntegration ? 'Connected' : 'Setup in Settings',
+        phoneNumberId: _db.whatsAppPhoneId,
+      );
+    }
 
     final DateTime scheduledDateTime = DateTime(
       _sendDate.year,

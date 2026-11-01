@@ -80,6 +80,16 @@ class CampaignController {
     }
   }
 
+  async deleteCampaign(req, res, next) {
+    try {
+      const { id } = req.params;
+      const result = await campaignService.deleteCampaign(req.businessId, id);
+      return ApiResponse.success(res, result, 'Campaign deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async pauseCampaign(req, res, next) {
     try {
       const { id } = req.params;

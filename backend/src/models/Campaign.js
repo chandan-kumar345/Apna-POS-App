@@ -73,6 +73,7 @@ const campaignSchema = new mongoose.Schema(
     template: {
       templateId: { type: String, default: '' },
       name: { type: String, required: true },
+      metaTemplateName: { type: String, default: '' },
       category: { type: String, default: 'MARKETING' },
       language: { type: String, default: 'en' },
       body: { type: String, default: '' },

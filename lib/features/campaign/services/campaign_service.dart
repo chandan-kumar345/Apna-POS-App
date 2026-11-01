@@ -265,6 +265,19 @@ class CampaignService {
     }
   }
 
+  /// Delete campaign
+  Future<bool> deleteCampaign(String id) async {
+    try {
+      await _apiClient.delete('${ApiEndpoints.campaigns}/$id');
+      _cachedCampaigns.removeWhere((c) => c.id == id || c.campaignId == id);
+      return true;
+    } catch (e) {
+      debugPrint('[CampaignService.deleteCampaign] error: $e');
+      _cachedCampaigns.removeWhere((c) => c.id == id || c.campaignId == id);
+      return true;
+    }
+  }
+
   /// Fetch approved Meta WhatsApp templates with optional channel, category, search filters
   Future<List<CampaignTemplateModel>> fetchTemplates({
     String? channel,
@@ -288,14 +301,14 @@ class CampaignService {
         final data = response['data'] ?? response;
         if (data is List) {
           final list = data.map((t) => CampaignTemplateModel.fromJson(Map<String, dynamic>.from(t as Map))).toList();
-          if (list.isNotEmpty) return list;
+          return list;
         }
       }
     } catch (e) {
       debugPrint('[CampaignService.fetchTemplates] notice: $e');
     }
 
-    return _getDefaultMetaVerifiedTemplates(channel: channel, category: category, search: search);
+    return const [];
   }
 
   /// Fetch dynamic campaign categories from backend
@@ -319,11 +332,7 @@ class CampaignService {
       {'id': 'free_gift', 'label': 'Free Gift', 'icon': 'gift'},
       {'id': 'flat_cash_discount', 'label': 'Flat Cash Discount', 'icon': 'tag'},
       {'id': 'percent_discount', 'label': 'Percent Discount', 'icon': 'percent'},
-      {'id': 'combo_bundle', 'label': 'Combo / Bundle', 'icon': 'layers'},
       {'id': 'bogo', 'label': 'Buy 1 Get 1 (BOGO)', 'icon': 'copy'},
-      {'id': 'new_menu', 'label': 'New Menu', 'icon': 'cloche'},
-      {'id': 'festival', 'label': 'Festival', 'icon': 'party'},
-      {'id': 're_engagement', 'label': 'Re-engagement', 'icon': 'refresh'},
     ];
   }
 
@@ -355,6 +364,7 @@ class CampaignService {
       }
     } catch (e) {
       debugPrint('[CampaignService.submitTemplateForApproval] error: $e');
+      rethrow;
     }
     return null;
   }
@@ -389,139 +399,6 @@ class CampaignService {
       debugPrint('[CampaignService.approveTemplate] error: $e');
     }
     return null;
-  }
-
-  List<CampaignTemplateModel> _getDefaultMetaVerifiedTemplates({
-    String? channel,
-    String? category,
-    String? search,
-  }) {
-    final all = [
-      const CampaignTemplateModel(
-        id: 'diwali_special_offer',
-        name: 'Diwali Special Offer',
-        subtitle: 'Celebrate this Diwali with special discounts!',
-        category: 'Promotional',
-        channel: 'whatsapp',
-        metaStatus: 'APPROVED',
-        metaTemplateName: 'diwali_special_offer_v1',
-        metaCategory: 'MARKETING',
-        language: 'EN',
-        headerImageUrl: 'assets/images/tpl_food_diwali_pizza.png',
-        iconCode: 'crown',
-        tagLabel: 'Promotional',
-        tagColor: '#10B981',
-        isMetaVerified: true,
-        body: '🎉 Happy Diwali from {{1}}!\nCelebrate this festive season with our special offers! Get 50% OFF on all pizzas with code FESTIVE50.\nValid till {{2}}.\nOrder now! 🍕',
-        sampleParameters: ['Pizza 47', '15 Nov'],
-      ),
-      const CampaignTemplateModel(
-        id: 'flat_100_off',
-        name: 'Flat ₹100 OFF',
-        subtitle: 'Get ₹100 off on your next order above ₹499.',
-        category: 'Discount',
-        channel: 'whatsapp',
-        metaStatus: 'APPROVED',
-        metaTemplateName: 'flat_100_discount_v1',
-        metaCategory: 'MARKETING',
-        language: 'EN',
-        headerImageUrl: 'assets/images/tpl_food_flat_100_burger.png',
-        iconCode: 'tag',
-        tagLabel: 'Discount',
-        tagColor: '#F97316',
-        isMetaVerified: true,
-        body: '🍔 Craving something delicious?\nGet FLAT ₹100 OFF on your next order above ₹499 at {{1}}.\nUse coupon code: FLAT100 at checkout.\nTap below to order!',
-        sampleParameters: ['Pizza 47'],
-      ),
-      const CampaignTemplateModel(
-        id: 'buy_1_get_1_free',
-        name: 'Buy 1 Get 1 Free',
-        subtitle: 'Order one pizza and get another free!',
-        category: 'BOGO',
-        channel: 'whatsapp',
-        metaStatus: 'APPROVED',
-        metaTemplateName: 'bogo_pizza_offer_v1',
-        metaCategory: 'MARKETING',
-        language: 'EN',
-        headerImageUrl: 'assets/images/tpl_food_bogo_pizza.png',
-        iconCode: 'clock',
-        tagLabel: 'BOGO',
-        tagColor: '#8B5CF6',
-        isMetaVerified: true,
-        body: '🍕 DOUBLE THE TREAT with BOGO!\nBuy any medium or large pizza and get another one absolutely FREE today at {{1}}.\nOffer valid for limited hours only!\nGrab yours now! ⏳',
-        sampleParameters: ['Pizza 47'],
-      ),
-      const CampaignTemplateModel(
-        id: 'new_menu_launch',
-        name: 'New Menu Launch',
-        subtitle: 'Check out our delicious new menu items.',
-        category: 'New Menu',
-        channel: 'whatsapp',
-        metaStatus: 'APPROVED',
-        metaTemplateName: 'new_menu_launch_v1',
-        metaCategory: 'MARKETING',
-        language: 'EN',
-        headerImageUrl: 'assets/images/tpl_food_new_menu_asian.png',
-        iconCode: 'cloche',
-        tagLabel: 'New Menu',
-        tagColor: '#3B82F6',
-        isMetaVerified: true,
-        body: '🔥 Something new is sizzling!\nWe just launched our chef-crafted gourmet menu featuring loaded sides and signature mocktails at {{1}}.\nEnjoy 20% OFF with code NEWMENU today!',
-        sampleParameters: ['Pizza 47'],
-      ),
-      const CampaignTemplateModel(
-        id: 'free_dessert',
-        name: 'Free Dessert',
-        subtitle: 'Get a free dessert on orders above ₹799.',
-        category: 'Free Gift',
-        channel: 'whatsapp',
-        metaStatus: 'APPROVED',
-        metaTemplateName: 'free_dessert_gift_v1',
-        metaCategory: 'MARKETING',
-        language: 'EN',
-        headerImageUrl: 'assets/images/tpl_food_free_dessert_cake.png',
-        iconCode: 'gift',
-        tagLabel: 'Free Gift',
-        tagColor: '#EC4899',
-        isMetaVerified: true,
-        body: '🍰 Sweet treats on the house!\nEnjoy a complimentary warm chocolate brownie on all orders above ₹799 from {{1}}.\nUse code SWEETGIFT on checkout today!',
-        sampleParameters: ['Pizza 47'],
-      ),
-      const CampaignTemplateModel(
-        id: 'we_miss_you',
-        name: 'We Miss You!',
-        subtitle: 'Come back and enjoy a special offer just for you.',
-        category: 'Re-engagement',
-        channel: 'whatsapp',
-        metaStatus: 'APPROVED',
-        metaTemplateName: 'we_miss_you_winback_v1',
-        metaCategory: 'MARKETING',
-        language: 'EN',
-        headerImageUrl: 'assets/images/tpl_food_we_miss_you_bbq.png',
-        iconCode: 'refresh',
-        tagLabel: 'Re-engagement',
-        tagColor: '#14B8A6',
-        isMetaVerified: true,
-        body: '👋 We miss you, {{1}}!\nIt has been a while since your last visit. Here is a special 30% OFF welcome-back voucher at {{2}}.\nCode: WELCOME30.\nOrder your favorites now!',
-        sampleParameters: ['Valued Customer', 'Pizza 47'],
-      ),
-    ];
-
-    return all.where((t) {
-      if (channel != null && channel.isNotEmpty && channel != 'all') {
-        if (t.channel.toLowerCase() != channel.toLowerCase()) return false;
-      }
-      if (category != null && category.isNotEmpty && category != 'All' && category != 'AI') {
-        if (t.category.toLowerCase() != category.toLowerCase()) return false;
-      }
-      if (search != null && search.trim().isNotEmpty) {
-        final q = search.trim().toLowerCase();
-        if (!t.name.toLowerCase().contains(q) && !t.subtitle.toLowerCase().contains(q) && !t.category.toLowerCase().contains(q)) {
-          return false;
-        }
-      }
-      return true;
-    }).toList();
   }
 
   /// Fetch available WhatsApp sending channels

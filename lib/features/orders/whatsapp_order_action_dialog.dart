@@ -10,6 +10,7 @@ import '../../core/services/sound_service.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/local_notification_service.dart';
 import '../chat/meta_whatsapp_chat_screen.dart';
+import 'incoming_order_accept_screen.dart';
 
 class WhatsAppOrderActionDialog extends StatefulWidget {
   final String orderId;
@@ -124,6 +125,12 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
     String? action,
     String? reason,
   }) {
+    IncomingOrderAcceptScreen.dismissIfShowing(
+      orderId: orderId,
+      orderNumber: orderNumber,
+      action: action,
+    );
+
     if (!_isShowing) return;
 
     if (!_matchesShowingOrder(orderId, orderNumber)) {

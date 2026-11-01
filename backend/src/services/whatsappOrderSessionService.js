@@ -1064,8 +1064,8 @@ class WhatsAppOrderSessionService {
       pushNotificationService
         .sendPushNotificationToBusiness({
           businessId: bId,
-          title: `🛵 Order Updated: #${order.orderNumber}`,
-          message: `${order.orderType === 'delivery' ? 'Delivery Address Added' : 'Updated to Takeaway'}: ${
+          title: `🛵 #${order.orderNumber} • ₹${order.totalAmount || 0}`,
+          message: `${order.customerName || 'Customer'} • ${(order.orderType || 'takeaway').toUpperCase()}: ${
             order.deliveryAddress || 'Counter Pickup'
           }`,
           data: {

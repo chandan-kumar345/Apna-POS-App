@@ -11,6 +11,7 @@ import 'sound_service.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import '../../features/notifications/models/notification_model.dart';
 import '../../features/orders/whatsapp_order_action_dialog.dart';
+import '../../features/orders/incoming_order_accept_screen.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -161,8 +162,11 @@ class SocketService {
       // Table deleted
       socket.on('table:deleted', (data) => _handleTableDeleted(data));
 
-      // Order created, settled & updated events
+      // Order created, settled & updated events across all naming conventions
       socket.on('order:created', (data) => _handleOrderCreated(data));
+      socket.on('order_created', (data) => _handleOrderCreated(data));
+      socket.on('new_order', (data) => _handleOrderCreated(data));
+      socket.on('newOrder', (data) => _handleOrderCreated(data));
       socket.on('order:settled', (data) => _handleOrderSettled(data));
       socket.on('order:updated', (data) => _handleOrderUpdated(data));
       socket.on('order:deleted', (data) => _handleOrderDeleted(data));
@@ -324,6 +328,11 @@ class SocketService {
       // If order transitioned out of pending, dismiss modal and stop ringtone on all devices
       if (status != null && status != 'pending') {
         SoundService.stopOrderRingtone();
+        IncomingOrderAcceptScreen.dismissIfShowing(
+          orderId: orderId,
+          orderNumber: orderNumber,
+          action: status,
+        );
         WhatsAppOrderActionDialog.dismissIfShowing(
           orderId: orderId,
           orderNumber: orderNumber,
@@ -363,21 +372,14 @@ class SocketService {
 
         // If order is PENDING, trigger instant sound, notification, and Accept / Reject popup dialog!
         if (orderModel.status == OrderStatus.pending) {
-          final isWhatsApp = (orderModel.orderSource?.toLowerCase() == 'whatsapp') ||
-              rawMap['source']?.toString().toLowerCase() == 'whatsapp' ||
-              rawMap['type'] == 'whatsapp_order_request' ||
-              rawMap['type'] == 'whatsapp_new_order';
-
           // 1. Play incoming order ringtone
           SoundService.playOrderRingtone();
 
           // 2. High priority notification in native notification bar
           LocalNotificationService().showPushNotification(
             id: orderModel.id.isNotEmpty ? orderModel.id.hashCode.abs().remainder(100000) : 0,
-            title: isWhatsApp
-                ? '🔔 New WhatsApp Order: #${orderModel.orderNumber}'
-                : '🔔 New Order Received: #${orderModel.orderNumber}',
-            body: '${orderModel.customerName ?? "Customer"} ordered ₹${orderModel.totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+            title: '🔔 #${orderModel.orderNumber} • ₹${orderModel.totalAmount.toStringAsFixed(0)}',
+            body: '${orderModel.customerName ?? "Customer"} • ${orderModel.orderType.name.toUpperCase()}',
             payload: jsonEncode({
               'type': 'whatsapp_order_request',
               'orderId': orderModel.id,
@@ -390,7 +392,7 @@ class SocketService {
               'items': orderModel.items.map((i) => i.toJson()).toList(),
             }),
             type: NotificationType.whatsappOrderRequest,
-            channelId: 'apna_pos_whatsapp_orders_v1',
+            channelId: 'apna_pos_whatsapp_orders_v2',
             playSound: true,
           );
 
@@ -591,14 +593,14 @@ class SocketService {
       final deliveryAddress = orderData['deliveryAddress']?.toString() ?? '';
       final items = orderData['items'];
 
-      // 1. Play loud notification chime
-      SoundService.playNotificationSound();
+      // 1. Play continuous incoming order ringtone
+      SoundService.playOrderRingtone();
 
       // 2. Trigger high-priority floating push notification in native notification tray
       LocalNotificationService().showPushNotification(
         id: orderId.isNotEmpty ? orderId.hashCode.abs().remainder(100000) : 0,
-        title: '🔔 New WhatsApp Order: #$orderNumber',
-        body: '$customerName ordered ₹${totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+        title: '🔔 #$orderNumber • ₹${totalAmount.toStringAsFixed(0)}',
+        body: '$customerName (${orderType.toUpperCase()})',
         payload: jsonEncode({
           'type': 'whatsapp_order_request',
           'orderId': orderId,
@@ -611,11 +613,11 @@ class SocketService {
           'items': items,
         }),
         type: NotificationType.whatsappOrderRequest,
-        channelId: 'apna_pos_whatsapp_orders_v1',
+        channelId: 'apna_pos_whatsapp_orders_v2',
         playSound: true,
       );
 
-      // 3. Resiliently trigger the incoming WhatsApp order action dialog
+      // 3. Resiliently trigger the incoming WhatsApp order action dialog & full-screen accept
       LocalNotificationService.handlePayloadDirectly({
         'type': 'whatsapp_order_request',
         'orderId': orderId,
@@ -646,7 +648,12 @@ class SocketService {
       // 1. Immediately halt incoming order ringtone on this device
       SoundService.stopOrderRingtone();
 
-      // 2. Programmatically close the dialog if currently visible on this device
+      // 2. Programmatically close the dialog/screen if currently visible on this device
+      IncomingOrderAcceptScreen.dismissIfShowing(
+        orderId: orderId,
+        orderNumber: orderNumber,
+        action: action,
+      );
       WhatsAppOrderActionDialog.dismissIfShowing(
         orderId: orderId,
         orderNumber: orderNumber,
@@ -673,6 +680,11 @@ class SocketService {
 
       debugPrint('[SocketService] 🔔 Received whatsapp:order:accepted for order: $orderId (#$orderNumber)');
       SoundService.stopOrderRingtone();
+      IncomingOrderAcceptScreen.dismissIfShowing(
+        orderId: orderId,
+        orderNumber: orderNumber,
+        action: 'accepted',
+      );
       WhatsAppOrderActionDialog.dismissIfShowing(
         orderId: orderId,
         orderNumber: orderNumber,
@@ -697,6 +709,12 @@ class SocketService {
 
       debugPrint('[SocketService] 🔔 Received whatsapp:order:rejected for order: $orderId (#$orderNumber)');
       SoundService.stopOrderRingtone();
+      IncomingOrderAcceptScreen.dismissIfShowing(
+        orderId: orderId,
+        orderNumber: orderNumber,
+        action: 'rejected',
+        reason: reason,
+      );
       WhatsAppOrderActionDialog.dismissIfShowing(
         orderId: orderId,
         orderNumber: orderNumber,

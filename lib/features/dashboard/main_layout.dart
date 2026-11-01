@@ -28,6 +28,7 @@ import 'dashboard_screen.dart';
 import '../subscription/screens/subscription_screen.dart';
 import '../subscription/widgets/subscription_locked_bottom_sheet.dart';
 import '../../core/services/subscription_service.dart';
+import '../../core/services/fcm_service.dart';
 import '../../core/services/socket_service.dart';
 import '../campaign/screens/campaign_screen.dart';
 import '../staff/screens/staff_management_screen.dart';
@@ -234,7 +235,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         imageAsset: 'assets/images/Side bar icons/campaign.png',
         iconColor: const Color(0xFFEA580C),
         iconBgColor: const Color(0xFFFFE4E6),
-        isPremium: !db.isSubscribed,
+        isPremium: false,
         getBadge: (db) => null,
         canAccess: (user) => _canAccessTab(9),
       ),
@@ -495,6 +496,11 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         SocketService().connect(businessId: bizId);
         SocketService().joinAllRelevantRooms(businessId: bizId, userId: db.currentUser?.id);
       }
+      // Register/verify FCM push token with backend
+      FcmService().registerTokenWithBackend().catchError((e) {
+        debugPrint('[MainLayout] Background push token registration notice: $e');
+        return false;
+      });
       // Check for incoming orders delivered while app was asleep or closed
       LocalNotificationService.checkAndShowPendingIncomingOrder();
       db.checkAndPromptPendingWhatsAppOrders();

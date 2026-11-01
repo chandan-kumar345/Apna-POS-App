@@ -31,6 +31,7 @@ import '../services/print_log_service.dart';
 import '../services/socket_service.dart';
 import '../services/staff_service.dart';
 import '../services/subscription_service.dart';
+import '../services/fcm_service.dart';
 import '../utils/order_calculator.dart';
 import '../network/api_client.dart';
 import '../security/secure_storage_service.dart';
@@ -1870,6 +1871,9 @@ class DatabaseService extends ChangeNotifier {
     try {
       final isAuth = await _authService.isAuthenticated();
       if (!isAuth) return;
+
+      // Ensure FCM push token is registered whenever data syncs
+      FcmService().registerTokenWithBackend().catchError((_) => false);
 
       _isSyncing = true;
       notifyListeners();

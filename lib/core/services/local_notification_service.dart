@@ -7,11 +7,36 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../features/notifications/services/notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
+import '../../features/auth/splash_screen.dart';
+import '../../features/orders/incoming_order_accept_screen.dart';
 import 'sales_notification_banner_generator.dart';
 import 'sound_service.dart';
+import 'fcm_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../features/orders/whatsapp_order_action_dialog.dart';
 import '../database/database_service.dart';
+
+/// Top-level background notification tap entrypoint invoked by OS when app is in background/terminated
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse notificationResponse) {
+  debugPrint('[LocalNotificationService] 🔔 Background notification action tapped: ${notificationResponse.actionId}, payload: ${notificationResponse.payload}');
+  try {
+    SharedPreferences.getInstance().then((prefs) {
+      final payload = notificationResponse.payload;
+      if (payload != null && payload.isNotEmpty) {
+        prefs.setString('pending_incoming_order_payload', payload);
+      }
+      if (notificationResponse.actionId == 'accept_order') {
+        prefs.setString('pending_notification_action', 'accept');
+      } else if (notificationResponse.actionId == 'reject_order') {
+        prefs.setString('pending_notification_action', 'reject');
+      } else {
+        prefs.setString('pending_notification_action', 'view');
+      }
+    });
+  } catch (e) {
+    debugPrint('[LocalNotificationService] Error storing background notification response: $e');
+  }
+}
 
 class LocalNotificationService with WidgetsBindingObserver {
   static final LocalNotificationService _instance = LocalNotificationService._internal();
@@ -25,6 +50,9 @@ class LocalNotificationService with WidgetsBindingObserver {
   final Map<String, int> _recentNotificationDedupe = {};
   bool _isInitialized = false;
 
+  /// In-memory queue for incoming order payloads received while SplashScreen is animating
+  static Map<String, dynamic>? _pendingIncomingOrderPayload;
+
   bool get _isSupportedPlatform =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -32,8 +60,8 @@ class LocalNotificationService with WidgetsBindingObserver {
           defaultTargetPlatform == TargetPlatform.macOS ||
           defaultTargetPlatform == TargetPlatform.linux);
 
-  /// Handle notification payload when tapped from system notification tray
-  static void _handleNotificationPayload(String? payload) {
+  /// Handle notification payload when tapped from system notification tray or fullScreenIntent
+  static void _handleNotificationPayload(String? payload, {bool autoAccept = false}) {
     if (payload == null || payload.isEmpty) return;
     try {
       final decoded = jsonDecode(payload);
@@ -49,61 +77,39 @@ class LocalNotificationService with WidgetsBindingObserver {
             type == 'new_order' ||
             type == 'newOrder' ||
             type == 'order_created' ||
+            type == 'order' ||
             entityType == 'whatsapp_order' ||
-            entityType == 'order';
+            entityType == 'order' ||
+            decoded['orderId'] != null ||
+            metadata['orderId'] != null;
 
         if (isOrder) {
-          final orderId = metadata['orderId']?.toString() ??
-              decoded['orderId']?.toString() ??
-              decoded['entityId']?.toString() ??
-              '';
-          final orderNumber = metadata['orderNumber']?.toString() ??
-              decoded['orderNumber']?.toString() ??
-              '';
-          final phone = metadata['customerPhone']?.toString() ??
-              decoded['customerPhone']?.toString() ??
-              '';
-          final name = metadata['customerName']?.toString() ??
-              decoded['customerName']?.toString() ??
-              'Customer';
-          final totalAmount = double.tryParse(metadata['totalAmount']?.toString() ??
-                  decoded['totalAmount']?.toString() ??
-                  '0') ??
-              0.0;
-          final orderType = metadata['orderType']?.toString() ??
-              decoded['orderType']?.toString() ??
-              'takeaway';
-          final deliveryAddress = metadata['deliveryAddress']?.toString() ??
-              decoded['deliveryAddress']?.toString() ??
-              '';
-          final itemsPayload = metadata['items'] ?? decoded['items'];
-          final createdAtStr = metadata['createdAt']?.toString() ?? decoded['createdAt']?.toString();
-          final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr) : null;
+          if (SplashScreen.isSplashActive) {
+            debugPrint('[LocalNotificationService] ⏳ SplashScreen active. Queueing order payload for display post-splash.');
+            _pendingIncomingOrderPayload = decoded;
+            return;
+          }
 
           int attempts = 0;
-          void tryShowOrderDialog() {
+          void tryShowOrderScreen() {
             attempts++;
+            if (SplashScreen.isSplashActive) {
+              _pendingIncomingOrderPayload = decoded;
+              return;
+            }
             final ctx = navigatorKey.currentContext;
-            final isSplash = ctx != null && ctx.widget.toString().contains('SplashScreen');
-            if (ctx != null && !isSplash) {
-              WhatsAppOrderActionDialog.show(
+            if (ctx != null && ctx.mounted) {
+              IncomingOrderAcceptScreen.openFromPayload(
                 ctx,
-                orderId: orderId,
-                orderNumber: orderNumber,
-                customerPhone: phone,
-                customerName: name,
-                totalAmount: totalAmount,
-                orderType: orderType,
-                deliveryAddress: deliveryAddress,
-                itemsPayload: itemsPayload,
-                createdAt: createdAt,
+                decoded,
+                autoAccept: autoAccept,
               );
-            } else if (attempts < 40) {
-              Future.delayed(const Duration(milliseconds: 250), tryShowOrderDialog);
+            } else if (attempts < 60) {
+              Future.delayed(const Duration(milliseconds: 50), tryShowOrderScreen);
             }
           }
 
-          tryShowOrderDialog();
+          tryShowOrderScreen();
           return;
         }
 
@@ -133,9 +139,9 @@ class LocalNotificationService with WidgetsBindingObserver {
   }
 
   /// Directly handle payload map from FCM or Socket background handlers
-  static void handlePayloadDirectly(Map<String, dynamic> data) {
+  static void handlePayloadDirectly(Map<String, dynamic> data, {bool autoAccept = false}) {
     try {
-      _handleNotificationPayload(jsonEncode(data));
+      _handleNotificationPayload(jsonEncode(data), autoAccept: autoAccept);
     } catch (e) {
       debugPrint('[LocalNotificationService] Error in handlePayloadDirectly: $e');
     }
@@ -190,9 +196,10 @@ class LocalNotificationService with WidgetsBindingObserver {
       await _notificationsPlugin.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          debugPrint('[LocalNotificationService] Notification tapped: ${response.payload}');
-          _handleNotificationPayload(response.payload);
+          debugPrint('[LocalNotificationService] Notification tapped in foreground/background: ${response.payload} (action: ${response.actionId})');
+          _handleNotificationResponse(response);
         },
+        onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
       );
 
       // Explicitly register Android Notification Channels so background/terminated push notifications are never dropped
@@ -203,7 +210,7 @@ class LocalNotificationService with WidgetsBindingObserver {
           // WhatsApp Orders & Urgent Alerts Channel - Highest Importance, Sound, Vibration, Full Screen Intent
           await androidPlugin.createNotificationChannel(
             const AndroidNotificationChannel(
-              'apna_pos_whatsapp_orders_v1',
+              'apna_pos_whatsapp_orders_v2',
               'WhatsApp Orders & Alerts',
               description: 'Urgent incoming WhatsApp customer orders with instant alert and popup',
               importance: Importance.max,
@@ -287,22 +294,56 @@ class LocalNotificationService with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // 1. Check local queue from FCM background isolate
       checkAndShowPendingIncomingOrder();
-      // 2. Proactively query backend for any unaccepted orders received while asleep
+      // 2. Proactively verify and register device push token with backend
+      try {
+        FcmService().registerTokenWithBackend();
+      } catch (_) {}
+      // 3. Proactively query backend for any unaccepted orders received while asleep
       try {
         DatabaseService().checkAndPromptPendingWhatsAppOrders();
       } catch (_) {}
     }
   }
 
-  /// Check if a high-priority WhatsApp order was received while the phone was locked or app was killed
+  static void _handleNotificationResponse(NotificationResponse response) {
+    final payload = response.payload;
+    if (payload == null || payload.isEmpty) return;
+    final isAccept = response.actionId == 'accept_order';
+    _handleNotificationPayload(payload, autoAccept: isAccept);
+  }
+
+  /// Check if a high-priority WhatsApp or online order was received while the phone was locked or app was killed
   static Future<void> checkAndShowPendingIncomingOrder() async {
     try {
+      if (SplashScreen.isSplashActive) {
+        debugPrint('[LocalNotificationService] checkAndShowPendingIncomingOrder deferred (splash active)');
+        return;
+      }
+
       final prefs = await SharedPreferences.getInstance();
+
+      // Check in-memory pending payload first
+      if (_pendingIncomingOrderPayload != null) {
+        final payload = _pendingIncomingOrderPayload!;
+        _pendingIncomingOrderPayload = null;
+        final pendingAction = prefs.getString('pending_notification_action');
+        if (pendingAction != null) {
+          await prefs.remove('pending_notification_action');
+        }
+        await prefs.remove('pending_incoming_order_payload');
+        _handleNotificationPayload(jsonEncode(payload), autoAccept: pendingAction == 'accept');
+        return;
+      }
+
       final pendingJson = prefs.getString('pending_incoming_order_payload');
+      final pendingAction = prefs.getString('pending_notification_action');
       if (pendingJson != null && pendingJson.isNotEmpty) {
         await prefs.remove('pending_incoming_order_payload');
-        debugPrint('[LocalNotificationService] Found pending background order in SharedPreferences: $pendingJson');
-        _handleNotificationPayload(pendingJson);
+        if (pendingAction != null) {
+          await prefs.remove('pending_notification_action');
+        }
+        debugPrint('[LocalNotificationService] Found pending background order in SharedPreferences: $pendingJson (Action: $pendingAction)');
+        _handleNotificationPayload(pendingJson, autoAccept: pendingAction == 'accept');
       }
     } catch (e) {
       debugPrint('[LocalNotificationService] Error checking pending incoming order: $e');
@@ -315,8 +356,8 @@ class LocalNotificationService with WidgetsBindingObserver {
       final notification = message.notification;
       final data = message.data;
 
-      final title = notification?.title ?? data['title']?.toString() ?? 'Apna POS Notification';
-      final body = notification?.body ?? data['message']?.toString() ?? '';
+      final rawTitle = notification?.title ?? data['title']?.toString() ?? 'Apna POS Notification';
+      final rawBody = notification?.body ?? data['message']?.toString() ?? '';
       final typeStr = data['type']?.toString() ?? 'system';
 
       final isWhatsAppOrder = typeStr == 'whatsapp_order_request' ||
@@ -325,21 +366,79 @@ class LocalNotificationService with WidgetsBindingObserver {
           typeStr == 'new_order' ||
           typeStr == 'newOrder' ||
           typeStr == 'order_created' ||
+          typeStr == 'order' ||
           data['entityType'] == 'whatsapp_order' ||
-          data['orderSource'] == 'whatsapp';
+          data['entityType'] == 'order' ||
+          data['orderSource'] == 'whatsapp' ||
+          data['orderId'] != null;
+
+      String finalTitle = rawTitle;
+      String finalBody = rawBody;
+      StyleInformation? bigTextStyle;
+
+      if (isWhatsAppOrder) {
+        final orderNum = data['orderNumber']?.toString() ?? data['orderId']?.toString() ?? '';
+        final cleanNum = orderNum.isNotEmpty
+            ? (orderNum.startsWith('#') ? orderNum : '#$orderNum')
+            : '';
+        final amount = data['totalAmount']?.toString() ?? '';
+        final custName = data['customerName']?.toString();
+        final cleanName = (custName != null && custName.isNotEmpty && custName != 'Customer')
+            ? custName
+            : 'Customer';
+        final oType = (data['orderType']?.toString() ?? 'takeaway').toUpperCase();
+
+        // 1. High-impact short title that NEVER truncates
+        if (cleanNum.isNotEmpty) {
+          finalTitle = amount.isNotEmpty ? '🔔 $cleanNum • ₹$amount' : '🔔 New Order: $cleanNum';
+        } else {
+          finalTitle = amount.isNotEmpty ? '🔔 New Order • ₹$amount' : '🔔 New Order Received';
+        }
+
+        // 2. Parse items for expanded preview
+        String itemsSummary = '';
+        try {
+          final rawItems = data['items'];
+          if (rawItems is String && rawItems.isNotEmpty) {
+            final decoded = jsonDecode(rawItems);
+            if (decoded is List && decoded.isNotEmpty) {
+              final names = decoded.map((i) => '${i['name'] ?? 'Item'} x${i['quantity'] ?? 1}').take(3).join(', ');
+              final extra = decoded.length > 3 ? ' +${decoded.length - 3} more' : '';
+              itemsSummary = '$names$extra';
+            }
+          }
+        } catch (_) {}
+
+        if (itemsSummary.isNotEmpty) {
+          finalBody = '$cleanName ($oType)\n$itemsSummary';
+        } else {
+          finalBody = '$cleanName placed an order ($oType)';
+        }
+
+        bigTextStyle = BigTextStyleInformation(
+          itemsSummary.isNotEmpty
+              ? '$cleanName • $oType\n$itemsSummary\nTap or choose an action below'
+              : '$cleanName placed an order ($oType) • Tap to Accept',
+          contentTitle: finalTitle,
+          summaryText: 'Incoming Order',
+          htmlFormatBigText: false,
+          htmlFormatContentTitle: false,
+        );
+      }
 
       final instance = LocalNotificationService();
       await instance.init();
 
       await instance.showPushNotification(
-        title: title,
-        body: body,
+        title: finalTitle,
+        body: finalBody,
         payload: jsonEncode(data),
+        styleInformation: bigTextStyle,
         type: isWhatsAppOrder
             ? NotificationType.whatsappOrderRequest
             : instance.resolveNotificationType(typeStr),
         channelId: isWhatsAppOrder
-            ? 'apna_pos_whatsapp_orders_v1'
+            ? 'apna_pos_whatsapp_orders_v2'
             : (typeStr.contains('whatsapp') ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2'),
         entityType: data['entityType']?.toString(),
         entityId: data['entityId']?.toString(),
@@ -380,7 +479,7 @@ class LocalNotificationService with WidgetsBindingObserver {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (_recentNotificationDedupe.containsKey(dedupeKey)) {
       final prev = _recentNotificationDedupe[dedupeKey]!;
-      if (nowMs - prev < 4500) {
+      if (nowMs - prev < 1200) {
         debugPrint('[LocalNotificationService] Suppressing duplicate push: "$title" within debounce window');
         return;
       }
@@ -408,22 +507,63 @@ class LocalNotificationService with WidgetsBindingObserver {
 
     try {
       final isWhatsAppOrder = type == NotificationType.whatsappOrderRequest ||
+          channelId == 'apna_pos_whatsapp_orders_v2' ||
           channelId == 'apna_pos_whatsapp_orders_v1' ||
           metadata['type'] == 'whatsapp_order_request' ||
-          metadata['type'] == 'whatsapp_new_order';
+          metadata['type'] == 'whatsapp_new_order' ||
+          metadata['type'] == 'whatsapp_order' ||
+          metadata['type'] == 'new_order' ||
+          metadata['type'] == 'newOrder' ||
+          metadata['type'] == 'order_created' ||
+          metadata['orderId'] != null ||
+          entityType == 'whatsapp_order' ||
+          entityType == 'order';
       final isWhatsApp = isWhatsAppOrder || type == NotificationType.whatsappMessage;
       final effectiveChannelId = isWhatsAppOrder
-          ? 'apna_pos_whatsapp_orders_v1'
+          ? 'apna_pos_whatsapp_orders_v2'
           : (isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : channelId);
       final effectiveChannelName = isWhatsAppOrder
           ? 'WhatsApp Orders & Alerts'
           : (isWhatsApp ? 'WhatsApp Messages' : channelName);
       final effectiveChannelDesc = isWhatsAppOrder
-          ? 'Urgent incoming WhatsApp customer orders with instant alert and popup'
+          ? 'Urgent incoming customer orders with instant alert and popup'
           : (isWhatsApp
               ? 'Real-time notifications for incoming WhatsApp customer messages'
               : channelDescription);
       final effectiveColor = isWhatsApp ? const Color(0xFF25D366) : color;
+
+      final defaultActions = (isWhatsAppOrder)
+          ? <AndroidNotificationAction>[
+              const AndroidNotificationAction(
+                'accept_order',
+                'Accept',
+                showsUserInterface: true,
+                cancelNotification: true,
+              ),
+              const AndroidNotificationAction(
+                'reject_order',
+                'Reject',
+                showsUserInterface: true,
+                cancelNotification: true,
+              ),
+              const AndroidNotificationAction(
+                'view_order',
+                'View',
+                showsUserInterface: true,
+              ),
+            ]
+          : null;
+
+      StyleInformation? effectiveStyle = styleInformation;
+      if (effectiveStyle == null && isWhatsAppOrder) {
+        effectiveStyle = BigTextStyleInformation(
+          body,
+          contentTitle: title,
+          summaryText: 'Incoming Order',
+          htmlFormatBigText: false,
+          htmlFormatContentTitle: false,
+        );
+      }
 
       final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
         effectiveChannelId,
@@ -435,9 +575,9 @@ class LocalNotificationService with WidgetsBindingObserver {
         enableVibration: true,
         playSound: true,
         sound: const RawResourceAndroidNotificationSound('notification_sound'),
-        styleInformation: styleInformation,
+        styleInformation: effectiveStyle,
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-        actions: actions,
+        actions: actions ?? defaultActions,
         color: effectiveColor,
         fullScreenIntent: isWhatsAppOrder,
         visibility: NotificationVisibility.public,
@@ -445,7 +585,7 @@ class LocalNotificationService with WidgetsBindingObserver {
             ? AndroidNotificationCategory.call
             : (isWhatsApp ? AndroidNotificationCategory.message : category),
         ticker: isWhatsAppOrder
-            ? 'New WhatsApp Order!'
+            ? 'New Incoming Order!'
             : (isWhatsApp ? 'New WhatsApp Message' : null),
       );
 

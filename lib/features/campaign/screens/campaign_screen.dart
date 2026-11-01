@@ -424,32 +424,8 @@ class _CampaignScreenState extends State<CampaignScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      return WebCampaignPortalScreen(onBack: widget.onBack);
-    }
-
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Top Curved Header in App Default Color (#082559)
-            _buildTopCurvedHeader(),
-
-            // Body: Switch between Marketing Tools and Pro Subscription Plans
-            Expanded(
-              child: _activeTab == 0
-                  ? _buildMarketingToolsBody()
-                  : const SubscriptionScreen(
-                      isEmbedded: true,
-                      sourceFeature: 'campaign',
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
+    // Show the modern, responsive Campaign Portal & Studio across all devices (Mobile, Tablet, Desktop, Web)
+    return WebCampaignPortalScreen(onBack: widget.onBack);
   }
 
   Widget _buildTopCurvedHeader() {

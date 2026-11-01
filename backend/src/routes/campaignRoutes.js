@@ -39,6 +39,7 @@ router.get('/', (req, res, next) => campaignController.getCampaigns(req, res, ne
 router.post('/', (req, res, next) => campaignController.createCampaign(req, res, next));
 router.get('/:id', (req, res, next) => campaignController.getCampaignById(req, res, next));
 router.put('/:id', (req, res, next) => campaignController.updateCampaign(req, res, next));
+router.delete('/:id', (req, res, next) => campaignController.deleteCampaign(req, res, next));
 router.put('/:id/pause', (req, res, next) => campaignController.pauseCampaign(req, res, next));
 router.put('/:id/resume', (req, res, next) => campaignController.resumeCampaign(req, res, next));
 

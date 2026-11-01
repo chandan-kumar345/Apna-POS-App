@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/database/database_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/fcm_service.dart';
 import '../../core/services/local_notification_service.dart';
 import '../notifications/services/notification_permission_helper.dart';
 
@@ -25,6 +26,7 @@ import '../super_admin/screens/auth/super_admin_login_screen.dart';
 /// and fully wrapped responsive layout with zero startup freezing.
 class SplashScreen extends StatefulWidget {
   final Widget? targetScreenOverride;
+  static bool isSplashActive = true;
 
   const SplashScreen({super.key, this.targetScreenOverride});
 
@@ -54,6 +56,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
+    SplashScreen.isSplashActive = true;
 
     // 1. Fire non-blocking startup permissions asynchronously
     try {
@@ -176,6 +179,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       db.syncWithBackend().catchError((e) {
         debugPrint('[SplashScreen] Background sync note: $e');
       });
+      // Ensure current device push token is registered with backend
+      FcmService().registerTokenWithBackend().catchError((e) {
+        debugPrint('[SplashScreen] Push token registration notice: $e');
+        return false;
+      });
       return;
     }
 
@@ -229,9 +237,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           );
         },
       ),
-    );
+    ).then((_) {
+      SplashScreen.isSplashActive = false;
+      LocalNotificationService.checkAndShowPendingIncomingOrder();
+      DatabaseService().checkAndPromptPendingWhatsAppOrders();
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      SplashScreen.isSplashActive = false;
       LocalNotificationService.checkAndShowPendingIncomingOrder();
       DatabaseService().checkAndPromptPendingWhatsAppOrders();
     });
@@ -239,6 +252,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    SplashScreen.isSplashActive = false;
     _fallbackTimer?.cancel();
     _animController.dispose();
     super.dispose();

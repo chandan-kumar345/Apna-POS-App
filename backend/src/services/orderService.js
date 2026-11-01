@@ -708,6 +708,33 @@ class OrderService {
           totalAmount: order.totalAmount,
           order: order.toJSON ? order.toJSON() : order,
         });
+
+        // Broadcast high-priority push notification to all business devices when app is closed
+        if (order.status === 'pending' || order.status === 'preparing') {
+          try {
+            const pushNotificationService = require('./pushNotificationService');
+            const bId = (businessId?._id || businessId).toString();
+            pushNotificationService.sendPushNotificationToBusiness({
+              businessId: bId,
+              title: `🔔 #${order.orderNumber} • ₹${order.totalAmount}`,
+              message: `${order.customerName || 'Customer'} • ${(order.orderType || 'takeaway').toUpperCase()}`,
+              data: {
+                type: 'whatsapp_order_request',
+                orderId: order._id.toString(),
+                orderNumber: order.orderNumber,
+                customerPhone: order.customerPhone || '',
+                customerName: order.customerName || 'Customer',
+                totalAmount: String(order.totalAmount || 0),
+                orderType: order.orderType || 'takeaway',
+                deliveryAddress: order.deliveryAddress || '',
+                items: JSON.stringify(order.items || []),
+                createdAt: (order.createdAt || new Date()).toISOString(),
+              },
+            }).catch((err) => console.warn('[generatePosOrder] Push dispatch notice:', err.message));
+          } catch (pushErr) {
+            console.warn('[generatePosOrder] Push notification notice:', pushErr.message);
+          }
+        }
       }
     } catch (sockErr) {
       console.warn('[generatePosOrder] Socket emission warning:', sockErr.message);

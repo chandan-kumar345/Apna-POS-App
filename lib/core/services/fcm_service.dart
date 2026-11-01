@@ -8,7 +8,6 @@ import '../network/api_endpoints.dart';
 import '../security/secure_storage_service.dart';
 import 'local_notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Top-level background message handler invoked by OS when app is terminated or in background
@@ -21,12 +20,22 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     final data = message.data;
     final typeStr = data['type']?.toString();
-    if (typeStr == 'whatsapp_order_request' ||
+    final isOrder = typeStr == 'whatsapp_order_request' ||
         typeStr == 'whatsapp_new_order' ||
-        typeStr == 'whatsapp_order') {
+        typeStr == 'whatsapp_order' ||
+        typeStr == 'new_order' ||
+        typeStr == 'newOrder' ||
+        typeStr == 'order_created' ||
+        typeStr == 'order' ||
+        data['entityType'] == 'whatsapp_order' ||
+        data['entityType'] == 'order' ||
+        data['orderId'] != null;
+
+    if (isOrder) {
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('pending_incoming_order_payload', jsonEncode(data));
+        debugPrint('[FCM Background] ✅ Cached pending order in SharedPreferences for immediate popup upon app wake: ${data['orderNumber'] ?? data['orderId']}');
       } catch (err) {
         debugPrint('[FCM Background] Error caching pending order in prefs: $err');
       }
@@ -82,12 +91,13 @@ class FcmService {
         sound: true,
       );
 
-      // Obtain current device push token
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) {
-        debugPrint('[FcmService] FCM device token: ${token.substring(0, token.length > 12 ? 12 : token.length)}...');
-        await registerTokenWithBackend(token);
-      }
+      // Obtain current device push token and register with retries
+      registerTokenWithBackend();
+
+      // Secondary delayed registration to ensure ApiEndpoints resolution has completed
+      Future.delayed(const Duration(seconds: 4), () {
+        registerTokenWithBackend();
+      });
 
       // Listen for token refreshes
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
@@ -140,7 +150,10 @@ class FcmService {
     final isOrder = isWhatsAppOrder ||
         typeStr == 'new_order' ||
         typeStr == 'newOrder' ||
-        typeStr == 'order_created';
+        typeStr == 'order_created' ||
+        typeStr == 'order' ||
+        data['entityType'] == 'order' ||
+        data['orderId'] != null;
 
     LocalNotificationService().showPushNotification(
       title: title,
@@ -155,7 +168,7 @@ class FcmService {
       playSound: true,
     );
 
-    // If order alert received, directly trigger the action dialog
+    // If order alert received, directly trigger the action screen
     if (isOrder) {
       LocalNotificationService.handlePayloadDirectly(data);
     }
@@ -168,33 +181,74 @@ class FcmService {
     }
   }
 
-  /// Register FCM push token with backend
-  Future<void> registerTokenWithBackend([String? explicitToken]) async {
-    if (!isSupported) return;
+  /// Register FCM push token with backend with automatic retries and endpoint check
+  Future<bool> registerTokenWithBackend([String? explicitToken]) async {
+    if (!isSupported) return false;
 
     try {
       final storage = SecureStorageService();
-      final token = explicitToken ?? await FirebaseMessaging.instance.getToken();
-      if (token == null || token.isEmpty) return;
+      String? token = explicitToken;
 
-      final accessToken = await storage.getAccessToken();
-      if (accessToken == null || accessToken.isEmpty) {
-        // User not logged in yet; cache token to submit right after login
-        await storage.savePushToken(token);
-        return;
+      // 1. Fetch token from Firebase if not passed
+      if (token == null || token.isEmpty) {
+        try {
+          token = await FirebaseMessaging.instance.getToken();
+        } catch (e) {
+          debugPrint('[FcmService] Initial getToken failed: $e');
+        }
       }
 
-      final apiClient = ApiClient();
-      await apiClient.post(
-        ApiEndpoints.registerDeviceToken,
-        data: {
-          'token': token,
-          'platform': defaultTargetPlatform.name.toLowerCase(),
-        },
-      );
-      debugPrint('[FcmService] ✅ Registered device FCM push token with backend');
+      // Fallback to locally cached token
+      token ??= await storage.getPushToken();
+
+      if (token == null || token.isEmpty) {
+        debugPrint('[FcmService] No device push token available to register');
+        return false;
+      }
+
+      // Cache token locally so it persists across restarts
+      await storage.savePushToken(token);
+
+      // 2. Check if user is authenticated
+      final accessToken = await storage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        debugPrint('[FcmService] User not logged in yet; push token cached locally');
+        return false;
+      }
+
+      // 3. Retry loop (up to 3 attempts with exponential backoff)
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        try {
+          // If baseUrl is not yet resolved, wait for it
+          if (ApiEndpoints.baseUrl.isEmpty) {
+            await ApiEndpoints.initialize();
+          }
+
+          final businessId = await storage.getBusinessId();
+          final apiClient = ApiClient();
+          final response = await apiClient.post(
+            ApiEndpoints.registerDeviceToken,
+            data: {
+              'token': token,
+              'platform': defaultTargetPlatform.name.toLowerCase(),
+              if (businessId != null && businessId.isNotEmpty) 'businessId': businessId,
+            },
+          );
+
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            debugPrint('[FcmService] ✅ Registered device FCM push token with backend (attempt $attempt)');
+            return true;
+          }
+        } catch (e) {
+          debugPrint('[FcmService] Register token attempt $attempt error: $e');
+          if (attempt < 3) {
+            await Future.delayed(Duration(seconds: attempt * 2));
+          }
+        }
+      }
     } catch (e) {
       debugPrint('[FcmService] Non-blocking push token registration notice: $e');
     }
+    return false;
   }
 }

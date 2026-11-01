@@ -164,17 +164,59 @@ class StorefrontController {
 
       await order.save();
 
-      // Emit socket notification to POS terminal if connected
+      const bId = businessId.toString();
+
+      // 1. Emit real-time socket events across all connected POS terminals
       try {
         const socketService = require('../services/socketService');
-        if (socketService && businessId) {
-          socketService.emitToBusiness(businessId.toString(), 'new_order', {
-            order: order.toJSON(),
+        if (socketService) {
+          const orderJson = order.toJSON ? order.toJSON() : order;
+          socketService.broadcastToBusiness(bId, 'new_order', {
+            order: orderJson,
             alertTitle: '🔔 New Online Order Received!',
             alertMessage: `Order #${orderNumber} for ₹${order.totalAmount}`,
           });
+          socketService.emitOrderCreated(bId, {
+            orderId: order._id.toString(),
+            orderNumber: order.orderNumber,
+            totalAmount: order.totalAmount,
+            order: orderJson,
+          });
+          socketService.emitWhatsAppOrderRequest(bId, {
+            order: orderJson,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            totalAmount: order.totalAmount,
+            orderType: order.orderType,
+          });
         }
-      } catch (_) {}
+      } catch (sockErr) {
+        console.warn('[storefrontController] Socket emission notice:', sockErr.message);
+      }
+
+      // 2. Dispatch high-priority push notification so device rings even if app is closed / locked
+      try {
+        const pushNotificationService = require('../services/pushNotificationService');
+        pushNotificationService.sendPushNotificationToBusiness({
+          businessId: bId,
+          title: `🔔 #${order.orderNumber} • ₹${order.totalAmount}`,
+          message: `${order.customerName || 'Online Guest'} • ${(order.orderType || 'takeaway').toUpperCase()}`,
+          data: {
+            type: 'whatsapp_order_request',
+            orderId: order._id.toString(),
+            orderNumber: order.orderNumber,
+            customerPhone: order.customerPhone || '',
+            customerName: order.customerName || 'Online Guest',
+            totalAmount: String(order.totalAmount || 0),
+            orderType: order.orderType || 'takeaway',
+            deliveryAddress: order.deliveryAddress || '',
+            items: JSON.stringify(order.items || []),
+            createdAt: (order.createdAt || new Date()).toISOString(),
+          },
+        }).catch((err) => console.warn('[storefrontController] Push dispatch notice:', err.message));
+      } catch (pushErr) {
+        console.warn('[storefrontController] Push notification notice:', pushErr.message);
+      }
 
       return ApiResponse.created(res, {
         orderId: order._id,

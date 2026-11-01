@@ -38,6 +38,14 @@ class NotificationPermissionHelper {
       ];
 
       await permissionsToRequest.request();
+
+      // On Android, also check and request background battery optimization exemption
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
+        if (!batteryStatus.isGranted) {
+          await Permission.ignoreBatteryOptimizations.request();
+        }
+      }
     } catch (e) {
       debugPrint('[NotificationPermissionHelper] Error requesting initial permissions: $e');
     }
@@ -50,6 +58,52 @@ class NotificationPermissionHelper {
       final status = await Permission.notification.status;
       return status.isGranted;
     } catch (_) {
+      return false;
+    }
+  }
+
+  /// Check if 'Display over other apps' (SYSTEM_ALERT_WINDOW) is granted
+  static Future<bool> isSystemAlertWindowGranted() async {
+    try {
+      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+      final status = await Permission.systemAlertWindow.status;
+      return status.isGranted;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Request 'Display over other apps' permission
+  static Future<bool> requestSystemAlertWindow() async {
+    try {
+      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+      final status = await Permission.systemAlertWindow.request();
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('[NotificationPermissionHelper] Error requesting systemAlertWindow: $e');
+      return false;
+    }
+  }
+
+  /// Check if battery optimizations are ignored (to prevent OEM background freezing)
+  static Future<bool> isBatteryOptimizationsIgnored() async {
+    try {
+      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+      final status = await Permission.ignoreBatteryOptimizations.status;
+      return status.isGranted;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Request ignore battery optimizations
+  static Future<bool> requestIgnoreBatteryOptimizations() async {
+    try {
+      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+      final status = await Permission.ignoreBatteryOptimizations.request();
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('[NotificationPermissionHelper] Error requesting ignoreBatteryOptimizations: $e');
       return false;
     }
   }

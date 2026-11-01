@@ -35,6 +35,9 @@ const campaignTemplateSchema = new mongoose.Schema(
         'Re-engagement',
         'AI',
         'Utility',
+        'Marketing',
+        'MARKETING',
+        'UTILITY',
       ],
       default: 'Promotional',
       index: true,
@@ -106,6 +109,25 @@ const campaignTemplateSchema = new mongoose.Schema(
     isMetaVerified: {
       type: Boolean,
       default: true,
+    },
+    wabaId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    metaTemplateId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    displayName: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    metaRejectionReason: {
+      type: String,
+      default: '',
     },
   },
   {

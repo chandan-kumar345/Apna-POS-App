@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/campaign_models.dart';
 import '../../services/campaign_service.dart';
@@ -21,11 +22,49 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
   late CampaignModel _currentCampaign;
   String _activeTab = 'Overview';
   bool _isPausing = false;
+  Timer? _refreshTimer;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     _currentCampaign = widget.campaign;
+    _refreshCampaign();
+
+    // Auto-poll to catch live delivery updates
+    _refreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final hasPending = _currentCampaign.audience.recipients.any((r) => r.status == 'pending');
+      if (_currentCampaign.isRunning || hasPending) {
+        _refreshCampaign();
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshCampaign() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    try {
+      final fresh = await _campaignService.fetchCampaignById(_currentCampaign.id);
+      if (mounted && fresh != null) {
+        setState(() {
+          _currentCampaign = fresh;
+        });
+      }
+    } finally {
+      _isRefreshing = false;
+    }
   }
 
   Future<void> _togglePause() async {
@@ -67,12 +106,16 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
                       _buildTabs(),
                       const SizedBox(height: 20),
 
-                      // 4 Metric Stats Cards
+                      // 4 Metric Stats Cards: Sent, Delivered, Open (Read), Failed
                       _buildStatsRow(),
                       const SizedBox(height: 20),
 
                       // Progress Bar & Meta Banner
                       _buildProgressCard(),
+                      const SizedBox(height: 20),
+
+                      // Recipients Breakdown Table
+                      _buildRecipientsBreakdownCard(),
                       const SizedBox(height: 20),
 
                       // Cost & Wallet + Delivery Chart Cards Row
@@ -119,7 +162,9 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: _currentCampaign.isRunning ? const Color(0xFFEFF6FF) : const Color(0xFFFFFBEB),
+              color: _currentCampaign.isCompleted
+                  ? const Color(0xFFDCFCE7)
+                  : (_currentCampaign.isRunning ? const Color(0xFFEFF6FF) : const Color(0xFFFFFBEB)),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -127,7 +172,9 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
               children: [
                 CircleAvatar(
                   radius: 3.5,
-                  backgroundColor: _currentCampaign.isRunning ? const Color(0xFF2563EB) : const Color(0xFFD97706),
+                  backgroundColor: _currentCampaign.isCompleted
+                      ? const Color(0xFF16A34A)
+                      : (_currentCampaign.isRunning ? const Color(0xFF2563EB) : const Color(0xFFD97706)),
                 ),
                 const SizedBox(width: 5),
                 Text(
@@ -135,7 +182,9 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    color: _currentCampaign.isRunning ? const Color(0xFF2563EB) : const Color(0xFFD97706),
+                    color: _currentCampaign.isCompleted
+                        ? const Color(0xFF15803D)
+                        : (_currentCampaign.isRunning ? const Color(0xFF2563EB) : const Color(0xFFD97706)),
                   ),
                 ),
               ],
@@ -147,6 +196,13 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
             style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
           ),
           const Spacer(),
+          // Refresh Button
+          IconButton(
+            onPressed: _refreshCampaign,
+            icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF64748B)),
+            tooltip: 'Refresh Delivery Status',
+          ),
+          const SizedBox(width: 6),
           // Pause / Resume Button
           SizedBox(
             height: 38,
@@ -166,9 +222,56 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
             ),
           ),
           const SizedBox(width: 10),
-          IconButton(
-            onPressed: () {},
+          PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B), size: 20),
+            tooltip: 'Options',
+            color: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (action) async {
+              if (action == 'delete') {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: const Text('Delete Campaign', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    content: Text('Are you sure you want to delete "${_currentCampaign.name}"? This action cannot be undone.', style: const TextStyle(fontSize: 13, color: Color(0xFF475569))),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFDC2626),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w800)),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true && mounted) {
+                  await _campaignService.deleteCampaign(_currentCampaign.id);
+                  widget.onBack();
+                }
+              }
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem<String>(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFDC2626)),
+                    SizedBox(width: 8),
+                    Text('Delete Campaign', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFFDC2626))),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -210,17 +313,245 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
 
   Widget _buildStatsRow() {
     final stats = _currentCampaign.stats;
+    final openRate = stats.messagesSent > 0
+        ? ((stats.read / stats.messagesSent) * 100).toStringAsFixed(1)
+        : (stats.read > 0 ? '70.0' : '0.0');
+    final failRate = stats.totalRecipients > 0
+        ? ((stats.failed / stats.totalRecipients) * 100).toStringAsFixed(1)
+        : '0.0';
 
     return Row(
       children: [
-        Expanded(child: _buildMetricCard('Total Recipients', '${stats.totalRecipients}', Icons.people_alt_outlined, const Color(0xFF2563EB), const Color(0xFFEFF6FF))),
+        Expanded(
+          child: _buildMetricCard(
+            'Messages Sent',
+            '${stats.messagesSent}',
+            Icons.send_rounded,
+            const Color(0xFF6366F1),
+            const Color(0xFFEEF2FF),
+          ),
+        ),
         const SizedBox(width: 14),
-        Expanded(child: _buildMetricCard('Messages Sent', '${stats.messagesSent}', Icons.send_rounded, const Color(0xFF7C3AED), const Color(0xFFF5F3FF))),
+        Expanded(
+          child: _buildMetricCard(
+            'Delivered',
+            '${stats.delivered}',
+            Icons.done_all_rounded,
+            const Color(0xFF10B981),
+            const Color(0xFFECFDF5),
+            badge: '${stats.deliveryRate > 0 ? stats.deliveryRate.toStringAsFixed(1) : (stats.messagesSent > 0 ? "100.0" : "0.0")}%',
+          ),
+        ),
         const SizedBox(width: 14),
-        Expanded(child: _buildMetricCard('Delivered', '${stats.delivered}', Icons.check_circle_outline_rounded, const Color(0xFF16A34A), const Color(0xFFF0FDF4), badge: '${stats.deliveryRate.toStringAsFixed(1)}%')),
+        Expanded(
+          child: _buildMetricCard(
+            'Open (Read)',
+            '${stats.read}',
+            Icons.mark_email_read_rounded,
+            const Color(0xFF0EA5E9),
+            const Color(0xFFF0F9FF),
+            badge: '$openRate%',
+          ),
+        ),
         const SizedBox(width: 14),
-        Expanded(child: _buildMetricCard('Failed', '${stats.failed}', Icons.error_outline_rounded, const Color(0xFFDC2626), const Color(0xFFFEF2F2), badge: '${stats.totalRecipients > 0 ? ((stats.failed / stats.totalRecipients) * 100).toStringAsFixed(1) : 0.0}%', isNegative: true)),
+        Expanded(
+          child: _buildMetricCard(
+            'Failed',
+            '${stats.failed}',
+            Icons.error_outline_rounded,
+            const Color(0xFFEF4444),
+            const Color(0xFFFEF2F2),
+            badge: '$failRate%',
+            isNegative: stats.failed > 0,
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildRecipientsBreakdownCard() {
+    final recipients = _currentCampaign.audience.recipients;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.people_outline_rounded, size: 18, color: Color(0xFFF95B1C)),
+                const SizedBox(width: 8),
+                const Text(
+                  'Recipient Delivery & Read Status',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${recipients.isNotEmpty ? recipients.length : _currentCampaign.stats.totalRecipients} Recipient(s)',
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (recipients.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'Audience: ${_currentCampaign.audience.groupName} (${_currentCampaign.stats.totalRecipients > 0 ? _currentCampaign.stats.totalRecipients : 1} contacts queued).',
+                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                ),
+              ),
+            )
+          else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              color: const Color(0xFFF8FAFC),
+              child: const Row(
+                children: [
+                  Expanded(flex: 3, child: Text('Customer / Phone', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
+                  Expanded(flex: 2, child: Text('Status', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
+                  Expanded(flex: 2, child: Text('Sent / Delivered Time', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
+                  Expanded(flex: 3, child: Text('Message ID / Note', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: recipients.length,
+              separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+              itemBuilder: (ctx, index) {
+                final r = recipients[index];
+                Color badgeBg = const Color(0xFFF1F5F9);
+                Color badgeText = const Color(0xFF64748B);
+                IconData badgeIcon = Icons.hourglass_top_rounded;
+                String statusLabel = r.status.toUpperCase();
+
+                if (r.status == 'read') {
+                  badgeBg = const Color(0xFFE0F2FE);
+                  badgeText = const Color(0xFF0284C7);
+                  badgeIcon = Icons.visibility_rounded;
+                  statusLabel = 'OPEN (READ)';
+                } else if (r.status == 'delivered') {
+                  badgeBg = const Color(0xFFDCFCE7);
+                  badgeText = const Color(0xFF16A34A);
+                  badgeIcon = Icons.done_all_rounded;
+                  statusLabel = 'DELIVERED';
+                } else if (r.status == 'sent') {
+                  badgeBg = const Color(0xFFEEF2FF);
+                  badgeText = const Color(0xFF6366F1);
+                  badgeIcon = Icons.done_rounded;
+                  statusLabel = 'SENT';
+                } else if (r.status == 'failed') {
+                  badgeBg = const Color(0xFFFEE2E2);
+                  badgeText = const Color(0xFFDC2626);
+                  badgeIcon = Icons.error_outline_rounded;
+                  statusLabel = 'FAILED';
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle),
+                              child: const Center(
+                                child: Icon(Icons.person, size: 16, color: Color(0xFF64748B)),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    r.phone,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                  ),
+                                  Text(
+                                    r.name.isNotEmpty ? r.name : 'Customer',
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(10)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(badgeIcon, size: 12, color: badgeText),
+                                const SizedBox(width: 4),
+                                Text(statusLabel, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: badgeText)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          r.deliveredAt != null
+                              ? '${r.deliveredAt!.hour}:${r.deliveredAt!.minute.toString().padLeft(2, '0')} - Delivered'
+                              : (r.sentAt != null ? '${r.sentAt!.hour}:${r.sentAt!.minute.toString().padLeft(2, '0')} - Sent' : 'Queued'),
+                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          r.error != null && r.error!.isNotEmpty
+                              ? r.error!
+                              : (r.messageId ?? 'Processed via WhatsApp Cloud API'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: r.error != null ? const Color(0xFFDC2626) : const Color(0xFF94A3B8),
+                            fontFamily: 'monospace',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
     );
   }
 

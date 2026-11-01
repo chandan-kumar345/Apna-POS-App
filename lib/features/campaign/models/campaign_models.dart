@@ -2,7 +2,11 @@
 class CampaignStatsModel {
   final int totalCampaigns;
   final int messagesSent;
+  final int deliveredCount;
+  final int readCount;
+  final int failedCount;
   final double deliveryRate;
+  final double openRate;
   final double totalSpent;
   final int draftCount;
   final int approvedCount;
@@ -19,14 +23,18 @@ class CampaignStatsModel {
   const CampaignStatsModel({
     this.totalCampaigns = 0,
     this.messagesSent = 0,
+    this.deliveredCount = 0,
+    this.readCount = 0,
+    this.failedCount = 0,
     this.deliveryRate = 0.0,
+    this.openRate = 0.0,
     this.totalSpent = 0.0,
-    this.draftCount = 36,
-    this.approvedCount = 12,
-    this.scheduledCount = 5,
-    this.pendingCount = 3,
+    this.draftCount = 0,
+    this.approvedCount = 0,
+    this.scheduledCount = 0,
+    this.pendingCount = 0,
     this.rejectedCount = 0,
-    this.walletBalance = 7250.50,
+    this.walletBalance = 0.0,
     this.allCount = 0,
     this.marketingCount = 0,
     this.utilityCount = 0,
@@ -36,17 +44,22 @@ class CampaignStatsModel {
 
   factory CampaignStatsModel.fromJson(Map<String, dynamic> json) {
     final counts = json['counts'] as Map<String, dynamic>? ?? {};
+    final sent = (json['sentCount'] as num?)?.toInt() ?? (json['messagesSent'] as num?)?.toInt() ?? 0;
     return CampaignStatsModel(
       totalCampaigns: (json['totalCampaigns'] as num?)?.toInt() ?? 0,
-      messagesSent: (json['messagesSent'] as num?)?.toInt() ?? 0,
+      messagesSent: sent,
+      deliveredCount: (json['deliveredCount'] as num?)?.toInt() ?? 0,
+      readCount: (json['readCount'] as num?)?.toInt() ?? (json['openCount'] as num?)?.toInt() ?? 0,
+      failedCount: (json['failedCount'] as num?)?.toInt() ?? 0,
       deliveryRate: (json['deliveryRate'] as num?)?.toDouble() ?? 0.0,
+      openRate: (json['openRate'] as num?)?.toDouble() ?? 0.0,
       totalSpent: (json['totalSpent'] as num?)?.toDouble() ?? 0.0,
-      draftCount: (json['draftCount'] as num?)?.toInt() ?? (counts['drafts'] as num?)?.toInt() ?? 36,
-      approvedCount: (json['approvedCount'] as num?)?.toInt() ?? (counts['approved'] as num?)?.toInt() ?? 12,
-      scheduledCount: (json['scheduledCount'] as num?)?.toInt() ?? (counts['scheduled'] as num?)?.toInt() ?? 5,
-      pendingCount: (json['pendingCount'] as num?)?.toInt() ?? (counts['pending'] as num?)?.toInt() ?? 3,
+      draftCount: (json['draftCount'] as num?)?.toInt() ?? (counts['drafts'] as num?)?.toInt() ?? 0,
+      approvedCount: (json['approvedCount'] as num?)?.toInt() ?? (counts['approved'] as num?)?.toInt() ?? 0,
+      scheduledCount: (json['scheduledCount'] as num?)?.toInt() ?? (counts['scheduled'] as num?)?.toInt() ?? 0,
+      pendingCount: (json['pendingCount'] as num?)?.toInt() ?? (counts['pending'] as num?)?.toInt() ?? 0,
       rejectedCount: (json['rejectedCount'] as num?)?.toInt() ?? (counts['rejected'] as num?)?.toInt() ?? 0,
-      walletBalance: (json['walletBalance'] as num?)?.toDouble() ?? 7250.50,
+      walletBalance: (json['walletBalance'] as num?)?.toDouble() ?? 0.0,
       allCount: (counts['all'] as num?)?.toInt() ?? 0,
       marketingCount: (counts['marketing'] as num?)?.toInt() ?? 0,
       utilityCount: (counts['utility'] as num?)?.toInt() ?? 0,
@@ -137,23 +150,76 @@ class AudienceGroupModel {
       };
 }
 
+/// Individual recipient in a campaign dispatch
+class CampaignRecipientModel {
+  final String id;
+  final String name;
+  final String phone;
+  final String status; // 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
+  final String? messageId;
+  final DateTime? sentAt;
+  final DateTime? deliveredAt;
+  final String? error;
+
+  const CampaignRecipientModel({
+    this.id = '',
+    this.name = 'Customer',
+    required this.phone,
+    this.status = 'pending',
+    this.messageId,
+    this.sentAt,
+    this.deliveredAt,
+    this.error,
+  });
+
+  factory CampaignRecipientModel.fromJson(Map<String, dynamic> json) {
+    return CampaignRecipientModel(
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Customer',
+      phone: json['phone']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'pending',
+      messageId: json['messageId']?.toString(),
+      sentAt: json['sentAt'] != null ? DateTime.tryParse(json['sentAt'].toString()) : null,
+      deliveredAt: json['deliveredAt'] != null ? DateTime.tryParse(json['deliveredAt'].toString()) : null,
+      error: json['error']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        if (id.isNotEmpty) 'id': id,
+        'name': name,
+        'phone': phone,
+        'status': status,
+        if (messageId != null) 'messageId': messageId,
+        if (sentAt != null) 'sentAt': sentAt!.toIso8601String(),
+        if (deliveredAt != null) 'deliveredAt': deliveredAt!.toIso8601String(),
+        if (error != null) 'error': error,
+      };
+}
+
 /// Audience selection details
 class CampaignAudienceModel {
   final String source; // 'all', 'group', 'segment', 'upload', 'manual'
   final String groupName;
   final int recipientCount;
+  final List<CampaignRecipientModel> recipients;
 
   const CampaignAudienceModel({
     this.source = 'group',
     this.groupName = 'All Customers',
     this.recipientCount = 0,
+    this.recipients = const [],
   });
 
   factory CampaignAudienceModel.fromJson(Map<String, dynamic> json) {
+    final rawRecipients = json['recipients'] as List<dynamic>? ?? [];
     return CampaignAudienceModel(
       source: json['source']?.toString() ?? 'group',
       groupName: json['groupName']?.toString() ?? 'All Customers',
-      recipientCount: (json['recipientCount'] as num?)?.toInt() ?? 0,
+      recipientCount: (json['recipientCount'] as num?)?.toInt() ?? rawRecipients.length,
+      recipients: rawRecipients
+          .map((r) => CampaignRecipientModel.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList(),
     );
   }
 
@@ -161,6 +227,7 @@ class CampaignAudienceModel {
         'source': source,
         'groupName': groupName,
         'recipientCount': recipientCount,
+        'recipients': recipients.map((r) => r.toJson()).toList(),
       };
 }
 
@@ -187,6 +254,30 @@ class CampaignChannelModel {
     this.phoneNumberId = '1284567890123456',
     this.isConnected = true,
   });
+
+  CampaignChannelModel copyWith({
+    String? id,
+    String? channelType,
+    String? name,
+    String? description,
+    String? badge,
+    String? businessName,
+    String? phoneNumber,
+    String? phoneNumberId,
+    bool? isConnected,
+  }) {
+    return CampaignChannelModel(
+      id: id ?? this.id,
+      channelType: channelType ?? this.channelType,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      badge: badge ?? this.badge,
+      businessName: businessName ?? this.businessName,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      phoneNumberId: phoneNumberId ?? this.phoneNumberId,
+      isConnected: isConnected ?? this.isConnected,
+    );
+  }
 
   factory CampaignChannelModel.fromJson(Map<String, dynamic> json) {
     return CampaignChannelModel(

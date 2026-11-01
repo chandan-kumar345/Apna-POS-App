@@ -95,10 +95,15 @@ class NotificationController {
   // POST /api/v1/notifications/device-token
   async registerDeviceToken(req, res, next) {
     try {
-      const { token, platform } = req.body;
+      const { token, platform, businessId } = req.body;
       const userId = req.user._id;
 
-      await pushNotificationService.registerDeviceToken(userId, token, platform);
+      await pushNotificationService.registerDeviceToken(
+        userId,
+        token,
+        platform,
+        businessId || req.user.businessId || req.business?._id
+      );
       return ApiResponse.success(res, { registered: true }, 'Device token registered');
     } catch (error) {
       next(error);

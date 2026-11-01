@@ -109,7 +109,8 @@ class WhatsAppService {
    * Helper to format descriptive, actionable error message if Meta rejects with appsecret_proof error
    */
   formatMetaErrorMessage(data, fallbackMessage = 'WhatsApp API request failed') {
-    const metaMsg = data?.error?.message || fallbackMessage;
+    const userMsg = data?.error?.error_user_msg || data?.error?.error_user_title;
+    const metaMsg = userMsg ? `${userMsg} (${data?.error?.message || ''})` : (data?.error?.message || fallbackMessage);
     const isAppSecretProofError =
       data?.error?.code === 100 &&
       (metaMsg.includes('appsecret_proof') || metaMsg.includes('App Secret') || metaMsg.includes('app secret'));
