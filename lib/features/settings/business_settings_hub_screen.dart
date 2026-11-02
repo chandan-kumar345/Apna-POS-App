@@ -17,10 +17,12 @@ import '../../core/services/whatsapp_chat_service.dart';
 import '../coupon/screens/coupon_management_screen.dart';
 import '../wallet/wallet_screen.dart';
 import 'ai_chat_agent_screen.dart';
+import 'meta_partner_channel_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import '../storefront/screens/customer_storefront_screen.dart';
+import '../../core/services/order_alert_permission_service.dart';
 
 /// Neumorphic Color Constants & Styling
 class _NeumorphicTheme {
@@ -2529,21 +2531,53 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   }
 
   // ==========================================
+  // MODAL 8B: META PARTNER CHANNEL (TECH PROVIDER & WABA HUB)
+  // ==========================================
+  void _showMetaPartnerChannelModal() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MetaPartnerChannelScreen()),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+
+  // ==========================================
   // MODAL 9: WHATSAPP INTEGRATION (GATEWAY & META CLOUD API)
   // ==========================================
   void _showWhatsAppIntegrationModal() {
-    bool isEnabled = db.isWhatsAppIntegrationEnabled;
+    final isSeedPizza47 = (db.restaurant != null && db.restaurant!.name.trim().toLowerCase() == 'pizza 47') ||
+        (db.currentBusinessId == '6ad46853ea47d6b3e13d633d');
+
+    // Strict multi-tenant isolation:
+    // If this profile is NOT Pizza 47 and local preferences still contain Pizza 47's credentials, purge them!
+    if (!isSeedPizza47 &&
+        (db.whatsAppPhoneId == '1284061438133660' ||
+            db.whatsAppPhoneNumber.replaceAll(RegExp(r'\s+'), '') == '+917303632949')) {
+      db.clearWhatsAppIntegrationSettings();
+    }
+
+    // Determine if this business profile has a legitimate, active WhatsApp integration:
+    // It must be enabled AND have its own phone ID or be partner-connected or seed account
+    final hasActiveIntegration = db.isWhatsAppIntegrationEnabled &&
+        (isSeedPizza47 || db.isMetaPartnerConnected || (db.whatsAppPhoneId.isNotEmpty && db.whatsAppPhoneId != '1284061438133660'));
+
+    bool isEnabled = hasActiveIntegration;
     String provider = db.whatsAppProvider; // 'meta_cloud', 'twilio', 'qr_gateway'
-    final phoneCtrl = TextEditingController(text: db.whatsAppPhoneNumber);
-    final phoneIdCtrl = TextEditingController(text: db.whatsAppPhoneId);
-    final wabaIdCtrl = TextEditingController(text: db.whatsAppWabaId);
-    final accessTokenCtrl = TextEditingController(text: db.whatsAppAccessToken);
-    final webhookTokenCtrl = TextEditingController(text: db.whatsAppWebhookToken);
+    final phoneCtrl = TextEditingController(text: hasActiveIntegration ? db.whatsAppPhoneNumber : '');
+    final phoneIdCtrl = TextEditingController(text: hasActiveIntegration ? db.whatsAppPhoneId : '');
+    final wabaIdCtrl = TextEditingController(text: hasActiveIntegration ? db.whatsAppWabaId : '');
+    final accessTokenCtrl = TextEditingController(text: hasActiveIntegration ? db.whatsAppAccessToken : '');
+    final webhookTokenCtrl = TextEditingController(text: hasActiveIntegration ? db.whatsAppWebhookToken : '');
     bool obscureToken = true;
     bool isSaving = false;
     bool isTesting = false;
     String? modalError;
     String? testSuccessMessage;
+    bool? overlayGranted;
+    bool? batteryOptIgnored;
+    bool hasCheckedPerms = false;
 
     showDialog(
       context: context,
@@ -2552,6 +2586,15 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
       builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            if (!hasCheckedPerms && !kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+              hasCheckedPerms = true;
+              OrderAlertPermissionService.checkPermissions().then((p) {
+                setModalState(() {
+                  overlayGranted = p['overlayGranted'];
+                  batteryOptIgnored = p['batteryOptimizationIgnored'];
+                });
+              });
+            }
             final screenWidth = MediaQuery.of(context).size.width;
             final dialogWidth = screenWidth >= 650 ? 580.0 : (screenWidth * 0.94);
 
@@ -2660,6 +2703,108 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           }),
                         ),
                         const SizedBox(height: 14),
+
+                        // Android Order Alert Background Permissions
+                        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: (overlayGranted == true) ? const Color(0xFFF0FDF4) : const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: (overlayGranted == true) ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      (overlayGranted == true && batteryOptIgnored == true) ? Icons.check_circle_rounded : Icons.notifications_active_rounded,
+                                      size: 18,
+                                      color: (overlayGranted == true && batteryOptIgnored == true) ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      (overlayGranted == true && batteryOptIgnored == true) ? 'Background Order Popups Ready' : 'App Info Permissions Required',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12.5,
+                                        color: (overlayGranted == true && batteryOptIgnored == true) ? const Color(0xFF16A34A) : const Color(0xFFB45309),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  (overlayGranted == true && batteryOptIgnored == true)
+                                      ? 'Incoming WhatsApp orders will pop up full-screen even if the app is closed or phone is locked.'
+                                      : 'To show new incoming WhatsApp orders over lock screen and when app is closed, allow "Display over other apps" and ignore battery optimizations in App Info.',
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569), height: 1.3),
+                                ),
+                                if (overlayGranted != true || batteryOptIgnored != true) ...[
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: [
+                                      if (overlayGranted != true)
+                                        ElevatedButton.icon(
+                                          onPressed: () async {
+                                            await OrderAlertPermissionService.requestOverlayPermission();
+                                            final p = await OrderAlertPermissionService.checkPermissions();
+                                            setModalState(() {
+                                              overlayGranted = p['overlayGranted'];
+                                              batteryOptIgnored = p['batteryOptimizationIgnored'];
+                                            });
+                                          },
+                                          icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                                          label: const Text('Allow Display Over Apps'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFFEA580C),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      if (batteryOptIgnored != true)
+                                        OutlinedButton.icon(
+                                          onPressed: () async {
+                                            await OrderAlertPermissionService.requestIgnoreBatteryOptimizations();
+                                            final p = await OrderAlertPermissionService.checkPermissions();
+                                            setModalState(() {
+                                              overlayGranted = p['overlayGranted'];
+                                              batteryOptIgnored = p['batteryOptimizationIgnored'];
+                                            });
+                                          },
+                                          icon: const Icon(Icons.battery_charging_full_rounded, size: 14),
+                                          label: const Text('Disable Battery Limits'),
+                                          style: OutlinedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                            textStyle: const TextStyle(fontSize: 11),
+                                          ),
+                                        ),
+                                      OutlinedButton.icon(
+                                        onPressed: () async {
+                                          await OrderAlertPermissionService.openAppInfoSettings();
+                                        },
+                                        icon: const Icon(Icons.settings_rounded, size: 14),
+                                        label: const Text('Open App Info'),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          textStyle: const TextStyle(fontSize: 11),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
 
                         // Provider Selection
                         const Text(
@@ -2881,7 +3026,40 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                 onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 8),
+                            if (phoneCtrl.text.isNotEmpty || phoneIdCtrl.text.isNotEmpty || isEnabled) ...[
+                              IconButton(
+                                tooltip: 'Clear / Disconnect WhatsApp',
+                                style: IconButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFEE2E2),
+                                  foregroundColor: const Color(0xFFDC2626),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                                onPressed: () async {
+                                  setModalState(() {
+                                    isEnabled = false;
+                                    phoneCtrl.clear();
+                                    phoneIdCtrl.clear();
+                                    wabaIdCtrl.clear();
+                                    accessTokenCtrl.clear();
+                                    webhookTokenCtrl.clear();
+                                    modalError = null;
+                                    testSuccessMessage = null;
+                                  });
+                                  await db.clearWhatsAppIntegrationSettings();
+                                  try {
+                                    await WhatsAppChatService().saveConnection(
+                                      phoneNumberId: '',
+                                      phoneNumber: '',
+                                    );
+                                  } catch (_) {}
+                                  _refreshState();
+                                  _showSuccessSnackBar('WhatsApp credentials reset and disconnected.');
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                            ],
                             Expanded(
                               flex: 2,
                               child: _buildNeumorphicButton(
@@ -2896,15 +3074,39 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                           modalError = null;
                                         });
 
-                                        await db.saveWhatsAppIntegrationSettings(
-                                          enabled: isEnabled,
-                                          provider: provider,
-                                          phoneNumber: phoneCtrl.text,
-                                          phoneId: phoneIdCtrl.text,
-                                          wabaId: wabaIdCtrl.text,
-                                          accessToken: accessTokenCtrl.text,
-                                          webhookToken: webhookTokenCtrl.text,
-                                        );
+                                        final cleanPhoneId = phoneIdCtrl.text.trim();
+                                        final cleanPhone = phoneCtrl.text.trim();
+                                        final cleanWaba = wabaIdCtrl.text.trim();
+                                        final cleanToken = accessTokenCtrl.text.trim();
+                                        final cleanWebhook = webhookTokenCtrl.text.trim();
+
+                                        if (!isEnabled || (cleanPhoneId.isEmpty && cleanPhone.isEmpty)) {
+                                          await db.clearWhatsAppIntegrationSettings();
+                                          try {
+                                            await WhatsAppChatService().saveConnection(
+                                              phoneNumberId: '',
+                                              phoneNumber: '',
+                                            );
+                                          } catch (_) {}
+                                        } else {
+                                          await db.saveWhatsAppIntegrationSettings(
+                                            enabled: isEnabled,
+                                            provider: provider,
+                                            phoneNumber: cleanPhone,
+                                            phoneId: cleanPhoneId,
+                                            wabaId: cleanWaba,
+                                            accessToken: cleanToken,
+                                            webhookToken: cleanWebhook,
+                                          );
+                                          try {
+                                            await WhatsAppChatService().saveConnection(
+                                              phoneNumberId: cleanPhoneId,
+                                              phoneNumber: cleanPhone,
+                                              wabaId: cleanWaba,
+                                              accessToken: cleanToken,
+                                            );
+                                          } catch (_) {}
+                                        }
 
                                         if (dialogCtx.mounted) {
                                           Navigator.of(dialogCtx, rootNavigator: true).pop();
@@ -4390,7 +4592,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       _buildNeumorphicSectionHeader(
                         title: 'Marketing & Communication',
                         icon: Icons.campaign_rounded,
-                        countText: '5 Items',
+                        countText: '6 Items',
                         accentColor: const Color(0xFF0052FF),
                       ),
                       const SizedBox(height: 14),
@@ -4399,6 +4601,15 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         spacing: spacing,
                         runSpacing: spacing,
                         children: [
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Meta Partner Channel',
+                            subtitle: db.isMetaPartnerConnected ? 'Tech Partner • Connected' : 'Tech Provider & WABA Hub',
+                            icon: Icons.hub_rounded,
+                            accentColor: const Color(0xFF1877F2),
+                            badgeText: db.isMetaPartnerConnected ? 'Partner Active' : 'Official Partner',
+                            onTap: _showMetaPartnerChannelModal,
+                          ),
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Meta Integration',
@@ -6319,6 +6530,24 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNeumorphicTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    IconData? icon,
+    int maxLines = 1,
+    bool isNumeric = false,
+  }) {
+    return _buildNeumorphicInputField(
+      controller: controller,
+      label: label,
+      hint: hint,
+      prefixIcon: icon,
+      maxLines: maxLines,
+      isNumeric: isNumeric,
     );
   }
 

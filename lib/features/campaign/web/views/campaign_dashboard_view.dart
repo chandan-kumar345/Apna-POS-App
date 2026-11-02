@@ -420,7 +420,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   Widget _buildHeroStudioBanner({bool isWeb = false}) {
     if (isWeb) {
       return Container(
-        height: 255,
+        constraints: const BoxConstraints(minHeight: 255),
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1117,7 +1117,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
 
   Widget _buildStatsAndWalletColumn({bool isWeb = false}) {
     return Container(
-      height: isWeb ? 255 : null,
+      constraints: isWeb ? const BoxConstraints(minHeight: 255) : null,
       padding: EdgeInsets.symmetric(horizontal: isWeb ? 18 : 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,

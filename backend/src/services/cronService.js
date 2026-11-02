@@ -95,7 +95,8 @@ class CronService {
         message = `Your daily business summary for ${formattedDate} is ready. No orders were recorded today. Tap to view sales report.`;
       }
 
-      const title = `Daily Sales Summary 📊 • ${formattedDate}`;
+      const bizName = business.name?.trim() || '';
+      const title = bizName ? `${bizName} • Daily Sales Summary 📊 • ${formattedDate}` : `Daily Sales Summary 📊 • ${formattedDate}`;
 
       const notification = await notificationService.createNotification({
         userId: business.ownerId,
@@ -106,6 +107,7 @@ class CronService {
         entityType: 'sales_report',
         entityId: dateStr,
         metadata: {
+          businessName: bizName,
           date: dateStr,
           formattedDate,
           totalSales,
@@ -131,7 +133,7 @@ class CronService {
   async runDailySummaryJob() {
     try {
       console.log('[CronService] Running Daily Sales Summary Job...');
-      const businesses = await Business.find({}).lean();
+      const businesses = await Business.find({ isActive: { $ne: false } }).lean();
       for (const business of businesses) {
         await this.generateDailySummaryForBusiness(business);
       }

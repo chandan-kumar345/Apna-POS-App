@@ -3,12 +3,14 @@ package com.apnapos.app
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.provider.Settings
 import android.view.WindowManager
+import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
-import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
@@ -17,11 +19,12 @@ class MainActivity : FlutterActivity() {
     companion object {
         const val CHANNEL = "com.apnapos.app/order_alert"
         var activeInstance: MainActivity? = null
+        private var lastWakeTime: Long = 0L
+        private var activeWakeLock: PowerManager.WakeLock? = null
     }
 
-    override fun getRenderMode(): RenderMode {
-        return RenderMode.texture
-    }
+    // Default RenderMode.surface (SurfaceView) is used for maximum performance
+    // and zero MessageQueue stalls on Android 11+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +43,12 @@ class MainActivity : FlutterActivity() {
         if (activeInstance == this) {
             activeInstance = null
         }
+        try {
+            if (activeWakeLock?.isHeld == true) {
+                activeWakeLock?.release()
+            }
+            activeWakeLock = null
+        } catch (_: Exception) {}
         super.onDestroy()
     }
 
@@ -69,17 +78,107 @@ class MainActivity : FlutterActivity() {
                 "bringToFront" -> {
                     try {
                         wakeAndShowOverLockScreen()
-                        val bringToFrontIntent = Intent(this@MainActivity, MainActivity::class.java).apply {
-                            addFlags(
-                                Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                            )
+                        if (!hasWindowFocus()) {
+                            val bringToFrontIntent = Intent(this@MainActivity, MainActivity::class.java).apply {
+                                addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                )
+                            }
+                            startActivity(bringToFrontIntent)
                         }
-                        startActivity(bringToFrontIntent)
                         result.success(true)
                     } catch (e: Exception) {
                         result.success(false)
+                    }
+                }
+                "checkOrderPermissions" -> {
+                    try {
+                        val overlayGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            Settings.canDrawOverlays(this@MainActivity)
+                        } else {
+                            true
+                        }
+                        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                        val batteryOptIgnored = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            powerManager?.isIgnoringBatteryOptimizations(packageName) ?: true
+                        } else {
+                            true
+                        }
+                        val notificationsEnabled = NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()
+
+                        val resMap = mapOf(
+                            "overlayGranted" to overlayGranted,
+                            "batteryOptimizationIgnored" to batteryOptIgnored,
+                            "notificationsEnabled" to notificationsEnabled
+                        )
+                        result.success(resMap)
+                    } catch (e: Exception) {
+                        result.error("PERMISSION_CHECK_ERROR", e.message, null)
+                    }
+                }
+                "requestOverlayPermission" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            if (!Settings.canDrawOverlays(this@MainActivity)) {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:$packageName")
+                                ).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
+                                result.success(true)
+                            } else {
+                                result.success(true)
+                            }
+                        } else {
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (err: Exception) {
+                            result.error("OVERLAY_INTENT_ERROR", err.message, null)
+                        }
+                    }
+                }
+                "requestIgnoreBatteryOptimizations" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:$packageName")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
+                                result.success(true)
+                            } else {
+                                result.success(true)
+                            }
+                        } else {
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        result.error("BATTERY_INTENT_ERROR", e.message, null)
+                    }
+                }
+                "openAppInfoSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:$packageName")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("APP_INFO_ERROR", e.message, null)
                     }
                 }
                 else -> result.notImplemented()
@@ -107,7 +206,11 @@ class MainActivity : FlutterActivity() {
                 extras.containsKey("totalAmount") ||
                 orderId.isNotEmpty()
 
-        if (isOrder) {
+        val orderType = (extras.getString("orderType") ?: "").lowercase()
+        val orderSource = (extras.getString("orderSource") ?: "").lowercase()
+        val isDineInOrLocalPos = orderType == "dine_in" || orderType == "dinein" || orderSource == "pos"
+
+        if (isOrder && !isDineInOrLocalPos) {
             try {
                 val payloadObj = JSONObject()
                 for (key in extras.keySet()) {
@@ -126,15 +229,24 @@ class MainActivity : FlutterActivity() {
     }
 
     fun wakeAndShowOverLockScreen() {
+        val now = System.currentTimeMillis()
+        if (now - lastWakeTime < 3000) {
+            return
+        }
+        lastWakeTime = now
+
         try {
+            if (activeWakeLock?.isHeld == true) {
+                activeWakeLock?.release()
+            }
             val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            val wakeLock = pm?.newWakeLock(
+            activeWakeLock = pm?.newWakeLock(
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
                 PowerManager.ACQUIRE_CAUSES_WAKEUP or
                 PowerManager.ON_AFTER_RELEASE,
                 "apnapos:main_activity_wake"
             )
-            wakeLock?.acquire(30000)
+            activeWakeLock?.acquire(30000)
         } catch (e: Exception) {
             e.printStackTrace()
         }

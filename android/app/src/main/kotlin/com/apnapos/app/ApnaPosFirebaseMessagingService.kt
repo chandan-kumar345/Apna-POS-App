@@ -38,7 +38,11 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                 data.containsKey("orderId") ||
                 data.containsKey("totalAmount")
 
-        if (isOrder) {
+        val orderType = (data["orderType"] ?: "").lowercase()
+        val orderSource = (data["orderSource"] ?: "").lowercase()
+        val isDineInOrLocalPos = orderType == "dine_in" || orderType == "dinein" || orderSource == "pos"
+
+        if (isOrder && !isDineInOrLocalPos) {
             try {
                 // 1. Hardware Screen Wake Lock (force screen on immediately for 30s)
                 val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager

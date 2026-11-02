@@ -131,6 +131,22 @@ const businessSchema = new mongoose.Schema(
       webhookVerifyToken: { type: String, default: '', trim: true },
       connectedAt: { type: Date, default: null },
     },
+    metaPartnerSettings: {
+      isPartnerManaged: { type: Boolean, default: false },
+      partnerAdminEmail: { type: String, default: 'sooftcode@gmail.com', trim: true },
+      businessPortfolioId: { type: String, default: '', trim: true },
+      coManagementStatus: { type: String, default: 'none' }, // 'none', 'pending', 'active'
+      onboardingType: { type: String, default: 'embedded_signup' }, // 'embedded_signup', 'co_management', 'direct'
+      qualityRating: { type: String, default: 'GREEN' }, // 'GREEN', 'YELLOW', 'RED', 'UNKNOWN'
+      messagingTier: { type: String, default: 'TIER_1K' }, // 'TIER_1K', 'TIER_10K', 'TIER_100K', 'TIER_UNLIMITED'
+      displayNameStatus: { type: String, default: 'APPROVED' }, // 'APPROVED', 'PENDING', 'REJECTED'
+      verifiedName: { type: String, default: '', trim: true },
+      aboutBio: { type: String, default: '', trim: true },
+      address: { type: String, default: '', trim: true },
+      email: { type: String, default: '', trim: true },
+      website: { type: String, default: '', trim: true },
+      connectedAt: { type: Date, default: null },
+    },
     aiChatAgentSettings: {
       enabled: { type: Boolean, default: false },
       persona: { type: String, default: 'friendly' }, // 'friendly', 'professional', 'chef', 'sales', 'hinglish'

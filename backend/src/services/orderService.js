@@ -700,17 +700,27 @@ class OrderService {
           order: order.toJSON ? order.toJSON() : order,
         });
       } else {
+        const oSource = (order.orderSource || rawData.orderSource || rawData.source || 'pos').toString().toLowerCase();
+        const oType = (order.orderType || rawData.orderType || '').toString().toLowerCase();
+
         socketService.emitOrderCreated(businessId, {
           orderId: order._id.toString(),
           orderNumber: order.orderNumber,
           tableNumber: order.tableNumber || '',
           status: order.status,
           totalAmount: order.totalAmount,
+          orderType: order.orderType || 'takeaway',
+          orderSource: oSource,
           order: order.toJSON ? order.toJSON() : order,
         });
 
-        // Broadcast high-priority push notification to all business devices when app is closed
-        if (order.status === 'pending' || order.status === 'preparing') {
+        // Broadcast high-priority push notification only for external online/WhatsApp orders requiring merchant acceptance.
+        // Never send incoming accept push notifications for in-store Dine-in table orders or local POS counter orders!
+        const isExternalAcceptOrder = (oSource === 'whatsapp' || oSource === 'online' || oSource === 'storefront') &&
+          oType !== 'dine_in' &&
+          oType !== 'dinein';
+
+        if ((order.status === 'pending' || order.status === 'preparing') && isExternalAcceptOrder) {
           try {
             const pushNotificationService = require('./pushNotificationService');
             const bId = (businessId?._id || businessId).toString();
@@ -726,6 +736,7 @@ class OrderService {
                 customerName: order.customerName || 'Customer',
                 totalAmount: String(order.totalAmount || 0),
                 orderType: order.orderType || 'takeaway',
+                orderSource: oSource,
                 deliveryAddress: order.deliveryAddress || '',
                 items: JSON.stringify(order.items || []),
                 createdAt: (order.createdAt || new Date()).toISOString(),

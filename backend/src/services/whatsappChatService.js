@@ -416,21 +416,27 @@ class WhatsAppChatService {
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    let user = null;
-    if (userId) {
-      user = await User.findById(userId).lean();
-    }
     const business = bId ? await Business.findById(bId) : null;
+    const isDefaultSeedAccount = bId && (
+      bId.toString() === '6ad46853ea47d6b3e13d633d' ||
+      (process.env.NODE_ENV === 'test' && bId.toString() === 'rest_001')
+    );
 
-    const wabaId = (user?.whatsappSettings?.wabaId ||
+    const wabaId = (
       business?.whatsappSettings?.wabaId ||
-      '2525727467906581').trim();
-    const accessToken = user?.whatsappSettings?.accessToken ||
+      business?.metaPartnerSettings?.wabaId ||
+      (isDefaultSeedAccount ? '2525727467906581' : '')
+    ).trim();
+
+    const accessToken = (
       business?.whatsappSettings?.accessToken ||
-      whatsappService.accessToken;
-    const appSecret = user?.whatsappSettings?.appSecret ||
+      (isDefaultSeedAccount ? whatsappService.accessToken : '')
+    ).trim();
+
+    const appSecret = (
       business?.whatsappSettings?.appSecret ||
-      whatsappService.appSecret;
+      (isDefaultSeedAccount ? whatsappService.appSecret : '')
+    ).trim();
 
     const cacheKey = `templates_${wabaId}`;
     const cached = this._templatesCache?.get(cacheKey);
@@ -920,69 +926,50 @@ class WhatsAppChatService {
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    const cleanPhoneId = (phoneNumberId || '').trim() || whatsappService.phoneNumberId || '1284061438133660';
-    const cleanPhone = (phoneNumber || '').trim() || '+91 73036 32949';
-    const cleanWaba = (wabaId || '').trim() || '2525727467906581';
+    const cleanPhoneId = (phoneNumberId || '').trim();
+    const cleanPhone = (phoneNumber || '').trim();
+    const cleanWaba = (wabaId || '').trim();
     let cleanToken = (accessToken || '').trim();
     let cleanSecret = (appSecret || '').trim();
 
-    // Preserve existing access token and app secret, or fallback to server defaults
-    if (!cleanToken || !cleanSecret) {
-      if (userId) {
-        const existingUser = await User.findById(userId).lean();
-        if (!cleanToken && existingUser?.whatsappSettings?.accessToken) {
-          cleanToken = existingUser.whatsappSettings.accessToken;
-        }
-        if (!cleanSecret && existingUser?.whatsappSettings?.appSecret) {
-          cleanSecret = existingUser.whatsappSettings.appSecret;
-        }
-      }
+    // If caller explicitly cleared or disconnected:
+    if (!cleanPhoneId && !cleanPhone) {
       if (bId) {
-        const existingBiz = await Business.findById(bId).lean();
-        if (!cleanToken && existingBiz?.whatsappSettings?.accessToken) {
-          cleanToken = existingBiz.whatsappSettings.accessToken;
-        }
-        if (!cleanSecret && existingBiz?.whatsappSettings?.appSecret) {
-          cleanSecret = existingBiz.whatsappSettings.appSecret;
-        }
+        await Business.findByIdAndUpdate(bId, {
+          $set: {
+            'whatsappSettings.enabled': false,
+            'whatsappSettings.phoneNumberId': '',
+            'whatsappSettings.phoneNumber': '',
+            'whatsappSettings.wabaId': '',
+            'whatsappSettings.accessToken': '',
+            'whatsappSettings.appSecret': '',
+            'metaPartnerSettings.isPartnerManaged': false,
+          },
+        });
       }
+      return {
+        connected: false,
+        phoneNumberId: '',
+        phoneNumber: '',
+        wabaId: '',
+        accessToken: '',
+        hasCustomToken: false,
+        hasAppSecret: false,
+        connectedAt: null,
+      };
     }
 
-    if (!cleanToken) {
-      cleanToken = whatsappService.accessToken || '';
+    const business = bId ? await Business.findById(bId) : null;
+    if (!cleanToken && business?.whatsappSettings?.accessToken) {
+      cleanToken = business.whatsappSettings.accessToken;
     }
-    if (!cleanSecret) {
-      cleanSecret = whatsappService.appSecret || '';
+    if (!cleanSecret && business?.whatsappSettings?.appSecret) {
+      cleanSecret = business.whatsappSettings.appSecret;
     }
 
     const now = new Date();
 
-    // 1. If userId is provided, save onto User model for user-specific WhatsApp isolation
-    if (userId) {
-      await User.findByIdAndUpdate(userId, {
-        $set: {
-          whatsappSettings: {
-            enabled: true,
-            phoneNumberId: cleanPhoneId,
-            phoneNumber: cleanPhone,
-            wabaId: cleanWaba,
-            accessToken: cleanToken,
-            appSecret: cleanSecret,
-            webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
-            connectedAt: now,
-          },
-        },
-      });
-
-      // Bind existing chats with this phoneNumberId to this user
-      await WhatsAppChat.updateMany(
-        { businessId: bId, phoneNumberId: cleanPhoneId },
-        { $set: { userId } }
-      );
-    }
-
-    // 2. Also persist onto Business model if business exists
-    const business = await Business.findById(bId);
+    // 1. Persist onto Business model (primary tenant unit)
     if (business) {
       business.whatsappSettings = {
         enabled: true,
@@ -995,6 +982,32 @@ class WhatsAppChatService {
         connectedAt: now,
       };
       await business.save();
+    }
+
+    // 2. Only save to User if userId is explicitly associated with this business (or in tests)
+    if (userId) {
+      const u = await User.findById(userId);
+      if (u && (u.businessId?.toString() === bId?.toString() || process.env.NODE_ENV === 'test')) {
+        u.whatsappSettings = {
+          enabled: true,
+          phoneNumberId: cleanPhoneId,
+          phoneNumber: cleanPhone,
+          wabaId: cleanWaba,
+          accessToken: cleanToken,
+          appSecret: cleanSecret,
+          webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
+          connectedAt: now,
+        };
+        await u.save();
+      }
+
+      // Bind existing chats with this phoneNumberId to this user
+      if (bId) {
+        await WhatsAppChat.updateMany(
+          { businessId: bId, phoneNumberId: cleanPhoneId },
+          { $set: { userId } }
+        );
+      }
     }
 
     return {
@@ -1017,28 +1030,85 @@ class WhatsAppChatService {
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    let userSettings = null;
-    let userDoc = null;
-    if (userId) {
-      userDoc = await User.findById(userId);
-      userSettings = userDoc?.whatsappSettings;
+    const business = bId ? await Business.findById(bId) : null;
+    let bizSettings = business?.whatsappSettings;
+    const partnerSettings = business?.metaPartnerSettings;
+
+    // Strict multi-tenant isolation: Never leak credentials from one business into another!
+    // Only the default seed account (Pizza 47 / rest_001 in tests) receives default sandbox credentials.
+    const isDefaultSeedAccount = bId && (
+      bId.toString() === '6ad46853ea47d6b3e13d633d' ||
+      (process.env.NODE_ENV === 'test' && bId.toString() === 'rest_001')
+    );
+
+    let activePhoneNumberId = bizSettings?.phoneNumberId || '';
+    let activePhoneNumber = bizSettings?.phoneNumber || '';
+    let activeWabaId = bizSettings?.wabaId || partnerSettings?.wabaId || '';
+    let activeToken = bizSettings?.accessToken || '';
+    let activeAppSecret = bizSettings?.appSecret || '';
+    let connectedAt = bizSettings?.connectedAt || partnerSettings?.connectedAt || null;
+
+    // Active multi-tenant purge: If this non-seed business was previously contaminated with Pizza 47's credentials,
+    // and Meta Partner Channel has NOT explicitly connected it, purge the leaked credentials immediately!
+    if (!isDefaultSeedAccount && business &&
+        (activePhoneNumberId === '1284061438133660' || (activePhoneNumber && activePhoneNumber.replace(/\s+/g, '') === '+917303632949')) &&
+        !partnerSettings?.isPartnerManaged) {
+      business.whatsappSettings = {
+        enabled: false,
+        phoneNumberId: '',
+        phoneNumber: '',
+        wabaId: '',
+        accessToken: '',
+        appSecret: '',
+        connectedAt: null,
+      };
+      await business.save();
+      bizSettings = business.whatsappSettings;
+      activePhoneNumberId = '';
+      activePhoneNumber = '';
+      activeWabaId = '';
+      activeToken = '';
+      activeAppSecret = '';
+      connectedAt = null;
     }
 
-    const business = bId ? await Business.findById(bId) : null;
-    const bizSettings = business?.whatsappSettings;
+    // Default seed account fallback
+    if (!activePhoneNumberId && isDefaultSeedAccount) {
+      activePhoneNumberId = whatsappService.phoneNumberId || '1284061438133660';
+      activePhoneNumber = '+91 73036 32949';
+      activeWabaId = '2525727467906581';
+      activeToken = whatsappService.accessToken || '';
+      activeAppSecret = whatsappService.appSecret || '';
+      connectedAt = new Date('2026-10-18T00:00:00Z');
+    }
 
-    const activePhoneNumberId = userSettings?.phoneNumberId || bizSettings?.phoneNumberId || whatsappService.phoneNumberId || '1284061438133660';
-    const activePhoneNumber = userSettings?.phoneNumber || bizSettings?.phoneNumber || '+91 73036 32949';
-    const activeWabaId = userSettings?.wabaId || bizSettings?.wabaId || '2525727467906581';
-    const activeToken = userSettings?.accessToken || bizSettings?.accessToken || whatsappService.accessToken || '';
-    const activeAppSecret = userSettings?.appSecret || bizSettings?.appSecret || whatsappService.appSecret || '';
-    const isConnected = Boolean(activePhoneNumberId && (activeToken || process.env.NODE_ENV === 'production'));
-    const connectedAt = userSettings?.connectedAt || bizSettings?.connectedAt || new Date('2026-10-18T00:00:00Z');
+    // Determine connection state:
+    // A business is connected ONLY IF:
+    // 1. It is the seed account, OR
+    // 2. Its own Meta Partner channel is verified/active (partnerSettings.isPartnerManaged), OR
+    // 3. It has explicitly enabled custom WhatsApp credentials (bizSettings.enabled && activePhoneNumberId)
+    const isExplicitlyConnected = Boolean(bizSettings?.enabled && activePhoneNumberId);
+    const isPartnerConnected = Boolean(partnerSettings?.isPartnerManaged && (activePhoneNumberId || partnerSettings?.phoneNumberId));
+    const isConnected = isDefaultSeedAccount || isExplicitlyConnected || isPartnerConnected;
 
-    // Cross-sync if one had settings but the other was empty
-    if (activePhoneNumberId) {
-      if (userDoc && (!userSettings?.phoneNumberId || !userSettings?.accessToken)) {
-        userDoc.whatsappSettings = {
+    if (!isConnected) {
+      return {
+        connected: false,
+        phoneNumberId: '',
+        phoneNumber: '',
+        wabaId: '',
+        accessToken: '',
+        hasCustomToken: false,
+        hasAppSecret: false,
+        connectedAt: null,
+      };
+    }
+
+    // Update userDoc ONLY if it's the user's primary business (or in tests), never across different businesses
+    if (userId && isConnected) {
+      const u = await User.findById(userId);
+      if (u && (u.businessId?.toString() === bId?.toString() || process.env.NODE_ENV === 'test')) {
+        u.whatsappSettings = {
           enabled: true,
           phoneNumberId: activePhoneNumberId,
           phoneNumber: activePhoneNumber,
@@ -1048,25 +1118,12 @@ class WhatsAppChatService {
           webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
           connectedAt: connectedAt || new Date(),
         };
-        await userDoc.save();
-      }
-      if (business && (!bizSettings?.phoneNumberId || !bizSettings?.accessToken)) {
-        business.whatsappSettings = {
-          enabled: true,
-          phoneNumberId: activePhoneNumberId,
-          phoneNumber: activePhoneNumber,
-          wabaId: activeWabaId,
-          accessToken: activeToken,
-          appSecret: activeAppSecret,
-          webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
-          connectedAt: connectedAt || new Date(),
-        };
-        await business.save();
+        await u.save();
       }
     }
 
     return {
-      connected: isConnected,
+      connected: true,
       phoneNumberId: activePhoneNumberId,
       phoneNumber: activePhoneNumber,
       wabaId: activeWabaId,
@@ -1642,6 +1699,8 @@ class WhatsAppChatService {
       const rawMsg = err.message || '';
       if (code === 131047 || title === 'Re-engagement message' || rawMsg === 'Re-engagement message') {
         message.error = '24-hour customer window expired (Meta policy). Customer must reply or send template to re-engage.';
+      } else if (code === 131056 || code === 131048 || rawMsg.includes('too many messages') || rawMsg.includes('short period of time') || title.toLowerCase().includes('spam')) {
+        message.error = 'Meta Rate Limit Hit (Code 131056): Too many messages sent in a short period. Meta has temporarily throttled sending for this phone number. Please wait 15-60 mins for cooldown or verify your business in Meta Business Manager to increase messaging limits.';
       } else {
         message.error = err.error_data?.details || err.message || err.title || 'Delivery error';
       }

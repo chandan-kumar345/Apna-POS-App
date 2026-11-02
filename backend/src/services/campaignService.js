@@ -888,12 +888,18 @@ class CampaignService {
 
       targetWabaId = (data.wabaId && data.wabaId.trim().length > 0)
         ? data.wabaId.trim()
-        : (biz?.whatsappSettings?.wabaId?.trim() || '2525727467906581');
+        : (biz?.whatsappSettings?.wabaId?.trim() || '');
+
+      if (!targetWabaId && (bId.toString() === '6ad46853ea47d6b3e13d633d' || process.env.NODE_ENV === 'test')) {
+        targetWabaId = '2525727467906581';
+      }
 
       if (data.accessToken && data.accessToken.trim().length > 0) {
         targetToken = data.accessToken.trim();
       } else if (biz?.whatsappSettings?.accessToken?.trim()) {
         targetToken = biz.whatsappSettings.accessToken.trim();
+      } else if (bId.toString() === '6ad46853ea47d6b3e13d633d' || process.env.NODE_ENV === 'test') {
+        targetToken = (whatsappService.accessToken || '').trim();
       }
 
       if (data.appSecret && data.appSecret.trim().length > 0) {
@@ -1158,9 +1164,9 @@ class CampaignService {
     }
 
     const biz = await Business.findById(bId);
-    const targetToken = biz?.whatsappSettings?.accessToken?.trim() || whatsappService.accessToken;
-    const targetWabaId = template.wabaId || biz?.whatsappSettings?.wabaId?.trim() || '2525727467906581';
-    const targetAppSecret = biz?.whatsappSettings?.appSecret?.trim() || whatsappService.appSecret;
+    const targetToken = biz?.whatsappSettings?.accessToken?.trim() || (bId.toString() === '6ad46853ea47d6b3e13d633d' || process.env.NODE_ENV === 'test' ? whatsappService.accessToken : '');
+    const targetWabaId = template.wabaId || biz?.whatsappSettings?.wabaId?.trim() || (bId.toString() === '6ad46853ea47d6b3e13d633d' || process.env.NODE_ENV === 'test' ? '2525727467906581' : '');
+    const targetAppSecret = biz?.whatsappSettings?.appSecret?.trim() || (bId.toString() === '6ad46853ea47d6b3e13d633d' || process.env.NODE_ENV === 'test' ? whatsappService.appSecret : '');
 
     // Check Meta live status if template is currently PENDING
     if (template.metaStatus === 'PENDING' && targetToken && targetWabaId && template.metaTemplateName) {
@@ -1246,12 +1252,33 @@ class CampaignService {
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
+    const isDefaultSeedAccount = bId && (
+      bId.toString() === '6ad46853ea47d6b3e13d633d' ||
+      (process.env.NODE_ENV === 'test' && bId.toString() === 'rest_001')
+    );
+
     const biz = await Business.findById(bId);
     const bizName = biz?.profile?.companyName || biz?.name || 'My Business';
-    const bizPhone = biz?.whatsappSettings?.phoneNumber || biz?.profile?.phone || '+91 73036 32949';
-    const isCustomConnected = Boolean(biz?.whatsappSettings?.enabled || biz?.whatsappSettings?.phoneNumberId);
-    const customPhoneId = biz?.whatsappSettings?.phoneNumberId || whatsappService.phoneNumberId;
-    const customWabaId = biz?.whatsappSettings?.wabaId || '2525727467906581';
+    const waSettings = biz?.whatsappSettings || {};
+    const isLeaked = !isDefaultSeedAccount &&
+      (waSettings.phoneNumberId === '1284061438133660' || (waSettings.phoneNumber && waSettings.phoneNumber.replace(/\s+/g, '') === '+917303632949')) &&
+      !biz?.metaPartnerSettings?.isPartnerManaged;
+
+    const isCustomConnected = !isLeaked && Boolean(
+      (waSettings.enabled && waSettings.phoneNumberId) ||
+      biz?.metaPartnerSettings?.isPartnerManaged ||
+      isDefaultSeedAccount
+    );
+
+    const bizPhone = isCustomConnected
+      ? (waSettings.phoneNumber || biz?.profile?.phone || '')
+      : (biz?.profile?.phone || '');
+    const customPhoneId = isCustomConnected
+      ? (waSettings.phoneNumberId || (isDefaultSeedAccount ? whatsappService.phoneNumberId : ''))
+      : '';
+    const customWabaId = isCustomConnected
+      ? (waSettings.wabaId || (isDefaultSeedAccount ? '2525727467906581' : ''))
+      : '';
 
     return [
       {

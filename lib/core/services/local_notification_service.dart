@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,7 @@ class LocalNotificationService with WidgetsBindingObserver {
 
   /// In-memory queue for incoming order payloads received while SplashScreen is animating
   static Map<String, dynamic>? _pendingIncomingOrderPayload;
+  static Timer? _retryShowOrderTimer;
 
   bool get _isSupportedPlatform =>
       !kIsWeb &&
@@ -83,7 +85,18 @@ class LocalNotificationService with WidgetsBindingObserver {
             decoded['orderId'] != null ||
             metadata['orderId'] != null;
 
-        if (isOrder) {
+        final orderType = (decoded['orderType'] ?? metadata['orderType'] ?? '').toString().toLowerCase();
+        final orderSource = (decoded['orderSource'] ?? metadata['orderSource'] ?? '').toString().toLowerCase();
+        final bool isDineInOrLocalPos = orderType == 'dinein' ||
+            orderType == 'dine_in' ||
+            orderSource == 'pos';
+
+        if (isOrder && !isDineInOrLocalPos) {
+          if (IncomingOrderAcceptScreen.isShowing) {
+            debugPrint('[LocalNotificationService] Incoming order screen already showing. Suppressing duplicate open.');
+            return;
+          }
+
           SoundService.boostHardwareVolume();
           SoundService.bringAppToFront();
           if (SplashScreen.isSplashActive) {
@@ -92,26 +105,27 @@ class LocalNotificationService with WidgetsBindingObserver {
             return;
           }
 
+          _retryShowOrderTimer?.cancel();
           int attempts = 0;
-          void tryShowOrderScreen() {
+          _retryShowOrderTimer = Timer.periodic(const Duration(milliseconds: 150), (timer) {
             attempts++;
             if (SplashScreen.isSplashActive) {
               _pendingIncomingOrderPayload = decoded;
+              timer.cancel();
               return;
             }
             final ctx = navigatorKey.currentContext;
             if (ctx != null && ctx.mounted) {
+              timer.cancel();
               IncomingOrderAcceptScreen.openFromPayload(
                 ctx,
                 decoded,
                 autoAccept: autoAccept,
               );
-            } else if (attempts < 60) {
-              Future.delayed(const Duration(milliseconds: 50), tryShowOrderScreen);
+            } else if (attempts >= 20) {
+              timer.cancel();
             }
-          }
-
-          tryShowOrderScreen();
+          });
           return;
         }
 
@@ -291,9 +305,17 @@ class LocalNotificationService with WidgetsBindingObserver {
     }
   }
 
+  static int _lastResumeCheckTime = 0;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastResumeCheckTime < 5000) {
+        return;
+      }
+      _lastResumeCheckTime = now;
+
       // 1. Check local queue from FCM background isolate
       checkAndShowPendingIncomingOrder();
       // 2. Proactively verify and register device push token with backend
@@ -604,6 +626,11 @@ class LocalNotificationService with WidgetsBindingObserver {
         color: effectiveColor,
         fullScreenIntent: isWhatsAppOrder,
         visibility: NotificationVisibility.public,
+        tag: (type == NotificationType.dailySalesSummary ||
+                metadata['type'] == 'daily_sales_summary' ||
+                entityType == 'sales_report')
+            ? 'daily_sales_summary'
+            : null,
         category: isWhatsAppOrder
             ? AndroidNotificationCategory.call
             : (isWhatsApp ? AndroidNotificationCategory.message : category),

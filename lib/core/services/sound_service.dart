@@ -98,9 +98,15 @@ class SoundService {
   }
 
   static const MethodChannel _nativeAlertChannel = MethodChannel('com.apnapos.app/order_alert');
+  static int _lastBoostVolumeTime = 0;
+  static int _lastBringToFrontTime = 0;
 
   /// Force phone hardware volume to maximum (alarm + media streams)
   static Future<void> boostHardwareVolume() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastBoostVolumeTime < 5000) return;
+    _lastBoostVolumeTime = now;
+
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         await _nativeAlertChannel.invokeMethod('setMaxVolume');
@@ -110,6 +116,10 @@ class SoundService {
 
   /// Bring Android app / MainActivity directly over lock screen or home screen
   static Future<void> bringAppToFront() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastBringToFrontTime < 6000) return;
+    _lastBringToFrontTime = now;
+
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         await _nativeAlertChannel.invokeMethod('bringToFront');
@@ -126,9 +136,21 @@ class SoundService {
     } catch (_) {}
   }
 
+  static bool _isRingtonePlaying = false;
+  static int _lastRingtonePlayTime = 0;
+  bool _isStartingRingtone = false;
+
   /// Play incoming order receive ringtone continuously in a loop at full volume until accepted or rejected
   static void playOrderRingtone() {
     if (!soundEnabled) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Debounce to prevent overlapping triggers while ringtone is already looping
+    if (_isRingtonePlaying && (now - _lastRingtonePlayTime < 3000)) {
+      return;
+    }
+    _isRingtonePlaying = true;
+    _lastRingtonePlayTime = now;
 
     try {
       HapticFeedback.heavyImpact();
@@ -149,19 +171,27 @@ class SoundService {
   }
 
   void _playOrderRingtoneAsset() async {
+    if (_isStartingRingtone) return;
+    _isStartingRingtone = true;
     try {
+      if (_ringtonePlayer == null) {
+        _ringtonePlayer = AudioPlayer();
+        await _ringtonePlayer?.setPlayerMode(PlayerMode.mediaPlayer);
+        await _ringtonePlayer?.setReleaseMode(ReleaseMode.loop);
+      }
       await _ringtonePlayer?.stop();
-      await _ringtonePlayer?.setPlayerMode(PlayerMode.mediaPlayer);
-      await _ringtonePlayer?.setReleaseMode(ReleaseMode.loop);
       await _ringtonePlayer?.setVolume(1.0);
       await _ringtonePlayer?.play(AssetSource('sounds/order_recieve_ringtone.mp3'));
     } catch (_) {
       _playNotificationAsset();
+    } finally {
+      _isStartingRingtone = false;
     }
   }
 
   /// Stop incoming order ringtone
   static void stopOrderRingtone() async {
+    _isRingtonePlaying = false;
     try {
       await _instance._ringtonePlayer?.stop();
     } catch (_) {}

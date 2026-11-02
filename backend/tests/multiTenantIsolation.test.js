@@ -174,5 +174,67 @@ describe('Multi-Tenant Data Isolation Test Suite', () => {
 
       expect(customerForB).toBeNull();
     });
+
+    test('TC-MTH-08: WhatsApp Integration Isolation - Credentials never leak into unintegrated tenant', async () => {
+      const whatsappChatService = require('../src/services/whatsappChatService');
+
+      // Tenant A connects custom Meta WhatsApp integration
+      tenantABusiness.whatsappSettings = {
+        enabled: true,
+        phoneNumberId: '999000111222',
+        phoneNumber: '+919990001112',
+        wabaId: '888000111222',
+        accessToken: 'EAAG_TenantA_Secure_Token',
+        appSecret: 'secret_A',
+      };
+      await tenantABusiness.save();
+
+      // Tenant B has NOT connected WhatsApp
+      const statusA = await whatsappChatService.getConnectionStatus(tenantABusiness._id);
+      expect(statusA.connected).toBe(true);
+      expect(statusA.phoneNumberId).toBe('999000111222');
+      expect(statusA.accessToken).toBe('EAAG_TenantA_Secure_Token');
+
+      const statusB = await whatsappChatService.getConnectionStatus(tenantBBusiness._id);
+      expect(statusB.connected).toBe(false);
+      expect(statusB.phoneNumberId).toBe('');
+      expect(statusB.accessToken).toBe('');
+    });
+
+    test('TC-MTH-09: Dine-in Table Order KOT printing does not dispatch incoming WhatsApp order accept push notifications', async () => {
+      const orderService = require('../src/services/orderService');
+      const pushNotificationService = require('../src/services/pushNotificationService');
+      const pushSpy = jest.spyOn(pushNotificationService, 'sendPushNotificationToBusiness').mockResolvedValue([]);
+
+      // 1. In-store Dine-in table order with KOT printed (status: preparing)
+      const dineInOrderResult = await orderService.generatePosOrder(tenantABusiness._id, {
+        orderType: 'dine_in',
+        tableNumber: 'T-5',
+        orderSource: 'pos',
+        status: 'preparing',
+        paymentMethod: 'KOT Pending',
+        items: [{ name: 'Margherita Pizza', price: 299, quantity: 1 }],
+      });
+
+      expect(['dine_in', 'dineIn']).toContain(dineInOrderResult.order.orderType);
+      expect(pushSpy).not.toHaveBeenCalled();
+
+      // 2. Incoming external WhatsApp delivery order
+      await orderService.generatePosOrder(tenantABusiness._id, {
+        orderType: 'delivery',
+        orderSource: 'whatsapp',
+        status: 'pending',
+        customerName: 'WhatsApp Customer',
+        customerPhone: '+919876543210',
+        items: [{ name: 'Farmhouse Pizza', price: 399, quantity: 1 }],
+      });
+
+      expect(pushSpy).toHaveBeenCalled();
+      const pushCall = pushSpy.mock.calls[0][0];
+      expect(pushCall.data.type).toBe('whatsapp_order_request');
+      expect(pushCall.data.orderSource).toBe('whatsapp');
+
+      pushSpy.mockRestore();
+    });
   });
 });

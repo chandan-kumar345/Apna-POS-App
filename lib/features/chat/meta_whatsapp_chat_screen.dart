@@ -13,6 +13,7 @@ import '../../core/services/sound_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../../core/widgets/connection_status_badge.dart';
 import 'widgets/whatsapp_template_picker_dialog.dart';
+import '../../core/services/order_alert_permission_service.dart';
 
 class MetaWhatsAppChatScreen extends StatefulWidget {
   final String? initialPhone;
@@ -55,6 +56,14 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   String _selectedFilter = 'All'; // 'All' | 'Unread' | 'Groups'
   int _selectedBottomNavIndex = 0; // 0: Chats, 1: Updates, 2: Communities, 3: Calls
   bool _useAndroidPhoneMockup = true; // Authentic Android Phone Mockup frame for chat screen
+
+  /// Detects whether current client is running on Web, Windows Desktop, or other desktop platforms.
+  /// On Web and Windows, we display an authentic full-width WhatsApp Web interface without simulated phone mockups.
+  bool get _isWebOrDesktop =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
@@ -189,8 +198,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           _isLoadingChats = false;
         });
 
-        // Ensure database & local cache immediately hold restored WhatsApp credentials
-        if (conn != null && (conn.phoneNumberId.isNotEmpty || conn.phoneNumber.isNotEmpty)) {
+        // Ensure database & local cache strictly hold restored WhatsApp credentials for this business
+        if (conn != null && conn.connected && (conn.phoneNumberId.isNotEmpty || conn.phoneNumber.isNotEmpty)) {
           _db.saveWhatsAppIntegrationSettings(
             enabled: conn.connected,
             provider: 'meta_cloud',
@@ -1331,6 +1340,192 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
+  void _showOrderPermissionsDialog() {
+    bool? overlayGranted;
+    bool? batteryOptIgnored;
+    bool? notifEnabled;
+    bool isChecking = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          if (isChecking) {
+            isChecking = false;
+            OrderAlertPermissionService.checkPermissions().then((p) {
+              if (mounted && dialogCtx.mounted) {
+                setDialogState(() {
+                  overlayGranted = p['overlayGranted'];
+                  batteryOptIgnored = p['batteryOptimizationIgnored'];
+                  notifEnabled = p['notificationsEnabled'];
+                });
+              }
+            });
+          }
+
+          final allGood = overlayGranted == true && batteryOptIgnored == true && notifEnabled == true;
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 440),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x1A000000), blurRadius: 24, offset: Offset(0, 8)),
+                ],
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: allGood ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          allGood ? Icons.check_circle_rounded : Icons.notifications_active_rounded,
+                          color: allGood ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Order Alert Permissions',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            ),
+                            Text(
+                              allGood ? 'All essential permissions are active' : 'Permissions needed for background order popups',
+                              style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(dialogCtx),
+                        icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (isChecking)
+                    const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+                  else ...[
+                    _buildPermissionItem(
+                      title: 'Display over other apps',
+                      desc: 'Allows new incoming WhatsApp orders to pop up directly over the lock screen or other apps.',
+                      isGranted: overlayGranted == true,
+                      onAction: () async {
+                        await OrderAlertPermissionService.requestOverlayPermission();
+                        final p = await OrderAlertPermissionService.checkPermissions();
+                        setDialogState(() {
+                          overlayGranted = p['overlayGranted'];
+                          batteryOptIgnored = p['batteryOptimizationIgnored'];
+                          notifEnabled = p['notificationsEnabled'];
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildPermissionItem(
+                      title: 'Ignore Battery Optimization',
+                      desc: 'Prevents Android OS from killing background order notifications when device sleeps.',
+                      isGranted: batteryOptIgnored == true,
+                      onAction: () async {
+                        await OrderAlertPermissionService.requestIgnoreBatteryOptimizations();
+                        final p = await OrderAlertPermissionService.checkPermissions();
+                        setDialogState(() {
+                          overlayGranted = p['overlayGranted'];
+                          batteryOptIgnored = p['batteryOptimizationIgnored'];
+                          notifEnabled = p['notificationsEnabled'];
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    ElevatedButton.icon(
+                      onPressed: () => OrderAlertPermissionService.openAppInfoSettings(),
+                      icon: const Icon(Icons.settings_rounded, size: 16),
+                      label: const Text('Open App Info in Android Settings'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F172A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPermissionItem({
+    required String title,
+    required String desc,
+    required bool isGranted,
+    required VoidCallback onAction,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isGranted ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: isGranted ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isGranted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+            size: 20,
+            color: isGranted ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF0F172A))),
+                const SizedBox(height: 3),
+                Text(desc, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.3)),
+              ],
+            ),
+          ),
+          if (!isGranted) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onAction,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Enable', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   void _showConfigureCredentialsDialog() {
     final initialPhoneId = (_connectionInfo?.phoneNumberId.isNotEmpty == true)
         ? _connectionInfo!.phoneNumberId
@@ -1880,45 +2075,47 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         children: [
           // Left Column: Modern WhatsApp Chat List
           SizedBox(
-            width: 380,
+            width: constraints.maxWidth > 1200 ? 410 : 360,
             child: Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                border: Border(right: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
+                border: Border(right: BorderSide(color: Color(0xFFD1D7DB), width: 1)),
               ),
-              child: _buildWhatsAppMobileChatList(isEmbedded: false),
+              child: _buildWhatsAppMobileChatList(isEmbedded: _isWebOrDesktop),
             ),
           ),
-          // Right Column: Active Conversation inside Simulated Android Phone Mockup or Desktop Empty State
+          // Right Column: Authentic WhatsApp Web layout on Web/Windows, or Phone Mockup on Mobile/Simulation
           Expanded(
             child: _selectedChat != null
-                ? Container(
-                    color: const Color(0xFFF1F5F9), // Soft slate background emphasizing phone mockup
-                    child: LayoutBuilder(
-                      builder: (context, chatConstraints) {
-                        return Stack(
-                          children: [
-                            Positioned.fill(
-                              child: _useAndroidPhoneMockup
-                                  ? Center(
-                                      child: _buildAndroidPhoneMockup(
-                                        maxHeight: chatConstraints.maxHeight,
-                                        maxWidth: (chatConstraints.maxWidth - 32).clamp(360.0, 480.0),
-                                        child: _buildChatConversationView(isMobile: true),
-                                      ),
-                                    )
-                                  : _buildChatConversationView(isMobile: false),
-                            ),
-                            Positioned(
-                              top: 12,
-                              right: 16,
-                              child: _buildMockupTogglePill(),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  )
+                ? (_isWebOrDesktop
+                    ? _buildChatConversationView(isMobile: false)
+                    : Container(
+                        color: const Color(0xFFF1F5F9), // Soft slate background emphasizing phone mockup
+                        child: LayoutBuilder(
+                          builder: (context, chatConstraints) {
+                            return Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: _useAndroidPhoneMockup
+                                      ? Center(
+                                          child: _buildAndroidPhoneMockup(
+                                            maxHeight: chatConstraints.maxHeight,
+                                            maxWidth: (chatConstraints.maxWidth - 32).clamp(360.0, 480.0),
+                                            child: _buildChatConversationView(isMobile: true),
+                                          ),
+                                        )
+                                      : _buildChatConversationView(isMobile: false),
+                                ),
+                                Positioned(
+                                  top: 12,
+                                  right: 16,
+                                  child: _buildMockupTogglePill(),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ))
                 : _buildDesktopEmptyChatState(),
           ),
         ],
@@ -1928,7 +2125,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   Widget _buildCenteredPhoneLayout(BoxConstraints constraints) {
     if (_selectedChat != null) {
-      if (constraints.maxWidth >= 520 && _useAndroidPhoneMockup) {
+      if (!_isWebOrDesktop && constraints.maxWidth >= 520 && _useAndroidPhoneMockup) {
         return Container(
           color: const Color(0xFFF1F5F9),
           child: Center(
@@ -1940,12 +2137,13 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         );
       }
-      return _buildChatConversationView(isMobile: true);
+      return _buildChatConversationView(isMobile: !_isWebOrDesktop);
     }
-    return _buildWhatsAppMobileChatList(isEmbedded: false);
+    return _buildWhatsAppMobileChatList(isEmbedded: _isWebOrDesktop);
   }
 
   Widget _buildMockupTogglePill() {
+    if (_isWebOrDesktop) return const SizedBox.shrink();
     return InkWell(
       onTap: () => setState(() => _useAndroidPhoneMockup = !_useAndroidPhoneMockup),
       borderRadius: BorderRadius.circular(20),
@@ -2222,68 +2420,123 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
     return Column(
       children: [
-        // 1. WhatsApp Top Header (Bold green WhatsApp title, Circular Neumorphic Camera & 3-Dots Menu)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
-          child: Row(
-            children: [
-              const Text(
-                'WhatsApp',
-                style: TextStyle(
-                  color: Color(0xFF059669), // Vivid WhatsApp emerald green
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
+        // 1. Top Header: WhatsApp Web Header on Web/Windows or Mobile Header on phone
+        if (_isWebOrDesktop)
+          Container(
+            height: 59,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF0F2F5),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFD1D7DB), width: 1),
               ),
-              const Spacer(),
-              // Circular Neumorphic Camera Button
-              _buildNeumorphicHeaderButton(
-                icon: Icons.camera_alt_outlined,
-                tooltip: 'Camera',
-                onTap: () {},
-              ),
-              const SizedBox(width: 8),
-              // Circular Neumorphic 3-Dots Menu Button (Visible text & pure white card)
-              _buildNeumorphicMenuButton(),
-            ],
-          ),
-        ),
-
-        // 2. Search Bar with iridescent Meta AI gradient ring in floating neumorphic pill
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Container(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x0C000000),
-                  blurRadius: 12,
-                  offset: Offset(0, 3),
+            ),
+            child: Row(
+              children: [
+                // Business / Profile Avatar
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF00A884),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.storefront_rounded, color: Colors.white, size: 21),
+                  ),
                 ),
-                BoxShadow(
-                  color: Color(0x80FFFFFF),
-                  blurRadius: 4,
-                  offset: Offset(0, -1),
+                const SizedBox(width: 12),
+                const Text(
+                  'Chats',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111B21),
+                    letterSpacing: -0.3,
+                  ),
                 ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 20, color: Color(0xFF54656F)),
+                  tooltip: 'New Chat',
+                  onPressed: _showNewChatDialog,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF54656F)),
+                  tooltip: 'Refresh Chats',
+                  onPressed: _loadConnectionAndChats,
+                ),
+                _buildNeumorphicMenuButton(),
               ],
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
+            child: Row(
+              children: [
+                const Text(
+                  'WhatsApp',
+                  style: TextStyle(
+                    color: Color(0xFF059669), // Vivid WhatsApp emerald green
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const Spacer(),
+                // Circular Neumorphic Camera Button
+                _buildNeumorphicHeaderButton(
+                  icon: Icons.camera_alt_outlined,
+                  tooltip: 'Camera',
+                  onTap: () {},
+                ),
+                const SizedBox(width: 8),
+                // Circular Neumorphic 3-Dots Menu Button (Visible text & pure white card)
+                _buildNeumorphicMenuButton(),
+              ],
+            ),
+          ),
+
+        // 2. Search Bar: Clean WhatsApp Web search input on Desktop, iridescent Meta AI on Mobile
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: _isWebOrDesktop ? 12 : 16, vertical: _isWebOrDesktop ? 6 : 4),
+          child: Container(
+            height: _isWebOrDesktop ? 38 : 44,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: _isWebOrDesktop ? const Color(0xFFF0F2F5) : Colors.white,
+              borderRadius: BorderRadius.circular(_isWebOrDesktop ? 8 : 24),
+              boxShadow: _isWebOrDesktop
+                  ? null
+                  : const [
+                      BoxShadow(
+                        color: Color(0x0C000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 3),
+                      ),
+                      BoxShadow(
+                        color: Color(0x80FFFFFF),
+                        blurRadius: 4,
+                        offset: Offset(0, -1),
+                      ),
+                    ],
               border: Border.all(
-                color: const Color(0xFFE2E8F0).withValues(alpha: 0.7),
+                color: _isWebOrDesktop ? const Color(0xFFE9EDEF) : const Color(0xFFE2E8F0).withValues(alpha: 0.7),
                 width: 1,
               ),
             ),
             child: Row(
               children: [
-                _buildMetaAiRing(),
+                if (_isWebOrDesktop)
+                  const Icon(Icons.search_rounded, size: 18, color: Color(0xFF54656F))
+                else
+                  _buildMetaAiRing(),
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
                     controller: _searchController,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+                    style: TextStyle(fontSize: 13, color: _isWebOrDesktop ? const Color(0xFF111B21) : const Color(0xFF0F172A)),
                     onChanged: (val) {
                       setState(() => _searchQuery = val);
                       _searchDebounce?.cancel();
@@ -2294,7 +2547,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                       });
                     },
                     decoration: InputDecoration(
-                      hintText: 'Ask Meta AI or Search',
+                      hintText: _isWebOrDesktop ? 'Search or start new chat' : 'Ask Meta AI or Search',
                       hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.normal),
                       isDense: true,
                       border: InputBorder.none,
@@ -2360,8 +2613,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
 
-        // 5. WhatsApp Bottom Navigation Bar (Chats, Updates, Communities, Calls)
-        if (!isEmbedded) _buildWhatsAppBottomNavBar(unreadTotal),
+        // 5. WhatsApp Bottom Navigation Bar (Chats, Updates, Communities, Calls) - Hidden on Web/Windows
+        if (!isEmbedded && !_isWebOrDesktop) _buildWhatsAppBottomNavBar(unreadTotal),
       ],
     );
   }
@@ -2455,6 +2708,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             if (val == 'new_chat') _showNewChatDialog();
             if (val == 'credentials') _showConfigureCredentialsDialog();
             if (val == 'refresh') _loadConnectionAndChats();
+            if (val == 'permissions') _showOrderPermissionsDialog();
           },
           itemBuilder: (ctx) => [
             PopupMenuItem(
@@ -2508,6 +2762,24 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 ],
               ),
             ),
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+              PopupMenuItem(
+                value: 'permissions',
+                child: Row(
+                  children: const [
+                    Icon(Icons.notifications_active_outlined, size: 17, color: Color(0xFF0F172A)),
+                    SizedBox(width: 10),
+                    Text(
+                      'App Info Permissions',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -3785,8 +4057,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       color: const Color(0xFFEFEAE2), // Authentic WhatsApp Wallpaper background color
       child: Column(
         children: [
-          // 1. WhatsApp Conversation Header
-          _buildConversationHeader(),
+          // 1. WhatsApp Conversation Header (Adapts to WhatsApp Web when !isMobile)
+          _buildConversationHeader(isMobile: isMobile),
 
           // 2. Message List over WhatsApp Doodle Wallpaper
           Expanded(
@@ -3822,7 +4094,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                               controller: _scrollController,
                               addAutomaticKeepAlives: false,
                               addRepaintBoundaries: true,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 28, vertical: 12),
                               itemCount: _messages.length,
                               itemBuilder: (context, index) {
                                 final msg = _messages[index];
@@ -3859,17 +4131,20 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           if (_is24HourWindowClosed)
             _build24HourWindowBanner(),
 
-          // 3. Bottom Input Bar: Only plus, text box, and send button lift up on keyboard open, and smoothly drop down on keyboard close
-          AnimatedPadding(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            padding: EdgeInsets.only(bottom: bottomInset),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
-              color: Colors.transparent,
-              child: _buildConversationInputBar(),
-            ),
-          ),
+          // 3. Bottom Input Bar: Authentic WhatsApp Web input bar on desktop, animated input on mobile
+          if (isMobile)
+            AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+                color: Colors.transparent,
+                child: _buildConversationInputBar(isMobile: true),
+              ),
+            )
+          else
+            _buildConversationInputBar(isMobile: false),
         ],
       ),
     );
@@ -3965,12 +4240,104 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Conversation screen header matching authentic WhatsApp UI
-  Widget _buildConversationHeader() {
+  /// Conversation screen header matching authentic WhatsApp Web UI on desktop and WhatsApp mobile UI on phone
+  Widget _buildConversationHeader({bool isMobile = false}) {
     final phoneDisplay = _selectedChat!.customerPhone.startsWith('+')
         ? _selectedChat!.customerPhone
         : '+${_selectedChat!.customerPhone}';
     final isWindowOpen = _is24HourWindowActive;
+
+    if (!isMobile) {
+      // Authentic WhatsApp Web Header: 59px height, #F0F2F5 surface, #D1D7DB bottom border, no back button
+      return Container(
+        height: 59,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF0F2F5),
+          border: Border(
+            bottom: BorderSide(color: Color(0xFFD1D7DB), width: 1),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Contact Avatar (Tap to view/update profile DP)
+            GestureDetector(
+              onTap: () => _showContactProfileSheet(_selectedChat!),
+              child: _buildChatAvatar(_selectedChat!, size: 40),
+            ),
+            const SizedBox(width: 14),
+
+            // Contact Name & Phone / 24-hr Status
+            Expanded(
+              child: InkWell(
+                onTap: () => _showContactProfileSheet(_selectedChat!),
+                borderRadius: BorderRadius.circular(6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _resolveChatDisplayName(_selectedChat!),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        color: Color(0xFF111B21),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Container(
+                          width: 6.5,
+                          height: 6.5,
+                          decoration: BoxDecoration(
+                            color: isWindowOpen ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          phoneDisplay,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF667781),
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                        if (isWindowOpen) ...[
+                          const SizedBox(width: 8),
+                          const Text(
+                            '• 24h Window Active',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF16A34A),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // WhatsApp Web Action Buttons: Search in chat & 3-dots Menu
+            IconButton(
+              icon: const Icon(Icons.search_rounded, size: 21, color: Color(0xFF54656F)),
+              tooltip: 'Search messages',
+              onPressed: () {},
+            ),
+            _buildConversationMenuButton(isWebStyle: true),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
@@ -4058,15 +4425,101 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             ),
           ),
 
-          // 3-Dots Menu Button (Call and Video buttons removed per user instruction)
-          _buildConversationMenuButton(),
+          // 3-Dots Menu Button
+          _buildConversationMenuButton(isWebStyle: false),
         ],
       ),
     );
   }
 
-  /// 3-Dots Menu button inside conversation view with visible white card and dark text
-  Widget _buildConversationMenuButton() {
+  /// 3-Dots Menu button inside conversation view
+  Widget _buildConversationMenuButton({bool isWebStyle = false}) {
+    final menu = Theme(
+      data: Theme.of(context).copyWith(
+        popupMenuTheme: const PopupMenuThemeData(
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
+      ),
+      child: PopupMenuButton<String>(
+        icon: Icon(
+          Icons.more_vert_rounded,
+          size: isWebStyle ? 21 : 19,
+          color: isWebStyle ? const Color(0xFF54656F) : const Color(0xFF1E293B),
+        ),
+        padding: EdgeInsets.zero,
+        tooltip: 'Chat options',
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shadowColor: const Color(0x33000000),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFE2E8F0)),
+        ),
+        onSelected: (val) {
+          if (val == 'refresh') _loadMessages(_selectedChat!.id);
+          if (val == 'new_chat') _showNewChatDialog();
+          if (val == 'contact_info') _showContactProfileSheet(_selectedChat!);
+        },
+        itemBuilder: (ctx) => [
+          PopupMenuItem(
+            value: 'contact_info',
+            child: Row(
+              children: const [
+                Icon(Icons.account_circle_outlined, size: 17, color: Color(0xFF0F172A)),
+                SizedBox(width: 10),
+                Text(
+                  'Contact Profile & DP',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'refresh',
+            child: Row(
+              children: const [
+                Icon(Icons.refresh_rounded, size: 17, color: Color(0xFF0F172A)),
+                SizedBox(width: 10),
+                Text(
+                  'Refresh messages',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'new_chat',
+            child: Row(
+              children: const [
+                Icon(Icons.person_add_outlined, size: 17, color: Color(0xFF0F172A)),
+                SizedBox(width: 10),
+                Text(
+                  'New chat',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (isWebStyle) return menu;
+
     return Container(
       width: 36,
       height: 36,
@@ -4090,85 +4543,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           width: 1,
         ),
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          popupMenuTheme: const PopupMenuThemeData(
-            color: Colors.white,
-            surfaceTintColor: Colors.transparent,
-          ),
-        ),
-        child: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert_rounded, size: 19, color: Color(0xFF1E293B)),
-          padding: EdgeInsets.zero,
-          tooltip: 'Chat options',
-          color: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          elevation: 8,
-          shadowColor: const Color(0x33000000),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFE2E8F0)),
-          ),
-          onSelected: (val) {
-            if (val == 'refresh') _loadMessages(_selectedChat!.id);
-            if (val == 'new_chat') _showNewChatDialog();
-            if (val == 'contact_info') _showContactProfileSheet(_selectedChat!);
-          },
-          itemBuilder: (ctx) => [
-            PopupMenuItem(
-              value: 'contact_info',
-              child: Row(
-                children: const [
-                  Icon(Icons.account_circle_outlined, size: 17, color: Color(0xFF0F172A)),
-                  SizedBox(width: 10),
-                  Text(
-                    'Contact Profile & DP',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'refresh',
-              child: Row(
-                children: const [
-                  Icon(Icons.refresh_rounded, size: 17, color: Color(0xFF0F172A)),
-                  SizedBox(width: 10),
-                  Text(
-                    'Refresh messages',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'new_chat',
-              child: Row(
-                children: const [
-                  Icon(Icons.person_add_outlined, size: 17, color: Color(0xFF0F172A)),
-                  SizedBox(width: 10),
-                  Text(
-                    'New chat',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: menu,
     );
   }
 
@@ -4269,8 +4644,102 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
 
 
-  /// Redesigned input bar with plus button, pill input field with emoji & paperclip, and green send button
-  Widget _buildConversationInputBar() {
+  /// WhatsApp input bar: Authentic WhatsApp Web input layout on desktop, or mobile neumorphic pill on mobile
+  Widget _buildConversationInputBar({bool isMobile = false}) {
+    if (!isMobile) {
+      // Authentic WhatsApp Web input bar
+      return Container(
+        height: 62,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF0F2F5),
+          border: Border(
+            top: BorderSide(color: Color(0xFFE9EDEF), width: 1),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Emoji Smiley Button
+            IconButton(
+              icon: const Icon(Icons.sentiment_satisfied_alt_outlined, size: 24, color: Color(0xFF54656F)),
+              tooltip: 'Emojis',
+              onPressed: () {},
+            ),
+            // Paperclip Attachment Button
+            IconButton(
+              icon: const Icon(Icons.attach_file_rounded, size: 24, color: Color(0xFF54656F)),
+              tooltip: 'Attach Media or Document',
+              onPressed: _showAttachmentSheet,
+            ),
+            // Template Picker Button
+            Tooltip(
+              message: 'Send Approved Template',
+              child: IconButton(
+                icon: Icon(
+                  Icons.dashboard_customize_rounded,
+                  size: 22,
+                  color: _is24HourWindowClosed ? const Color(0xFFD97706) : const Color(0xFF00A884),
+                ),
+                onPressed: _openTemplatePicker,
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // White Rounded Input Pill
+            Expanded(
+              child: Container(
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE9EDEF), width: 1),
+                ),
+                alignment: Alignment.center,
+                child: TextField(
+                  controller: _messageController,
+                  focusNode: _messageFocusNode,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _sendMessage(),
+                  style: const TextStyle(fontSize: 14.5, color: Color(0xFF111B21), fontWeight: FontWeight.normal),
+                  decoration: const InputDecoration(
+                    hintText: 'Type a message',
+                    hintStyle: TextStyle(fontSize: 14, color: Color(0xFF667781), fontWeight: FontWeight.normal),
+                    isDense: true,
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // Send Button (Vibrant WhatsApp emerald circle)
+            GestureDetector(
+              onTap: _isSending ? null : _sendMessage,
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF00A884),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: _isSending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.send_rounded, color: Colors.white, size: 19),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Row(
       children: [
         // Plus (+) Attachment Button
@@ -5053,9 +5522,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     final isSingleShortLine = !hasMedia && !msg.text.contains('\n') && msg.text.length <= 26;
     final hasError = msg.status.toUpperCase() == 'FAILED' || (msg.error != null && msg.error!.isNotEmpty);
 
-    final double maxBubbleWidth = (screenWidth >= 900
-        ? 340.0
-        : (screenWidth >= 680 ? 320.0 : screenWidth * 0.74)).clamp(210.0, 320.0);
+    final double maxBubbleWidth = _isWebOrDesktop
+        ? (screenWidth * 0.58).clamp(320.0, 720.0)
+        : (screenWidth >= 900
+            ? 340.0
+            : (screenWidth >= 680 ? 320.0 : screenWidth * 0.74)).clamp(210.0, 320.0);
 
     final timeWidget = Row(
       mainAxisSize: MainAxisSize.min,
@@ -5195,7 +5666,13 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 if (hasError && msg.error != null && msg.error!.isNotEmpty) ...[
                   const SizedBox(height: 5),
                   GestureDetector(
-                    onTap: () => _showReEngagementHelpDialog(msg.error!),
+                    onTap: () {
+                      if (_isRateLimitError(msg.error!)) {
+                        _showRateLimitHelpDialog(msg.error!);
+                      } else {
+                        _showReEngagementHelpDialog(msg.error!);
+                      }
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -5206,7 +5683,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.info_outline_rounded, size: 12, color: Color(0xFFDC2626)),
+                          Icon(
+                            _isRateLimitError(msg.error!) ? Icons.speed_rounded : Icons.info_outline_rounded,
+                            size: 12,
+                            color: const Color(0xFFDC2626),
+                          ),
                           const SizedBox(width: 5),
                           Flexible(
                             child: Text(
@@ -5218,10 +5699,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                               ),
                             ),
                           ),
-                          if (_isReEngagementError(msg.error!)) ...[
-                            const SizedBox(width: 4),
-                            const Icon(Icons.help_outline_rounded, size: 11, color: Color(0xFFDC2626)),
-                          ],
+                          const SizedBox(width: 4),
+                          const Icon(Icons.help_outline_rounded, size: 11, color: Color(0xFFDC2626)),
                         ],
                       ),
                     ),
@@ -5292,7 +5771,20 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         lower.contains('131047');
   }
 
+  bool _isRateLimitError(String err) {
+    final lower = err.toLowerCase();
+    return lower.contains('too many messages') ||
+        lower.contains('short period') ||
+        lower.contains('rate limit') ||
+        lower.contains('131056') ||
+        lower.contains('131048') ||
+        lower.contains('spam');
+  }
+
   String _formatErrorMessage(String rawError) {
+    if (_isRateLimitError(rawError)) {
+      return 'Meta Rate Limit Hit: Too many messages sent in short period (Tap for solution)';
+    }
     if (_isReEngagementError(rawError)) {
       return '24-hr window expired (Tap for info)';
     }
@@ -5300,6 +5792,101 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       return 'Meta sandbox: recipient not whitelisted';
     }
     return rawError;
+  }
+
+  void _showRateLimitHelpDialog(String rawError) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.speed_rounded, color: Color(0xFFD97706), size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Meta Rate Limit Hit (131056)',
+                style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Icon(Icons.warning_amber_rounded, size: 20, color: Color(0xFFD97706)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Meta Cloud API temporarily blocked template dispatches because too many messages were sent from your WhatsApp number in a short period of time.',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF92400E), height: 1.45, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Why did this happen?',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '1. Messaging Tier Limit:\nNew or unverified WhatsApp Business accounts are limited to Tier 250 (max 250 conversations/24h) and enforce strict per-minute burst rate limits.\n\n'
+                '2. Rapid Test Sends:\nTriggering multiple templates or testing campaigns within a few minutes trips Meta\'s automated spam protection filters.\n\n'
+                '3. Test Number Sandbox:\nIf using Meta\'s developer test number, messages can only be delivered to up to 5 verified phone numbers added in your Meta Developer Portal.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.45),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'How to resolve:',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: const Text(
+                  '✓ Wait 15 to 60 minutes: Meta\'s burst rate limiter automatically resets after a cooldown period.\n\n'
+                  '✓ Space out message sends: Avoid sending rapid batches back-to-back.\n\n'
+                  '✓ Complete Business Verification: In Meta Business Suite -> Security Center, verify your business documents (GST / registration) to permanently upgrade your account to Tier 1,000+ messages/day.',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF166534), height: 1.5, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00A884),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
+            child: const Text('Understood', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showReEngagementHelpDialog(String rawError) {

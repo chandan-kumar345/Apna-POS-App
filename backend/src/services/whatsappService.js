@@ -124,6 +124,19 @@ class WhatsAppService {
       );
     }
 
+    if (
+      data?.error?.code === 131056 ||
+      data?.error?.code === 131048 ||
+      metaMsg.includes('too many messages') ||
+      metaMsg.includes('short period of time')
+    ) {
+      return (
+        "Meta Rate Limit (Code 131056): Too many messages sent in a short period. " +
+        "Meta has temporarily throttled sending for this phone number. " +
+        "Please wait 15-60 minutes for the cooldown to reset, or complete Business Verification in Meta Business Suite to raise your daily/hourly sending limit."
+      );
+    }
+
     return metaMsg;
   }
 

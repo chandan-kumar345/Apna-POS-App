@@ -41,6 +41,7 @@ import '../services/sound_service.dart';
 import '../services/local_notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
 import '../../features/storefront/models/storefront_model.dart';
+import '../../features/orders/incoming_order_accept_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class DatabaseService extends ChangeNotifier {
@@ -174,6 +175,8 @@ class DatabaseService extends ChangeNotifier {
   Future<void> saveBusinessId(String bizId) async {
     final clean = bizId.trim();
     if (clean.isEmpty) return;
+    if (currentBusinessId == clean && _prefs?.getString('business_id') == clean) return;
+    clearInMemoryWhatsAppSettings();
     await _prefs?.setString('business_id', clean);
     await _prefs?.setString('apna_pos_business_id', clean);
     try {
@@ -934,6 +937,15 @@ class DatabaseService extends ChangeNotifier {
   Future<void> loadUserDataForActiveUser(String userId) async {
     if (_prefs == null) {
       _prefs = await SharedPreferences.getInstance();
+
+    // Purge legacy un-scoped WhatsApp credentials to prevent multi-tenant cross-contamination
+    _prefs?.remove('apna_pos_wa_enabled');
+    _prefs?.remove('apna_pos_wa_provider');
+    _prefs?.remove('apna_pos_wa_phone');
+    _prefs?.remove('apna_pos_wa_phone_id');
+    _prefs?.remove('apna_pos_wa_waba_id');
+    _prefs?.remove('apna_pos_wa_access_token');
+    _prefs?.remove('apna_pos_wa_webhook_token');
     }
 
     ProductService.clearPosCache();
@@ -946,6 +958,7 @@ class DatabaseService extends ChangeNotifier {
     _liveTableDiscounts.clear();
     _liveDraftCustomerInfo.clear();
     _liveDraftDeliveryInfo.clear();
+    clearInMemoryWhatsAppSettings();
 
     // 1. Load Restaurant Profile (Prioritizing Business-scoped key)
     String? restaurantJson = _prefs?.getString(_businessKey('restaurant')) ??
@@ -1130,6 +1143,15 @@ class DatabaseService extends ChangeNotifier {
   Future<void> init() async {
     if (_isInitialized) return;
     _prefs = await SharedPreferences.getInstance();
+
+    // Purge legacy un-scoped WhatsApp credentials to prevent multi-tenant cross-contamination
+    _prefs?.remove('apna_pos_wa_enabled');
+    _prefs?.remove('apna_pos_wa_provider');
+    _prefs?.remove('apna_pos_wa_phone');
+    _prefs?.remove('apna_pos_wa_phone_id');
+    _prefs?.remove('apna_pos_wa_waba_id');
+    _prefs?.remove('apna_pos_wa_access_token');
+    _prefs?.remove('apna_pos_wa_webhook_token');
 
     // 1. Load User Session from SessionManager or direct SharedPreferences cache
     try {
@@ -1707,9 +1729,13 @@ class DatabaseService extends ChangeNotifier {
           }
         }
         // Detect brand-new pending orders that were not previously present locally
+        // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
         final existingLocalIds = orders.map((o) => o.id).toSet();
         for (final r in remoteOrders) {
-          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending) {
+          final bool isExternalIncoming = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
+              r.orderType != OrderType.dineIn &&
+              r.orderSource != 'pos';
+          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
             final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
             if (diffSec < 600) {
               SoundService.playNotificationSound();
@@ -1724,6 +1750,7 @@ class DatabaseService extends ChangeNotifier {
                   'customerName': r.customerName,
                   'totalAmount': r.totalAmount.toString(),
                   'orderType': r.orderType.name,
+                  'orderSource': r.orderSource ?? 'whatsapp',
                   'deliveryAddress': r.deliveryAddress,
                   'items': r.items.map((i) => i.toJson()).toList(),
                 }),
@@ -1739,6 +1766,7 @@ class DatabaseService extends ChangeNotifier {
                 'customerName': r.customerName,
                 'totalAmount': r.totalAmount.toString(),
                 'orderType': r.orderType.name,
+                'orderSource': r.orderSource ?? 'whatsapp',
                 'deliveryAddress': r.deliveryAddress,
                 'items': r.items.map((i) => i.toJson()).toList(),
               });
@@ -2011,18 +2039,21 @@ class DatabaseService extends ChangeNotifier {
             _socketService.connect(businessId: activeBizId);
           }
 
-          // Restore WhatsApp Integration settings from user/business payload or backend endpoint
+          // Restore WhatsApp Integration settings strictly from business payload or backend endpoint
           try {
-            final wa = u['whatsappSettings'] ?? b?['whatsappSettings'];
-            if (wa != null && wa is Map && (wa['phoneNumberId'] != null || wa['phoneNumber'] != null)) {
+            final wa = b?['whatsappSettings'];
+            final isSeedPizza47 = (restaurant != null && restaurant!.name.trim().toLowerCase() == 'pizza 47') ||
+                (currentBusinessId == '6ad46853ea47d6b3e13d633d');
+            if (wa != null && wa is Map && (wa['enabled'] == true) && (wa['phoneNumberId'] != null || wa['phoneNumber'] != null)) {
               final pId = wa['phoneNumberId']?.toString() ?? '';
               final pNum = wa['phoneNumber']?.toString() ?? '';
               final token = wa['accessToken']?.toString() ?? '';
               final waba = wa['wabaId']?.toString() ?? '';
-              final isEn = wa['enabled'] == true || pId.isNotEmpty;
-              if (pId.isNotEmpty || pNum.isNotEmpty) {
+              final isLeaked = !isSeedPizza47 && (pId == '1284061438133660' || pNum.contains('73036 32949') || pNum.contains('7303632949'));
+
+              if (!isLeaked && (pId.isNotEmpty || pNum.isNotEmpty)) {
                 await saveWhatsAppIntegrationSettings(
-                  enabled: isEn,
+                  enabled: true,
                   provider: 'meta_cloud',
                   phoneNumber: pNum,
                   phoneId: pId,
@@ -2755,6 +2786,14 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.remove('apna_pos_staff_list');
     await _prefs?.remove('apna_pos_custom_staff_roles');
     await _prefs?.remove('apna_pos_custom_business_branches');
+    await _prefs?.remove('apna_pos_wa_enabled');
+    await _prefs?.remove('apna_pos_wa_provider');
+    await _prefs?.remove('apna_pos_wa_phone');
+    await _prefs?.remove('apna_pos_wa_phone_id');
+    await _prefs?.remove('apna_pos_wa_waba_id');
+    await _prefs?.remove('apna_pos_wa_access_token');
+    await _prefs?.remove('apna_pos_wa_webhook_token');
+    clearInMemoryWhatsAppSettings();
 
     restaurant = RestaurantModel(
       id: 'rest_${currentUser?.id ?? DateTime.now().millisecondsSinceEpoch}',
@@ -4850,9 +4889,13 @@ class DatabaseService extends ChangeNotifier {
         }
 
         // Detect brand-new pending orders that were not previously present locally
+        // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
         final existingLocalIds = orders.map((o) => o.id).toSet();
         for (final r in remoteOrders) {
-          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending) {
+          final bool isExternalIncoming = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
+              r.orderType != OrderType.dineIn &&
+              r.orderSource != 'pos';
+          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
             final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
             if (diffSec < 600) {
               SoundService.playNotificationSound();
@@ -4867,6 +4910,7 @@ class DatabaseService extends ChangeNotifier {
                   'customerName': r.customerName,
                   'totalAmount': r.totalAmount.toString(),
                   'orderType': r.orderType.name,
+                  'orderSource': r.orderSource ?? 'whatsapp',
                   'deliveryAddress': r.deliveryAddress,
                   'items': r.items.map((i) => i.toJson()).toList(),
                 }),
@@ -4882,6 +4926,7 @@ class DatabaseService extends ChangeNotifier {
                 'customerName': r.customerName,
                 'totalAmount': r.totalAmount.toString(),
                 'orderType': r.orderType.name,
+                'orderSource': r.orderSource ?? 'whatsapp',
                 'deliveryAddress': r.deliveryAddress,
                 'items': r.items.map((i) => i.toJson()).toList(),
               });
@@ -4912,9 +4957,17 @@ class DatabaseService extends ChangeNotifier {
     });
   }
 
+  static int _lastOrderPromptTime = 0;
+
   /// Actively checks for any unaccepted pending orders placed within the last 45 minutes
   /// and pops up the Order Accept dialog if not already shown.
   Future<void> checkAndPromptPendingWhatsAppOrders() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastOrderPromptTime < 8000) return;
+    _lastOrderPromptTime = now;
+
+    if (IncomingOrderAcceptScreen.isShowing) return;
+
     try {
       final isAuth = await _authService.isAuthenticated();
       if (!isAuth) return;
@@ -4929,7 +4982,11 @@ class DatabaseService extends ChangeNotifier {
       if (pendingOrders.isEmpty) return;
 
       for (final r in pendingOrders) {
-        if (r.status == OrderStatus.pending) {
+        final bool isExternalOrder = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
+            r.orderType != OrderType.dineIn &&
+            r.orderSource != 'pos';
+
+        if (r.status == OrderStatus.pending && isExternalOrder) {
           final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
           if (diffSec < 2700) {
             LocalNotificationService.handlePayloadDirectly({
@@ -6245,6 +6302,15 @@ class DatabaseService extends ChangeNotifier {
 
     if (_prefs == null) {
       _prefs = await SharedPreferences.getInstance();
+
+    // Purge legacy un-scoped WhatsApp credentials to prevent multi-tenant cross-contamination
+    _prefs?.remove('apna_pos_wa_enabled');
+    _prefs?.remove('apna_pos_wa_provider');
+    _prefs?.remove('apna_pos_wa_phone');
+    _prefs?.remove('apna_pos_wa_phone_id');
+    _prefs?.remove('apna_pos_wa_waba_id');
+    _prefs?.remove('apna_pos_wa_access_token');
+    _prefs?.remove('apna_pos_wa_webhook_token');
     }
 
     if (_manualProductsHistory.isEmpty) {
@@ -6808,60 +6874,56 @@ class DatabaseService extends ChangeNotifier {
   String? _inMemoryWhatsAppWabaId;
   String? _inMemoryWhatsAppAccessToken;
 
+  void clearInMemoryWhatsAppSettings() {
+    _inMemoryWhatsAppEnabled = null;
+    _inMemoryWhatsAppPhoneId = null;
+    _inMemoryWhatsAppPhoneNumber = null;
+    _inMemoryWhatsAppWabaId = null;
+    _inMemoryWhatsAppAccessToken = null;
+  }
+
   bool get isWhatsAppIntegrationEnabled =>
       _inMemoryWhatsAppEnabled ??
       _prefs?.getBool(_businessKey('wa_enabled')) ??
-      _prefs?.getBool('apna_pos_wa_enabled') ??
       false;
 
   String get whatsAppProvider =>
       _prefs?.getString(_businessKey('wa_provider')) ??
-      _prefs?.getString('apna_pos_wa_provider') ??
       'meta_cloud';
 
   String get whatsAppPhoneNumber {
     if (_inMemoryWhatsAppPhoneNumber != null && _inMemoryWhatsAppPhoneNumber!.isNotEmpty) {
       return _inMemoryWhatsAppPhoneNumber!;
     }
-    return _prefs?.getString(_businessKey('wa_phone')) ??
-        _prefs?.getString('apna_pos_wa_phone') ??
-        '';
+    return _prefs?.getString(_businessKey('wa_phone')) ?? '';
   }
 
   String get whatsAppPhoneId {
     if (_inMemoryWhatsAppPhoneId != null && _inMemoryWhatsAppPhoneId!.isNotEmpty) {
       return _inMemoryWhatsAppPhoneId!;
     }
-    return _prefs?.getString(_businessKey('wa_phone_id')) ??
-        _prefs?.getString('apna_pos_wa_phone_id') ??
-        '';
+    return _prefs?.getString(_businessKey('wa_phone_id')) ?? '';
   }
 
   String get whatsAppWabaId {
     if (_inMemoryWhatsAppWabaId != null && _inMemoryWhatsAppWabaId!.isNotEmpty) {
       return _inMemoryWhatsAppWabaId!;
     }
-    return _prefs?.getString(_businessKey('wa_waba_id')) ??
-        _prefs?.getString('apna_pos_wa_waba_id') ??
-        '';
+    return _prefs?.getString(_businessKey('wa_waba_id')) ?? '';
   }
 
   String get whatsAppAccessToken {
     if (_inMemoryWhatsAppAccessToken != null && _inMemoryWhatsAppAccessToken!.isNotEmpty) {
       return _inMemoryWhatsAppAccessToken!;
     }
-    return _prefs?.getString(_businessKey('wa_access_token')) ??
-        _prefs?.getString('apna_pos_wa_access_token') ??
-        '';
+    return _prefs?.getString(_businessKey('wa_access_token')) ?? '';
   }
 
   String get whatsAppWebhookToken =>
-      _prefs?.getString(_businessKey('wa_webhook_token')) ??
-      _prefs?.getString('apna_pos_wa_webhook_token') ??
-      '';
+      _prefs?.getString(_businessKey('wa_webhook_token')) ?? '';
 
-  /// Save WhatsApp credentials into local memory, persistent SharedPreferences,
-  /// and redundant Cloud Firestore storage.
+  /// Save WhatsApp credentials strictly into business-scoped storage.
+  /// Never write to shared global keys to ensure strict multi-tenant isolation!
   Future<void> saveWhatsAppIntegrationSettings({
     required bool enabled,
     required String provider,
@@ -6881,27 +6943,16 @@ class DatabaseService extends ChangeNotifier {
     }
 
     await _prefs?.setBool(_businessKey('wa_enabled'), enabled);
-    await _prefs?.setBool('apna_pos_wa_enabled', enabled);
-
     await _prefs?.setString(_businessKey('wa_provider'), provider.trim());
-    await _prefs?.setString('apna_pos_wa_provider', provider.trim());
-
     await _prefs?.setString(_businessKey('wa_phone'), phoneNumber.trim());
-    await _prefs?.setString('apna_pos_wa_phone', phoneNumber.trim());
-
     await _prefs?.setString(_businessKey('wa_phone_id'), phoneId.trim());
-    await _prefs?.setString('apna_pos_wa_phone_id', phoneId.trim());
-
     await _prefs?.setString(_businessKey('wa_waba_id'), wabaId.trim());
-    await _prefs?.setString('apna_pos_wa_waba_id', wabaId.trim());
 
     if (accessToken.trim().isNotEmpty) {
       await _prefs?.setString(_businessKey('wa_access_token'), accessToken.trim());
-      await _prefs?.setString('apna_pos_wa_access_token', accessToken.trim());
     }
 
     await _prefs?.setString(_businessKey('wa_webhook_token'), webhookToken.trim());
-    await _prefs?.setString('apna_pos_wa_webhook_token', webhookToken.trim());
 
     notifyListeners();
 
@@ -6927,15 +6978,18 @@ class DatabaseService extends ChangeNotifier {
   /// This ensures that even if the app was completely uninstalled and reinstalled,
   /// the user's connected WhatsApp details appear automatically upon logging in.
   Future<bool> restoreWhatsAppFromBackend({bool force = false}) async {
-    // If already populated and not forced, return true immediately
-    if (!force && whatsAppPhoneId.isNotEmpty && whatsAppAccessToken.isNotEmpty) {
-      return true;
+    final isSeedPizza47 = (restaurant != null && restaurant!.name.trim().toLowerCase() == 'pizza 47') ||
+        (currentBusinessId == '6ad46853ea47d6b3e13d633d');
+
+    // Multi-tenant cleanup: if local storage has leaked Pizza 47 credentials for a non-seed business, purge immediately!
+    if (!isSeedPizza47 && (whatsAppPhoneId == '1284061438133660' || whatsAppPhoneNumber.contains('73036 32949') || whatsAppPhoneNumber.contains('7303632949'))) {
+      await clearWhatsAppIntegrationSettings();
     }
 
     try {
       // 1. Primary: Fetch live connection status from Backend API (/whatsapp/chats/connection)
       final conn = await WhatsAppChatService().getConnectionStatus();
-      if (conn != null && (conn.phoneNumberId.isNotEmpty || conn.phoneNumber.isNotEmpty)) {
+      if (conn != null && conn.connected && conn.phoneNumberId.isNotEmpty) {
         await saveWhatsAppIntegrationSettings(
           enabled: conn.connected,
           provider: 'meta_cloud',
@@ -6948,14 +7002,22 @@ class DatabaseService extends ChangeNotifier {
         );
         debugPrint('[DatabaseService] 📲 Successfully restored WhatsApp connection from Backend: ${conn.phoneNumberId}');
         return true;
+      } else if (conn != null && !conn.connected) {
+        // Business has no connected WhatsApp account or partner channel.
+        if (!isSeedPizza47) {
+          await clearWhatsAppIntegrationSettings();
+        } else {
+          clearInMemoryWhatsAppSettings();
+        }
+        return false;
       }
     } catch (e) {
       debugPrint('[DatabaseService] Error restoring WhatsApp from backend API: $e');
     }
 
-    // 2. Secondary Fallback: Cloud Firestore
+    // 2. Secondary Fallback: Cloud Firestore (strictly scoped to current business ID)
     try {
-      final targetId = currentUser?.restaurantId ?? currentUser?.id ?? restaurant?.id;
+      final targetId = currentBusinessId.isNotEmpty ? currentBusinessId : (restaurant?.id ?? currentUser?.restaurantId);
       if (targetId != null && targetId.isNotEmpty) {
         final fsData = await _firestoreService.getWhatsAppSettings(targetId);
         if (fsData != null && (fsData['phoneNumberId'] != null || fsData['phoneNumber'] != null)) {
@@ -6963,9 +7025,10 @@ class DatabaseService extends ChangeNotifier {
           final pNum = fsData['phoneNumber']?.toString() ?? '';
           final token = fsData['accessToken']?.toString() ?? '';
           final waba = fsData['wabaId']?.toString() ?? '';
-          final isEn = fsData['enabled'] == true || pId.isNotEmpty;
+          final isEn = fsData['enabled'] == true;
+          final isLeaked = !isSeedPizza47 && (pId == '1284061438133660' || pNum.contains('73036 32949') || pNum.contains('7303632949'));
 
-          if (pId.isNotEmpty || pNum.isNotEmpty) {
+          if (!isLeaked && isEn && (pId.isNotEmpty || pNum.isNotEmpty)) {
             await saveWhatsAppIntegrationSettings(
               enabled: isEn,
               provider: 'meta_cloud',
@@ -6988,35 +7051,106 @@ class DatabaseService extends ChangeNotifier {
     return false;
   }
 
+  /// Completely clear WhatsApp integration credentials from memory and local business-scoped prefs
+  Future<void> clearWhatsAppIntegrationSettings() async {
+    clearInMemoryWhatsAppSettings();
+    await _prefs?.remove(_businessKey('wa_enabled'));
+    await _prefs?.remove(_businessKey('wa_provider'));
+    await _prefs?.remove(_businessKey('wa_phone'));
+    await _prefs?.remove(_businessKey('wa_phone_id'));
+    await _prefs?.remove(_businessKey('wa_waba_id'));
+    await _prefs?.remove(_businessKey('wa_access_token'));
+    await _prefs?.remove(_businessKey('wa_webhook_token'));
+    await _prefs?.remove(_businessKey('meta_partner_connected'));
+    notifyListeners();
+  }
+
+  // ==================== META PARTNER CHANNEL SETTINGS ====================
+  bool get isMetaPartnerConnected =>
+      _prefs?.getBool(_businessKey('meta_partner_connected')) ?? false;
+
+  String get metaPartnerAdminEmail =>
+      _prefs?.getString(_businessKey('meta_partner_admin_email')) ?? 'sooftcode@gmail.com';
+
+  String get metaPartnerPortfolioId =>
+      _prefs?.getString(_businessKey('meta_partner_portfolio_id')) ?? '';
+
+  String get metaPartnerQualityRating =>
+      _prefs?.getString(_businessKey('meta_partner_quality')) ?? 'GREEN';
+
+  String get metaPartnerTier =>
+      _prefs?.getString(_businessKey('meta_partner_tier')) ?? 'TIER_1K';
+
+  String get metaPartnerVerifiedName =>
+      _prefs?.getString(_businessKey('meta_partner_verified_name')) ?? (restaurant?.name ?? '');
+
+  String get metaPartnerOnboardingType =>
+      _prefs?.getString(_businessKey('meta_partner_onboarding_type')) ?? 'embedded_signup';
+
+  Future<void> saveMetaPartnerSettings({
+    required bool connected,
+    String? adminEmail,
+    String? portfolioId,
+    String? qualityRating,
+    String? messagingTier,
+    String? verifiedName,
+    String? onboardingType,
+  }) async {
+    await _prefs?.setBool(_businessKey('meta_partner_connected'), connected);
+    if (adminEmail != null) {
+      await _prefs?.setString(_businessKey('meta_partner_admin_email'), adminEmail.trim());
+    }
+    if (portfolioId != null) {
+      await _prefs?.setString(_businessKey('meta_partner_portfolio_id'), portfolioId.trim());
+    }
+    if (qualityRating != null) {
+      await _prefs?.setString(_businessKey('meta_partner_quality'), qualityRating.trim());
+    }
+    if (messagingTier != null) {
+      await _prefs?.setString(_businessKey('meta_partner_tier'), messagingTier.trim());
+    }
+    if (verifiedName != null) {
+      await _prefs?.setString(_businessKey('meta_partner_verified_name'), verifiedName.trim());
+    }
+    if (onboardingType != null) {
+      await _prefs?.setString(_businessKey('meta_partner_onboarding_type'), onboardingType.trim());
+    }
+    notifyListeners();
+  }
+
+  Future<void> clearMetaPartnerSettings() async {
+    await _prefs?.remove(_businessKey('meta_partner_connected'));
+    await _prefs?.remove(_businessKey('meta_partner_portfolio_id'));
+    await _prefs?.remove(_businessKey('meta_partner_quality'));
+    await _prefs?.remove(_businessKey('meta_partner_tier'));
+    await _prefs?.remove(_businessKey('meta_partner_verified_name'));
+    await _prefs?.remove(_businessKey('meta_partner_onboarding_type'));
+    notifyListeners();
+  }
+
   // ==================== WHATSAPP MESSAGES SETTINGS ====================
   bool get isWhatsAppAutoBillEnabled =>
       _prefs?.getBool(_businessKey('wa_auto_bill')) ??
-      _prefs?.getBool('apna_pos_wa_auto_bill') ??
       true;
 
   bool get isWhatsAppKotStatusEnabled =>
       _prefs?.getBool(_businessKey('wa_kot_status')) ??
-      _prefs?.getBool('apna_pos_wa_kot_status') ??
       true;
 
   bool get isWhatsAppPaymentReminderEnabled =>
       _prefs?.getBool(_businessKey('wa_pay_reminder')) ??
-      _prefs?.getBool('apna_pos_wa_pay_reminder') ??
       true;
 
   bool get isWhatsAppLoyaltyGreetingsEnabled =>
       _prefs?.getBool(_businessKey('wa_loyalty_greet')) ??
-      _prefs?.getBool('apna_pos_wa_loyalty_greet') ??
       true;
 
   String get whatsAppCustomBillTemplate =>
       _prefs?.getString(_businessKey('wa_bill_template')) ??
-      _prefs?.getString('apna_pos_wa_bill_template') ??
       'Hello {customer_name}, thanks for visiting {restaurant_name}! Here is your digital bill for Order #{order_number} of total ₹{total_amount}. View invoice: {bill_link}';
 
   String get whatsAppCustomFooter =>
       _prefs?.getString(_businessKey('wa_custom_footer')) ??
-      _prefs?.getString('apna_pos_wa_custom_footer') ??
       'Thank you for dining with us! For questions or reservations, contact us anytime.';
 
   Future<void> saveWhatsAppMessageSettings({
@@ -7028,23 +7162,11 @@ class DatabaseService extends ChangeNotifier {
     required String customFooter,
   }) async {
     await _prefs?.setBool(_businessKey('wa_auto_bill'), autoBill);
-    await _prefs?.setBool('apna_pos_wa_auto_bill', autoBill);
-
     await _prefs?.setBool(_businessKey('wa_kot_status'), kotStatus);
-    await _prefs?.setBool('apna_pos_wa_kot_status', kotStatus);
-
     await _prefs?.setBool(_businessKey('wa_pay_reminder'), payReminder);
-    await _prefs?.setBool('apna_pos_wa_pay_reminder', payReminder);
-
     await _prefs?.setBool(_businessKey('wa_loyalty_greet'), loyaltyGreet);
-    await _prefs?.setBool('apna_pos_wa_loyalty_greet', loyaltyGreet);
-
     await _prefs?.setString(_businessKey('wa_bill_template'), billTemplate.trim());
-    await _prefs?.setString('apna_pos_wa_bill_template', billTemplate.trim());
-
     await _prefs?.setString(_businessKey('wa_custom_footer'), customFooter.trim());
-    await _prefs?.setString('apna_pos_wa_custom_footer', customFooter.trim());
-
     notifyListeners();
   }
 

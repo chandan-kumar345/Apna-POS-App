@@ -370,8 +370,14 @@ class SocketService {
         debugPrint('[SocketService] 🛒 Received order:created event for: #${orderModel.orderNumber} (Status: ${orderModel.status.name})');
         onOrderCreated?.call(orderModel);
 
-        // If order is PENDING, trigger instant sound, notification, and Accept / Reject popup dialog!
-        if (orderModel.status == OrderStatus.pending) {
+        // ONLY trigger instant sound, notification, and Accept / Reject popup dialog for external online/WhatsApp orders.
+        // In-store dine-in table orders and local counter POS orders should NEVER trigger the incoming order accept screen or ringtones!
+        final oSource = (orderModel.orderSource ?? rawMap['orderSource'] ?? '').toString().toLowerCase();
+        final bool isExternalIncomingOrder = (orderModel.isWhatsAppOrder || oSource == 'whatsapp' || oSource == 'online' || oSource == 'storefront') &&
+            orderModel.orderType != OrderType.dineIn &&
+            oSource != 'pos';
+
+        if (orderModel.status == OrderStatus.pending && isExternalIncomingOrder) {
           // 1. Play incoming order ringtone
           SoundService.playOrderRingtone();
 
@@ -388,6 +394,7 @@ class SocketService {
               'customerName': orderModel.customerName,
               'totalAmount': orderModel.totalAmount.toString(),
               'orderType': orderModel.orderType.name,
+              'orderSource': oSource.isNotEmpty ? oSource : 'whatsapp',
               'deliveryAddress': orderModel.deliveryAddress,
               'items': orderModel.items.map((i) => i.toJson()).toList(),
             }),
@@ -407,6 +414,7 @@ class SocketService {
             'customerName': orderModel.customerName,
             'totalAmount': orderModel.totalAmount.toString(),
             'orderType': orderModel.orderType.name,
+            'orderSource': oSource.isNotEmpty ? oSource : 'whatsapp',
             'deliveryAddress': orderModel.deliveryAddress,
             'items': orderModel.items.map((i) => i.toJson()).toList(),
           });

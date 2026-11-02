@@ -414,6 +414,13 @@ class ApiEndpoints {
   static const String whatsappAiAgent = '/whatsapp/chats/ai-agent';
   static const String whatsappAiAgentSimulate = '/whatsapp/chats/ai-agent/simulate';
 
+  // Meta Partner Channel endpoints
+  static const String metaPartnerStatus = '/meta-partner/status';
+  static const String metaPartnerConnect = '/meta-partner/connect';
+  static const String metaPartnerProfile = '/meta-partner/profile';
+  static const String metaPartnerCoManage = '/meta-partner/co-manage';
+  static const String metaPartnerDisconnect = '/meta-partner/disconnect';
+
   // Business Wallet endpoints
   static const String walletBalance = '/wallet/balance';
   static const String walletRecharge = '/wallet/recharge';

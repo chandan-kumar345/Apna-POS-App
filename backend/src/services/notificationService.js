@@ -93,7 +93,9 @@ class NotificationService {
                   type: notification.type,
                   entityType: notification.entityType,
                   entityId: notification.entityId || '',
-                  ...notification.metadata,
+                  ...(typeof notification.metadata?.toObject === 'function'
+                    ? notification.metadata.toObject()
+                    : (notification.metadata || {})),
                 },
                 sentTokens: dispatchedTokens,
               });

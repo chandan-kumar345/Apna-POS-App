@@ -247,6 +247,8 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
       String userFriendlyMsg = raw;
       if (raw.toLowerCase().contains('appsecret_proof') || raw.toLowerCase().contains('app secret')) {
         userFriendlyMsg = "Meta 'appsecret_proof' required: Provide your Meta App Secret under WhatsApp Connection Settings, or toggle OFF 'Require App Secret' in Meta Developer Console.";
+      } else if (raw.toLowerCase().contains('too many messages') || raw.toLowerCase().contains('short period') || raw.contains('131056') || raw.contains('131048')) {
+        userFriendlyMsg = "Meta Rate Limit Hit (131056): Too many messages sent in a short period. Please wait 15-60 mins for Meta cooldown, or verify your business in Meta Business Suite to raise limits.";
       }
       setState(() {
         _isSending = false;
