@@ -85,11 +85,23 @@ class LocalNotificationService with WidgetsBindingObserver {
             decoded['orderId'] != null ||
             metadata['orderId'] != null;
 
-        final orderType = (decoded['orderType'] ?? metadata['orderType'] ?? '').toString().toLowerCase();
-        final orderSource = (decoded['orderSource'] ?? metadata['orderSource'] ?? '').toString().toLowerCase();
-        final bool isDineInOrLocalPos = orderType == 'dinein' ||
-            orderType == 'dine_in' ||
-            orderSource == 'pos';
+        final orderId = (decoded['orderId'] ?? metadata['orderId'] ?? '').toString().trim();
+        final orderNum = (decoded['orderNumber'] ?? metadata['orderNumber'] ?? '').toString().trim();
+        final rawType = (decoded['orderType'] ?? metadata['orderType'] ?? '').toString().toLowerCase();
+        final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+        final rawSource = (decoded['orderSource'] ?? metadata['orderSource'] ?? '').toString().toLowerCase();
+        final tableNum = (decoded['tableNumber'] ?? metadata['tableNumber'] ?? '').toString().trim();
+        final pm = (decoded['paymentMethod'] ?? metadata['paymentMethod'] ?? '').toString().toLowerCase();
+        final isKot = pm.contains('kot') || decoded['isKot'] == true || metadata['isKot'] == true || (decoded['status'] ?? '').toString().toLowerCase() == 'preparing';
+
+        final bool isDineInOrLocalPos = cleanType.contains('dine') ||
+            tableNum.isNotEmpty ||
+            isKot ||
+            rawSource == 'pos' ||
+            rawSource == 'counter' ||
+            rawSource == 'local' ||
+            DatabaseService.isKnownPosOrder(orderId) ||
+            DatabaseService.isKnownPosOrder(orderNum);
 
         if (isOrder && !isDineInOrLocalPos) {
           if (IncomingOrderAcceptScreen.isShowing) {
@@ -366,6 +378,27 @@ class LocalNotificationService with WidgetsBindingObserver {
         if (pendingAction != null) {
           await prefs.remove('pending_notification_action');
         }
+        try {
+          final decoded = jsonDecode(pendingJson);
+          if (decoded is Map) {
+            final Map<String, dynamic> m = Map<String, dynamic>.from(decoded);
+            final rawSrc = (m['orderSource'] ?? '').toString().toLowerCase();
+            final rawType = (m['orderType'] ?? '').toString().toLowerCase();
+            final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+            final ordId = (m['orderId'] ?? '').toString();
+            final ordNum = (m['orderNumber'] ?? '').toString();
+            final isPos = rawSrc == 'pos' ||
+                rawSrc == 'counter' ||
+                rawSrc == 'local' ||
+                cleanType.contains('dine') ||
+                DatabaseService.isKnownPosOrder(ordId) ||
+                DatabaseService.isKnownPosOrder(ordNum);
+            if (isPos) {
+              debugPrint('[LocalNotificationService] Discarding pending POS order payload from prefs');
+              return;
+            }
+          }
+        } catch (_) {}
         debugPrint('[LocalNotificationService] Found pending background order in SharedPreferences: $pendingJson (Action: $pendingAction)');
         _handleNotificationPayload(pendingJson, autoAccept: pendingAction == 'accept');
       }
@@ -384,7 +417,30 @@ class LocalNotificationService with WidgetsBindingObserver {
       final rawBody = notification?.body ?? data['message']?.toString() ?? '';
       final typeStr = data['type']?.toString() ?? 'system';
 
-      final isWhatsAppOrder = typeStr == 'whatsapp_order_request' ||
+      final orderId = (data['orderId'] ?? '').toString().trim();
+      final orderNum = (data['orderNumber'] ?? '').toString().trim();
+      final rawType = (data['orderType'] ?? '').toString().toLowerCase();
+      final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+      final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
+      final tableNum = (data['tableNumber'] ?? '').toString().trim();
+      final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
+      final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
+
+      final bool isDineInOrLocalPos = cleanType.contains('dine') ||
+          tableNum.isNotEmpty ||
+          isKot ||
+          rawSource == 'pos' ||
+          rawSource == 'counter' ||
+          rawSource == 'local' ||
+          DatabaseService.isKnownPosOrder(orderId) ||
+          DatabaseService.isKnownPosOrder(orderNum);
+
+      if (isDineInOrLocalPos) {
+        debugPrint('[LocalNotificationService] Background push suppressed for POS/Dine-In order: $orderNum / $orderId');
+        return;
+      }
+
+      final isWhatsAppOrder = (typeStr == 'whatsapp_order_request' ||
           typeStr == 'whatsapp_new_order' ||
           typeStr == 'whatsapp_order' ||
           typeStr == 'new_order' ||
@@ -394,7 +450,7 @@ class LocalNotificationService with WidgetsBindingObserver {
           data['entityType'] == 'whatsapp_order' ||
           data['entityType'] == 'order' ||
           data['orderSource'] == 'whatsapp' ||
-          data['orderId'] != null;
+          data['orderId'] != null) && !isDineInOrLocalPos;
 
       String finalTitle = rawTitle;
       String finalBody = rawBody;
@@ -551,6 +607,36 @@ class LocalNotificationService with WidgetsBindingObserver {
     if (!_isInitialized) await init();
 
     try {
+      final orderId = (metadata['orderId'] ?? '').toString().trim();
+      final orderNum = (metadata['orderNumber'] ?? '').toString().trim();
+      final oSource = (metadata['orderSource'] ?? '').toString().toLowerCase().trim();
+      final rawType = (metadata['orderType'] ?? '').toString().toLowerCase().trim();
+      final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+      final tableNum = (metadata['tableNumber'] ?? '').toString().trim();
+      final pm = (metadata['paymentMethod'] ?? '').toString().toLowerCase();
+      final isKot = pm.contains('kot') ||
+          metadata['isKot'] == true ||
+          metadata['isKot'] == 'true' ||
+          (metadata['status'] ?? '').toString().toLowerCase() == 'preparing';
+
+      final bool isPosOrder = oSource == 'pos' ||
+          oSource == 'counter' ||
+          oSource == 'local' ||
+          cleanType.contains('dine') ||
+          tableNum.isNotEmpty ||
+          isKot ||
+          DatabaseService.isKnownPosOrder(orderId) ||
+          DatabaseService.isKnownPosOrder(orderNum);
+
+      final bool matchesKnownOrderInTitle = (orderNum.isNotEmpty && DatabaseService.isKnownPosOrder(orderNum)) ||
+          (orderId.isNotEmpty && DatabaseService.isKnownPosOrder(orderId));
+      final bool titleOrBodyContainsDineIn = cleanTitle.contains('dinein') || cleanBody.contains('dinein');
+
+      if (isPosOrder || matchesKnownOrderInTitle || titleOrBodyContainsDineIn) {
+        debugPrint('[LocalNotificationService] Suppressing push notification for POS order: $orderNum / $orderId');
+        return;
+      }
+
       final isWhatsAppOrder = type == NotificationType.whatsappOrderRequest ||
           channelId == 'apna_pos_whatsapp_orders_v2' ||
           channelId == 'apna_pos_whatsapp_orders_v1' ||

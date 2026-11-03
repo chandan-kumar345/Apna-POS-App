@@ -646,6 +646,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 customerPhone: _customerPhone,
               );
             }
+            DatabaseService.registerPosOrderIdentifier(newOrder.id);
+            DatabaseService.registerPosOrderIdentifier(newOrder.orderNumber);
 
             if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
               final tbl = db.tables.where((t) =>
@@ -8815,6 +8817,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         _activeRunningOrderId = savedOrder.id;
         _activeRunningOrderNumber = savedOrder.orderNumber;
       });
+      DatabaseService.registerPosOrderIdentifier(savedOrder.id);
+      DatabaseService.registerPosOrderIdentifier(savedOrder.orderNumber);
       if (setStateModal != null) {
         setStateModal(() {});
       }
@@ -8948,6 +8952,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               couponDiscount: _discountAmount > 0 ? _discountAmount : calc.orderDiscount,
             );
           }
+          DatabaseService.registerPosOrderIdentifier(completedOrder.id);
+          DatabaseService.registerPosOrderIdentifier(completedOrder.orderNumber);
 
           // Robustly free table / clear draft on settlement
           final targetTableStr = _selectedTable ?? completedOrder.tableNumber;

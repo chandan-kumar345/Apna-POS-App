@@ -189,4 +189,164 @@ class MetaPartnerService {
       return false;
     }
   }
+
+  /// Send real-time test WhatsApp message to verify line operability
+  Future<Map<String, dynamic>?> sendTestMessage({
+    required String recipientPhone,
+    String? message,
+    String? templateName,
+  }) async {
+    try {
+      final response = await _apiClient.post(
+        ApiEndpoints.metaPartnerTestMessage,
+        data: {
+          'recipientPhone': recipientPhone.trim(),
+          if (message != null) 'message': message.trim(),
+          if (templateName != null) 'templateName': templateName.trim(),
+        },
+      );
+      if (response != null && response is Map<String, dynamic>) {
+        return response['data'] as Map<String, dynamic>? ?? response;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] sendTestMessage error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get WhatsApp message templates (POS default fleet + Meta Cloud)
+  Future<List<MetaTemplateItem>> getTemplates() async {
+    try {
+      final response = await _apiClient.get(ApiEndpoints.metaPartnerTemplates);
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        final list = (data['templates'] as List?) ?? [];
+        return list.map((item) => MetaTemplateItem.fromJson(item as Map<String, dynamic>)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[MetaPartnerService] getTemplates error: $e');
+      return [];
+    }
+  }
+
+  /// Sync/Register default Apna POS restaurant templates with Meta
+  Future<bool> syncTemplates() async {
+    try {
+      final response = await _apiClient.post(ApiEndpoints.metaPartnerTemplatesSync);
+      return response != null && response['success'] != false;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] syncTemplates error: $e');
+      return false;
+    }
+  }
+
+  /// Fetch 24-hr messaging analytics and Tier usage
+  Future<MetaPartnerAnalytics?> getAnalytics() async {
+    try {
+      final response = await _apiClient.get(ApiEndpoints.metaPartnerAnalytics);
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        return MetaPartnerAnalytics.fromJson(data);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] getAnalytics error: $e');
+      return null;
+    }
+  }
+
+  /// Exchange Embedded Signup OAuth code for permanent tokens
+  Future<Map<String, dynamic>?> exchangeOAuth({
+    required String code,
+    String businessPortfolioId = '',
+  }) async {
+    try {
+      final response = await _apiClient.post(
+        ApiEndpoints.metaPartnerOAuthExchange,
+        data: {
+          'code': code.trim(),
+          'businessPortfolioId': businessPortfolioId.trim(),
+        },
+      );
+      if (response != null && response is Map<String, dynamic>) {
+        return response['data'] as Map<String, dynamic>? ?? response;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] exchangeOAuth error: $e');
+      return null;
+    }
+  }
+}
+
+class MetaTemplateItem {
+  final String name;
+  final String category;
+  final String displayName;
+  final String description;
+  final String status;
+  final String language;
+  final bool isLiveSynced;
+
+  const MetaTemplateItem({
+    required this.name,
+    required this.category,
+    required this.displayName,
+    required this.description,
+    required this.status,
+    required this.language,
+    this.isLiveSynced = false,
+  });
+
+  factory MetaTemplateItem.fromJson(Map<String, dynamic> json) {
+    return MetaTemplateItem(
+      name: json['name']?.toString() ?? '',
+      category: json['category']?.toString() ?? 'UTILITY',
+      displayName: json['displayName']?.toString() ?? json['name']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'APPROVED',
+      language: json['language']?.toString() ?? 'en_US',
+      isLiveSynced: json['isLiveSynced'] == true,
+    );
+  }
+}
+
+class MetaPartnerAnalytics {
+  final String qualityRating;
+  final String messagingTier;
+  final int dailyLimit;
+  final int sentToday;
+  final String deliveredRate;
+  final String readRate;
+  final int failedCount;
+  final int activeConversations;
+  final String customerServiceWindowStatus;
+
+  const MetaPartnerAnalytics({
+    this.qualityRating = 'GREEN',
+    this.messagingTier = 'TIER_1K',
+    this.dailyLimit = 1000,
+    this.sentToday = 0,
+    this.deliveredRate = '100%',
+    this.readRate = '0%',
+    this.failedCount = 0,
+    this.activeConversations = 0,
+    this.customerServiceWindowStatus = 'OPEN',
+  });
+
+  factory MetaPartnerAnalytics.fromJson(Map<String, dynamic> json) {
+    return MetaPartnerAnalytics(
+      qualityRating: json['qualityRating']?.toString() ?? 'GREEN',
+      messagingTier: json['messagingTier']?.toString() ?? 'TIER_1K',
+      dailyLimit: (json['dailyLimit'] as num?)?.toInt() ?? 1000,
+      sentToday: (json['sentToday'] as num?)?.toInt() ?? 0,
+      deliveredRate: json['deliveredRate']?.toString() ?? '100%',
+      readRate: json['readRate']?.toString() ?? '0%',
+      failedCount: (json['failedCount'] as num?)?.toInt() ?? 0,
+      activeConversations: (json['activeConversations'] as num?)?.toInt() ?? 0,
+      customerServiceWindowStatus: json['customerServiceWindowStatus']?.toString() ?? 'OPEN',
+    );
+  }
 }

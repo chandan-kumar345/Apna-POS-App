@@ -68,6 +68,20 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     String? source,
     bool autoAccept = false,
   }) async {
+    final cleanType = (orderType ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final cleanSource = (source ?? '').toLowerCase().trim();
+    final bool isPosOrder = cleanSource == 'pos' ||
+        cleanSource == 'counter' ||
+        cleanSource == 'local' ||
+        cleanType.contains('dine') ||
+        DatabaseService.isKnownPosOrder(orderId) ||
+        DatabaseService.isKnownPosOrder(orderNumber);
+
+    if (isPosOrder) {
+      debugPrint('[IncomingOrderAcceptScreen] Blocked order accept screen for in-store POS order: $orderNumber / $orderId (source: $source, type: $orderType)');
+      return;
+    }
+
     if (_isShowing && (_currentShowingOrderId == orderId || _currentShowingOrderNumber == orderNumber)) {
       debugPrint('[IncomingOrderAcceptScreen] Already presenting order $orderId (#$orderNumber)');
       return;

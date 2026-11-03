@@ -21,4 +21,19 @@ router.post('/co-manage', (req, res, next) => metaPartnerController.inviteCoMana
 // POST /api/v1/meta-partner/disconnect
 router.post('/disconnect', (req, res, next) => metaPartnerController.disconnect(req, res, next));
 
+// POST /api/v1/meta-partner/test-message
+router.post('/test-message', (req, res, next) => metaPartnerController.sendTestMessage(req, res, next));
+
+// GET /api/v1/meta-partner/templates
+router.get('/templates', (req, res, next) => metaPartnerController.getTemplates(req, res, next));
+
+// POST /api/v1/meta-partner/templates/sync
+router.post('/templates/sync', (req, res, next) => metaPartnerController.syncTemplates(req, res, next));
+
+// GET /api/v1/meta-partner/analytics
+router.get('/analytics', (req, res, next) => metaPartnerController.getAnalytics(req, res, next));
+
+// POST /api/v1/meta-partner/oauth/exchange
+router.post('/oauth/exchange', (req, res, next) => metaPartnerController.exchangeOAuth(req, res, next));
+
 module.exports = router;

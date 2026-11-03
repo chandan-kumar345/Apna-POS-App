@@ -51,6 +51,57 @@ class DatabaseService extends ChangeNotifier {
     _initSocketListeners();
   }
 
+  static final Set<String> _recentPosOrderIdentifiers = {};
+
+  static void registerPosOrderIdentifier(String? idOrNumber) {
+    if (idOrNumber == null || idOrNumber.trim().isEmpty) return;
+    final clean = idOrNumber.replaceAll(RegExp(r'^#'), '').trim();
+    _recentPosOrderIdentifiers.add(clean);
+    _recentPosOrderIdentifiers.add(idOrNumber.trim());
+    if (_recentPosOrderIdentifiers.length > 500) {
+      _recentPosOrderIdentifiers.clear();
+    }
+    _persistPosOrderIdentifier(clean);
+  }
+
+  static void _persistPosOrderIdentifier(String id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      List<String> list = prefs.getStringList('recent_pos_order_ids') ?? [];
+      if (!list.contains(id)) {
+        list.add(id);
+        if (list.length > 200) {
+          list = list.sublist(list.length - 200);
+        }
+        await prefs.setStringList('recent_pos_order_ids', list);
+      }
+    } catch (_) {}
+  }
+
+  static bool isKnownPosOrder(String? idOrNumber) {
+    if (idOrNumber == null || idOrNumber.trim().isEmpty) return false;
+    final clean = idOrNumber.replaceAll(RegExp(r'^#'), '').trim();
+    if (_recentPosOrderIdentifiers.contains(clean) ||
+        _recentPosOrderIdentifiers.contains(idOrNumber.trim())) {
+      return true;
+    }
+    try {
+      final match = _instance.orders.where((o) =>
+        o.id == clean ||
+        o.id == idOrNumber.trim() ||
+        o.orderNumber.replaceAll(RegExp(r'^#'), '').trim() == clean ||
+        o.orderNumber == idOrNumber.trim()
+      ).firstOrNull;
+      if (match != null) {
+        final src = (match.orderSource ?? 'pos').toLowerCase();
+        if (src == 'pos' || src == 'counter' || src == 'local' || !match.isWhatsAppOrder) {
+          return true;
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+
   SharedPreferences? _prefs;
   IAuthRepository get authRepository => AuthRepositoryFactory.instance;
   final SessionManager sessionManager = SessionManager();
@@ -1732,9 +1783,19 @@ class DatabaseService extends ChangeNotifier {
         // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
         final existingLocalIds = orders.map((o) => o.id).toSet();
         for (final r in remoteOrders) {
+          final rawType = r.orderType.name.toLowerCase();
+          final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+          final bool isDineIn = cleanType.contains('dine') ||
+              r.orderType == OrderType.dineIn ||
+              (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty);
+          final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
+              r.status == OrderStatus.preparing;
+          final bool isPos = r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local';
+
           final bool isExternalIncoming = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
-              r.orderType != OrderType.dineIn &&
-              r.orderSource != 'pos';
+              !isDineIn &&
+              !isKot &&
+              !isPos;
           if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
             final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
             if (diffSec < 600) {
@@ -4696,6 +4757,8 @@ class DatabaseService extends ChangeNotifier {
       orderNum = '$year$month$day-$hour$min$sec-$tSuffix-$dupCounter';
       dupCounter++;
     }
+    registerPosOrderIdentifier(orderId);
+    registerPosOrderIdentifier(orderNum);
 
     final bool isPaymentCompleted = (status == OrderStatus.completed) ||
         paymentMethod.toLowerCase().contains('cash') ||
@@ -4746,6 +4809,7 @@ class DatabaseService extends ChangeNotifier {
       staffRole: resolvedStaffRole,
       couponCode: couponCode,
       couponDiscount: couponDiscount,
+      orderSource: 'pos',
     );
 
     orders.insert(0, newOrder);
@@ -4799,6 +4863,8 @@ class DatabaseService extends ChangeNotifier {
     _authService.isAuthenticated().then((isAuth) {
       if (isAuth) {
         _orderService.createOrder(newOrder).then((remoteOrder) async {
+          registerPosOrderIdentifier(remoteOrder.id);
+          registerPosOrderIdentifier(remoteOrder.orderNumber);
           final idx = orders.indexWhere((o) => o.id == orderId);
           if (idx >= 0) {
             orders[idx] = remoteOrder.copyWith(isSynced: true);
@@ -4892,9 +4958,19 @@ class DatabaseService extends ChangeNotifier {
         // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
         final existingLocalIds = orders.map((o) => o.id).toSet();
         for (final r in remoteOrders) {
+          final rawType = r.orderType.name.toLowerCase();
+          final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+          final bool isDineIn = cleanType.contains('dine') ||
+              r.orderType == OrderType.dineIn ||
+              (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty);
+          final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
+              r.status == OrderStatus.preparing;
+          final bool isPos = r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local';
+
           final bool isExternalIncoming = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
-              r.orderType != OrderType.dineIn &&
-              r.orderSource != 'pos';
+              !isDineIn &&
+              !isKot &&
+              !isPos;
           if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
             final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
             if (diffSec < 600) {
@@ -4982,9 +5058,19 @@ class DatabaseService extends ChangeNotifier {
       if (pendingOrders.isEmpty) return;
 
       for (final r in pendingOrders) {
+        final rawType = r.orderType.name.toLowerCase();
+        final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+        final bool isDineIn = cleanType.contains('dine') ||
+            r.orderType == OrderType.dineIn ||
+            (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty);
+        final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
+            r.status == OrderStatus.preparing;
+        final bool isPos = r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local';
+
         final bool isExternalOrder = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
-            r.orderType != OrderType.dineIn &&
-            r.orderSource != 'pos';
+            !isDineIn &&
+            !isKot &&
+            !isPos;
 
         if (r.status == OrderStatus.pending && isExternalOrder) {
           final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
@@ -5074,6 +5160,8 @@ class DatabaseService extends ChangeNotifier {
     final String safeOrderNum = (existingOrderNumber != null && existingOrderNumber.isNotEmpty)
         ? existingOrderNumber
         : (existingOrder?.orderNumber ?? '${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}');
+    registerPosOrderIdentifier(resolvedOrderId);
+    registerPosOrderIdentifier(safeOrderNum);
 
     final String fallbackQr = 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(restName)}&am=${finalTotalAmount.toStringAsFixed(2)}&cu=INR&tr=$safeOrderNum&tn=${Uri.encodeComponent("Bill $safeOrderNum")}';
 
@@ -5096,6 +5184,8 @@ class DatabaseService extends ChangeNotifier {
       'orderId': resolvedOrderId,
       'orderNumber': safeOrderNum,
       'orderType': orderType.name,
+      'orderSource': 'pos',
+      'isKot': true,
       'status': effectiveOrderStatus.name,
       'paymentStatus': 'pending',
       'paymentMethod': 'unpaid',
@@ -5153,6 +5243,7 @@ class DatabaseService extends ChangeNotifier {
       staffId: resolvedStaffId,
       staffName: resolvedStaffName,
       staffRole: resolvedStaffRole,
+      orderSource: 'pos',
     );
 
     // If table assigned, keep table in runningKot if KOT is active, else occupied
@@ -5206,6 +5297,8 @@ class DatabaseService extends ChangeNotifier {
         _orderService.saveAndPrintOrder(payload).then((apiResult) async {
           if (apiResult != null && apiResult['order'] != null && apiResult['order'] is Map) {
             final serverOrder = OrderModel.fromJson(Map<String, dynamic>.from(apiResult['order'] as Map));
+            registerPosOrderIdentifier(serverOrder.id);
+            registerPosOrderIdentifier(serverOrder.orderNumber);
             final qrData = apiResult['qrData'] is Map ? Map<String, dynamic>.from(apiResult['qrData'] as Map) : null;
             final String resolvedQr = qrData?['qrIntentUrl']?.toString() ?? serverOrder.qrIntentUrl ?? fallbackQr;
 
@@ -5253,6 +5346,7 @@ class DatabaseService extends ChangeNotifier {
     String? couponCode,
     double? couponDiscount,
   }) async {
+    registerPosOrderIdentifier(orderId);
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     OrderModel baseOrder;
     if (index >= 0) {
@@ -5398,6 +5492,8 @@ class DatabaseService extends ChangeNotifier {
         _orderService.settleOrder(targetApiId, payload).then((settleResult) async {
           if (settleResult != null && settleResult['order'] != null) {
             final serverOrder = OrderModel.fromJson(settleResult['order'] as Map<String, dynamic>);
+            registerPosOrderIdentifier(serverOrder.id);
+            registerPosOrderIdentifier(serverOrder.orderNumber);
             final idx = orders.indexWhere((o) => o.id == completedOrder.id || o.orderNumber == completedOrder.orderNumber);
             if (idx >= 0) {
               orders[idx] = serverOrder.copyWith(isSynced: true);

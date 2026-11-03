@@ -24,6 +24,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
   String? _errorMessage;
   String? _successMessage;
 
+  // Form Controllers
   late final TextEditingController _wabaIdCtrl;
   late final TextEditingController _phoneIdCtrl;
   late final TextEditingController _phoneNumCtrl;
@@ -32,6 +33,19 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
   late final TextEditingController _bioCtrl;
   late final TextEditingController _addressCtrl;
   late final TextEditingController _websiteCtrl;
+
+  // Diagnostic Test Message
+  late final TextEditingController _testPhoneCtrl;
+  bool _isSendingTestPing = false;
+  String? _testPingResult;
+
+  // Template Fleet & Analytics
+  List<MetaTemplateItem> _templates = [];
+  bool _isLoadingTemplates = false;
+  bool _isSyncingTemplates = false;
+
+  MetaPartnerAnalytics? _analytics;
+  bool _isLoadingAnalytics = false;
 
   @override
   void initState() {
@@ -50,6 +64,14 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
     );
     _addressCtrl = TextEditingController(text: _db.restaurant?.address ?? '');
     _websiteCtrl = TextEditingController(text: _db.restaurant?.storefrontUrl ?? '');
+
+    final initialTestPhone = _db.whatsAppPhoneNumber.isNotEmpty
+        ? _db.whatsAppPhoneNumber
+        : (_db.currentUser?.phone ?? '+91 73036 32949');
+    _testPhoneCtrl = TextEditingController(text: initialTestPhone);
+
+    _loadTemplates();
+    _loadAnalytics();
   }
 
   @override
@@ -62,7 +84,38 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
     _bioCtrl.dispose();
     _addressCtrl.dispose();
     _websiteCtrl.dispose();
+    _testPhoneCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadTemplates() async {
+    setState(() => _isLoadingTemplates = true);
+    try {
+      final list = await MetaPartnerService().getTemplates();
+      if (mounted) {
+        setState(() {
+          _templates = list;
+          _isLoadingTemplates = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingTemplates = false);
+    }
+  }
+
+  Future<void> _loadAnalytics() async {
+    setState(() => _isLoadingAnalytics = true);
+    try {
+      final data = await MetaPartnerService().getAnalytics();
+      if (mounted) {
+        setState(() {
+          _analytics = data;
+          _isLoadingAnalytics = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingAnalytics = false);
+    }
   }
 
   @override
@@ -73,7 +126,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
+            constraints: const BoxConstraints(maxWidth: 760),
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -84,7 +137,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
                   _buildPartnerAdminCard(),
                   const SizedBox(height: 12),
 
-                  // Navigation Segmented Tabs
+                  // Navigation Segmented Tabs (4 Tabs)
                   _buildSegmentedTabs(),
                   const SizedBox(height: 12),
 
@@ -102,6 +155,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
                   if (_activeTab == 0) _buildEmbeddedSignupTab(),
                   if (_activeTab == 1) _buildCoManagementTab(),
                   if (_activeTab == 2) _buildWabaHubTab(),
+                  if (_activeTab == 3) _buildTemplatesTab(),
 
                   const SizedBox(height: 24),
                 ],
@@ -301,12 +355,13 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
           _buildTabItem(index: 0, label: 'Embedded Signup'),
           _buildTabItem(index: 1, label: 'Co-Management'),
           _buildTabItem(index: 2, label: 'WABA Hub', showDot: _db.isMetaPartnerConnected),
+          _buildTabItem(index: 3, label: 'POS Templates', badgeText: '${_templates.isNotEmpty ? _templates.length : 5}'),
         ],
       ),
     );
   }
 
-  Widget _buildTabItem({required int index, required String label, bool showDot = false}) {
+  Widget _buildTabItem({required int index, required String label, bool showDot = false, String? badgeText}) {
     final bool isSelected = _activeTab == index;
 
     return Expanded(
@@ -314,7 +369,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
         borderRadius: BorderRadius.circular(9),
         onTap: () => setState(() => _activeTab = index),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 3),
           decoration: BoxDecoration(
             color: isSelected ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
@@ -339,7 +394,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
                     child: Text(
                       label,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10.5,
                         fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                         color: isSelected ? const Color(0xFF1877F2) : _NeumorphicTheme.textMuted,
                       ),
@@ -347,13 +402,31 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
                   ),
                 ),
                 if (showDot) ...[
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 3),
                   Container(
                     width: 5.5,
                     height: 5.5,
                     decoration: const BoxDecoration(
                       color: Color(0xFF22C55E),
                       shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+                if (badgeText != null) ...[
+                  const SizedBox(width: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFF1877F2).withValues(alpha: 0.15) : const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badgeText,
+                      style: TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w800,
+                        color: isSelected ? const Color(0xFF1877F2) : const Color(0xFF475569),
+                      ),
                     ),
                   ),
                 ],
@@ -692,7 +765,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
         ),
         const SizedBox(height: 10),
 
-        // Live Metrics Row (No horizontal or bottom overflow)
+        // Live Metrics Row
         Row(
           children: [
             Expanded(
@@ -710,12 +783,12 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    const Flexible(
+                    Flexible(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          'HIGH (Green)',
-                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                          _analytics?.qualityRating == 'GREEN' ? 'HIGH (Green)' : (_analytics?.qualityRating ?? 'HIGH (Green)'),
+                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
                         ),
                       ),
                     ),
@@ -727,7 +800,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
             Expanded(
               child: _buildMetricCard(
                 title: 'Messaging Tier',
-                textValue: '1K msgs/24h',
+                textValue: _analytics?.messagingTier ?? '1K msgs/24h',
                 valueColor: _NeumorphicTheme.textDark,
               ),
             ),
@@ -741,6 +814,10 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+
+        // NEW: Live Diagnostic & Instant Test Ping Card
+        _buildInstantTestPingCard(),
         const SizedBox(height: 10),
 
         // WhatsApp Business Profile Editor
@@ -866,6 +943,284 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
     );
   }
 
+  /// Instant WhatsApp Test Ping Diagnostic Card
+  Widget _buildInstantTestPingCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF0FDF4), Color(0xFFF8FAFC)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFBBF7D0), width: 1.1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16A34A),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 14),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Live Diagnostic & Test Ping',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF166534),
+                      ),
+                    ),
+                    Text(
+                      'Send real-time verification message to test deliverability instantly.',
+                      style: TextStyle(fontSize: 10, color: Color(0xFF15803D)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF86EFAC), width: 1.0),
+                  ),
+                  child: TextField(
+                    controller: _testPhoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _NeumorphicTheme.textDark),
+                    decoration: const InputDecoration(
+                      hintText: '+91 98765 43210',
+                      hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5),
+                      prefixIcon: Icon(Icons.phone_iphone_rounded, size: 15, color: Color(0xFF16A34A)),
+                      prefixIconConstraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: _isSendingTestPing ? null : _handleSendTestPing,
+                icon: _isSendingTestPing
+                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.send_rounded, size: 13, color: Colors.white),
+                label: const Text('Send Ping', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF16A34A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          ),
+
+          if (_testPingResult != null) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDCFCE7),
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(color: const Color(0xFF22C55E), width: 0.8),
+              ),
+              child: Text(
+                _testPingResult!,
+                style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// POS Restaurant Template Fleet Tab
+  Widget _buildTemplatesTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1877F2).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.inventory_2_rounded, color: Color(0xFF1877F2), size: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Restaurant Template Fleet',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: _NeumorphicTheme.textDark,
+                          ),
+                        ),
+                        Text(
+                          'Pre-approved WhatsApp templates for bills, KOTs, and marketing.',
+                          style: TextStyle(fontSize: 10, color: _NeumorphicTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _isSyncingTemplates ? null : _handleSyncTemplates,
+                    icon: _isSyncingTemplates
+                        ? const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5))
+                        : const Icon(Icons.sync_rounded, size: 13),
+                    label: const Text('Sync with Meta', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1877F2),
+                      side: const BorderSide(color: Color(0xFF1877F2), width: 0.9),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              if (_isLoadingTemplates)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1877F2)),
+                  ),
+                )
+              else
+                ..._templates.map((tpl) => _buildTemplateCard(tpl)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTemplateCard(MetaTemplateItem tpl) {
+    final bool isApproved = tpl.status.toUpperCase() == 'APPROVED';
+    final bool isUtility = tpl.category.toUpperCase() == 'UTILITY';
+
+    IconData iconData = Icons.receipt_long_rounded;
+    if (tpl.name.contains('order')) iconData = Icons.restaurant_rounded;
+    if (tpl.name.contains('delivery')) iconData = Icons.delivery_dining_rounded;
+    if (tpl.name.contains('feedback')) iconData = Icons.star_rate_rounded;
+    if (tpl.name.contains('offer') || tpl.name.contains('promo')) iconData = Icons.local_offer_rounded;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: isUtility ? const Color(0xFFEFF6FF) : const Color(0xFFFAF5FF),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: isUtility ? const Color(0xFFBFDBFE) : const Color(0xFFE9D5FF),
+                    width: 0.8,
+                  ),
+                ),
+                child: Icon(iconData, size: 15, color: isUtility ? const Color(0xFF2563EB) : const Color(0xFF9333EA)),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tpl.displayName,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: _NeumorphicTheme.textDark,
+                      ),
+                    ),
+                    Text(
+                      'Template: ${tpl.name} (${tpl.language})',
+                      style: const TextStyle(fontSize: 9.5, color: _NeumorphicTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isApproved ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(
+                    color: isApproved ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
+                    width: 0.8,
+                  ),
+                ),
+                child: Text(
+                  tpl.status.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w800,
+                    color: isApproved ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            tpl.description,
+            style: const TextStyle(fontSize: 10, color: Color(0xFF475569), height: 1.3),
+            softWrap: true,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMetricCard({
     required String title,
     String? textValue,
@@ -957,6 +1312,56 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _handleSendTestPing() async {
+    final phone = _testPhoneCtrl.text.trim();
+    if (phone.isEmpty) {
+      setState(() => _errorMessage = 'Please enter a mobile phone number for test ping.');
+      return;
+    }
+
+    setState(() {
+      _isSendingTestPing = true;
+      _errorMessage = null;
+      _testPingResult = null;
+    });
+
+    try {
+      final res = await MetaPartnerService().sendTestMessage(recipientPhone: phone);
+      if (mounted) {
+        setState(() {
+          final wamid = res?['messageId']?.toString() ?? 'Delivered';
+          _testPingResult = 'Delivered to $phone • WAMID: $wamid';
+          _successMessage = 'WhatsApp live ping sent successfully via Meta Cloud API!';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Test message failed: $e';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isSendingTestPing = false);
+    }
+  }
+
+  Future<void> _handleSyncTemplates() async {
+    setState(() => _isSyncingTemplates = true);
+    try {
+      final ok = await MetaPartnerService().syncTemplates();
+      if (ok) {
+        await _loadTemplates();
+        if (mounted) {
+          setState(() => _successMessage = 'Restaurant Template Fleet synced with Meta Cloud WABA!');
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _errorMessage = 'Sync failed: $e');
+    } finally {
+      if (mounted) setState(() => _isSyncingTemplates = false);
+    }
   }
 
   Future<void> _handleEmbeddedSignup() async {

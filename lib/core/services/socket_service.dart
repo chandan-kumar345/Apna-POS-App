@@ -6,6 +6,7 @@ import '../network/api_endpoints.dart';
 import '../models/table_model.dart';
 import '../models/order_model.dart';
 import '../security/secure_storage_service.dart';
+import '../database/database_service.dart';
 import 'local_notification_service.dart';
 import 'sound_service.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
@@ -372,10 +373,28 @@ class SocketService {
 
         // ONLY trigger instant sound, notification, and Accept / Reject popup dialog for external online/WhatsApp orders.
         // In-store dine-in table orders and local counter POS orders should NEVER trigger the incoming order accept screen or ringtones!
+        final orderId = orderModel.id.isNotEmpty ? orderModel.id : (rawMap['orderId'] ?? '').toString();
+        final orderNum = orderModel.orderNumber.isNotEmpty ? orderModel.orderNumber : (rawMap['orderNumber'] ?? '').toString();
         final oSource = (orderModel.orderSource ?? rawMap['orderSource'] ?? '').toString().toLowerCase();
+        final rawOrderType = '${orderModel.orderType.name} ${rawMap['orderType'] ?? ''}'.toLowerCase();
+        final cleanType = rawOrderType.replaceAll(RegExp(r'[-_\s]'), '');
+        final bool isDineIn = cleanType.contains('dine') ||
+            orderModel.orderType == OrderType.dineIn ||
+            (orderModel.tableNumber != null && orderModel.tableNumber!.trim().isNotEmpty) ||
+            (rawMap['tableNumber'] != null && rawMap['tableNumber'].toString().trim().isNotEmpty);
+        final bool isKot = orderModel.paymentMethod.toLowerCase().contains('kot') ||
+            orderModel.status == OrderStatus.preparing ||
+            rawMap['isKot'] == true;
+        final bool isPos = oSource == 'pos' ||
+            oSource == 'counter' ||
+            oSource == 'local' ||
+            DatabaseService.isKnownPosOrder(orderId) ||
+            DatabaseService.isKnownPosOrder(orderNum);
+
         final bool isExternalIncomingOrder = (orderModel.isWhatsAppOrder || oSource == 'whatsapp' || oSource == 'online' || oSource == 'storefront') &&
-            orderModel.orderType != OrderType.dineIn &&
-            oSource != 'pos';
+            !isDineIn &&
+            !isKot &&
+            !isPos;
 
         if (orderModel.status == OrderStatus.pending && isExternalIncomingOrder) {
           // 1. Play incoming order ringtone
@@ -620,6 +639,22 @@ class SocketService {
       final orderType = orderData['orderType']?.toString() ?? 'takeaway';
       final deliveryAddress = orderData['deliveryAddress']?.toString() ?? '';
       final items = orderData['items'];
+
+      final cleanType = orderType.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+      final tableNum = (orderData['tableNumber'] ?? '').toString().trim();
+      final oSource = (orderData['orderSource'] ?? rawMap['orderSource'] ?? '').toString().toLowerCase();
+      final bool isPosOrder = oSource == 'pos' ||
+          oSource == 'counter' ||
+          oSource == 'local' ||
+          cleanType.contains('dine') ||
+          tableNum.isNotEmpty ||
+          DatabaseService.isKnownPosOrder(orderId) ||
+          DatabaseService.isKnownPosOrder(orderNumber);
+
+      if (isPosOrder) {
+        debugPrint('[SocketService] Suppressing whatsapp:order:request for POS/Dine-in order: $orderNumber / $orderId');
+        return;
+      }
 
       // 1. Play continuous incoming order ringtone
       SoundService.playOrderRingtone();

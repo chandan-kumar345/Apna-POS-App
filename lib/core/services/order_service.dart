@@ -41,6 +41,8 @@ class OrderService {
       final payload = {
         'orderNumber': order.orderNumber,
         'orderType': order.orderType.name,
+        'orderSource': order.orderSource ?? 'pos',
+        'isKot': isKotOrUnpaid,
         'status': isPaid ? 'completed' : order.status.name,
         'tableNumber': order.orderType == OrderType.dineIn ? (order.tableNumber ?? '') : '',
         'deliveryAddress': order.orderType == OrderType.delivery ? (order.deliveryAddress ?? '') : '',

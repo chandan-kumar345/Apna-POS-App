@@ -2672,7 +2672,8 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                                     : null,
                                                 child: LongPressDraggable<TableModel>(
                                                   data: table,
-                                                  delay: const Duration(milliseconds: 180),
+                                                  delay: const Duration(seconds: 5),
+                                                  hapticFeedbackOnStart: true,
                                                   feedback: Material(
                                                     color: Colors.transparent,
                                                     elevation: 8,

@@ -716,9 +716,20 @@ class OrderService {
 
         // Broadcast high-priority push notification only for external online/WhatsApp orders requiring merchant acceptance.
         // Never send incoming accept push notifications for in-store Dine-in table orders or local POS counter orders!
+        const cleanType = oType.replace(/[-_\s]/g, '');
+        const isDineIn = cleanType.includes('dine') || !!order.tableNumber || !!rawData.tableNumber;
+        const isKot = (order.paymentMethod && order.paymentMethod.toString().toLowerCase().includes('kot')) ||
+                      (rawData.paymentMethod && rawData.paymentMethod.toString().toLowerCase().includes('kot')) ||
+                      order.status === 'preparing' ||
+                      rawData.status === 'preparing' ||
+                      rawData.isKot === true ||
+                      order.isKot === true;
+        const isPosOrder = oSource === 'pos' || oSource === 'counter' || oSource === 'local';
+
         const isExternalAcceptOrder = (oSource === 'whatsapp' || oSource === 'online' || oSource === 'storefront') &&
-          oType !== 'dine_in' &&
-          oType !== 'dinein';
+          !isDineIn &&
+          !isKot &&
+          !isPosOrder;
 
         if ((order.status === 'pending' || order.status === 'preparing') && isExternalAcceptOrder) {
           try {

@@ -109,6 +109,91 @@ class MetaPartnerController {
       next(error);
     }
   }
+
+  /**
+   * POST /api/v1/meta-partner/test-message
+   */
+  async sendTestMessage(req, res, next) {
+    try {
+      const businessId = req.businessId;
+      const userId = req.user?._id || req.user?.id;
+      const { recipientPhone, message, templateName } = req.body;
+
+      const result = await metaPartnerService.sendTestMessage(businessId, {
+        recipientPhone,
+        message,
+        templateName,
+        userId,
+      });
+
+      return ApiResponse.success(res, result, 'Test WhatsApp message sent');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/meta-partner/templates
+   */
+  async getTemplates(req, res, next) {
+    try {
+      const businessId = req.businessId;
+      const userId = req.user?._id || req.user?.id;
+      const result = await metaPartnerService.getTemplates(businessId, { userId });
+      return ApiResponse.success(res, result, 'Meta message templates retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/meta-partner/templates/sync
+   */
+  async syncTemplates(req, res, next) {
+    try {
+      const businessId = req.businessId;
+      const userId = req.user?._id || req.user?.id;
+      const result = await metaPartnerService.syncDefaultTemplates(businessId, { userId });
+      return ApiResponse.success(res, result, 'Default POS templates synced with Meta');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/meta-partner/analytics
+   */
+  async getAnalytics(req, res, next) {
+    try {
+      const businessId = req.businessId;
+      const userId = req.user?._id || req.user?.id;
+      const result = await metaPartnerService.getMessagingAnalytics(businessId, { userId });
+      return ApiResponse.success(res, result, 'Messaging analytics retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/meta-partner/oauth/exchange
+   */
+  async exchangeOAuth(req, res, next) {
+    try {
+      const businessId = req.businessId;
+      const userId = req.user?._id || req.user?.id;
+      const { code, businessPortfolioId } = req.body;
+
+      const result = await metaPartnerService.exchangeEmbeddedSignupOAuth(businessId, {
+        code,
+        businessPortfolioId,
+        userId,
+      });
+
+      return ApiResponse.success(res, result, 'Meta Embedded Signup completed');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new MetaPartnerController();

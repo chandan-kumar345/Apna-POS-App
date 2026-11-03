@@ -1906,7 +1906,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         Navigator.of(context).pop();
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: false,
+        resizeToAvoidBottomInset: true,
         backgroundColor: const Color(0xFF031024), // Deep Midnight Navy (matching POS screen)
         body: Container(
           decoration: const BoxDecoration(
@@ -4131,20 +4131,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           if (_is24HourWindowClosed)
             _build24HourWindowBanner(),
 
-          // 3. Bottom Input Bar: Authentic WhatsApp Web input bar on desktop, animated input on mobile
-          if (isMobile)
-            AnimatedPadding(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              padding: EdgeInsets.only(bottom: bottomInset),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
-                color: Colors.transparent,
-                child: _buildConversationInputBar(isMobile: true),
-              ),
-            )
-          else
-            _buildConversationInputBar(isMobile: false),
+          // 3. Bottom Input Bar: Authentic WhatsApp Web input bar on desktop, responsive input on mobile
+          _buildConversationInputBar(isMobile: isMobile),
         ],
       ),
     );

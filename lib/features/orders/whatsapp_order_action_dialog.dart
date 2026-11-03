@@ -58,6 +58,16 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
     dynamic itemsPayload,
     DateTime? createdAt,
   }) async {
+    final cleanType = (orderType ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final bool isPosOrder = cleanType.contains('dine') ||
+        DatabaseService.isKnownPosOrder(orderId) ||
+        DatabaseService.isKnownPosOrder(orderNumber);
+
+    if (isPosOrder) {
+      debugPrint('[WhatsAppOrderActionDialog] Blocked order action dialog for in-store POS order: $orderNumber / $orderId');
+      return;
+    }
+
     if (_isShowing && (_currentShowingOrderId == orderId || _currentShowingOrderNumber == orderNumber)) return;
 
     List<Map<String, dynamic>> parsedItems = [];

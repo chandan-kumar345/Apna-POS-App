@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import '../security/secure_storage_service.dart';
+import '../database/database_service.dart';
 import 'local_notification_service.dart';
 import 'sound_service.dart';
 import '../../features/notifications/models/notification_model.dart';
@@ -31,6 +32,35 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         data['entityType'] == 'whatsapp_order' ||
         data['entityType'] == 'order' ||
         data['orderId'] != null;
+
+    final orderId = (data['orderId'] ?? '').toString().trim();
+    final orderNum = (data['orderNumber'] ?? '').toString().trim();
+    final rawType = (data['orderType'] ?? '').toString().toLowerCase();
+    final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+    final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
+    final tableNum = (data['tableNumber'] ?? '').toString().trim();
+    final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
+    final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
+
+    final prefs = await SharedPreferences.getInstance();
+    final recentPosList = prefs.getStringList('recent_pos_order_ids') ?? [];
+    final bool isKnownPos = recentPosList.contains(orderId) ||
+        recentPosList.contains(orderNum) ||
+        DatabaseService.isKnownPosOrder(orderId) ||
+        DatabaseService.isKnownPosOrder(orderNum);
+
+    final bool isDineInOrLocalPos = cleanType.contains('dine') ||
+        tableNum.isNotEmpty ||
+        isKot ||
+        rawSource == 'pos' ||
+        rawSource == 'counter' ||
+        rawSource == 'local' ||
+        isKnownPos;
+
+    if (isDineInOrLocalPos) {
+      debugPrint('[FCM Background] Suppressing background push & popup for in-store POS order: $orderNum / $orderId');
+      return;
+    }
 
     if (isOrder) {
       try {
@@ -147,18 +177,41 @@ class FcmService {
     final body = notification?.body ?? data['message'] ?? '';
     final typeStr = data['type']?.toString() ?? 'system';
 
-    final isWhatsAppOrder = typeStr == 'whatsapp_order_request' ||
+    final orderId = (data['orderId'] ?? '').toString().trim();
+    final orderNum = (data['orderNumber'] ?? '').toString().trim();
+    final rawType = (data['orderType'] ?? '').toString().toLowerCase();
+    final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+    final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
+    final tableNum = (data['tableNumber'] ?? '').toString().trim();
+    final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
+    final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
+
+    final bool isDineInOrLocalPos = cleanType.contains('dine') ||
+        tableNum.isNotEmpty ||
+        isKot ||
+        rawSource == 'pos' ||
+        rawSource == 'counter' ||
+        rawSource == 'local' ||
+        DatabaseService.isKnownPosOrder(orderId) ||
+        DatabaseService.isKnownPosOrder(orderNum);
+
+    if (isDineInOrLocalPos) {
+      debugPrint('[FcmService] Suppressing notification for in-store POS order: $orderNum / $orderId');
+      return;
+    }
+
+    final isWhatsAppOrder = (typeStr == 'whatsapp_order_request' ||
         typeStr == 'whatsapp_order' ||
         typeStr == 'whatsapp_new_order' ||
-        data['entityType'] == 'whatsapp_order';
+        data['entityType'] == 'whatsapp_order') && !isDineInOrLocalPos;
 
-    final isOrder = isWhatsAppOrder ||
+    final isOrder = (isWhatsAppOrder ||
         typeStr == 'new_order' ||
         typeStr == 'newOrder' ||
         typeStr == 'order_created' ||
         typeStr == 'order' ||
         data['entityType'] == 'order' ||
-        data['orderId'] != null;
+        data['orderId'] != null) && !isDineInOrLocalPos;
 
     final isDailySummary = typeStr == 'daily_sales_summary' ||
         data['entityType'] == 'sales_report' ||

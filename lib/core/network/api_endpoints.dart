@@ -420,6 +420,11 @@ class ApiEndpoints {
   static const String metaPartnerProfile = '/meta-partner/profile';
   static const String metaPartnerCoManage = '/meta-partner/co-manage';
   static const String metaPartnerDisconnect = '/meta-partner/disconnect';
+  static const String metaPartnerTestMessage = '/meta-partner/test-message';
+  static const String metaPartnerTemplates = '/meta-partner/templates';
+  static const String metaPartnerTemplatesSync = '/meta-partner/templates/sync';
+  static const String metaPartnerAnalytics = '/meta-partner/analytics';
+  static const String metaPartnerOAuthExchange = '/meta-partner/oauth/exchange';
 
   // Business Wallet endpoints
   static const String walletBalance = '/wallet/balance';
