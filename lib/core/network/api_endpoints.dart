@@ -425,6 +425,7 @@ class ApiEndpoints {
   static const String metaPartnerTemplatesSync = '/meta-partner/templates/sync';
   static const String metaPartnerAnalytics = '/meta-partner/analytics';
   static const String metaPartnerOAuthExchange = '/meta-partner/oauth/exchange';
+  static const String metaPartnerChannels = '/meta-partner/channels';
 
   // Business Wallet endpoints
   static const String walletBalance = '/wallet/balance';

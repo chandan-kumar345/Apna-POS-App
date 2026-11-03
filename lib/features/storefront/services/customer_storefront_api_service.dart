@@ -193,6 +193,8 @@ class CustomerStorefrontApiService {
     required double grandTotal,
     double discount = 0.0,
     String deliveryInstructions = '',
+    String? tableNumber,
+    OrderType orderType = OrderType.delivery,
   }) async {
     final now = DateTime.now();
     final datePrefix = '${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
@@ -200,6 +202,10 @@ class CustomerStorefrontApiService {
     final orderNumber = '#ORD-$datePrefix-$randomSuffix';
     final orderId = 'ord_${now.millisecondsSinceEpoch}_$randomSuffix';
     final nowIso = now.toIso8601String();
+    final bool isDineIn = orderType == OrderType.dineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+    final String resolvedAddress = isDineIn
+        ? 'Table ${tableNumber?.trim() ?? "Dine-In"}'
+        : '${selectedAddress.label}: ${selectedAddress.fullAddress}';
 
     // 1. Build Item Summaries
     final itemSummaries = cartItems.map((c) {
@@ -221,7 +227,7 @@ class CustomerStorefrontApiService {
       restaurantName: restaurant.name,
       status: 'confirmed',
       currentStepIndex: 0,
-      estimatedDeliveryMinutes: '25 - 35 mins',
+      estimatedDeliveryMinutes: isDineIn ? '15 - 20 mins' : '25 - 35 mins',
       items: itemSummaries,
       subtotal: subtotal,
       deliveryFee: deliveryFee,
@@ -230,7 +236,7 @@ class CustomerStorefrontApiService {
       grandTotal: grandTotal,
       paymentMethod: paymentMethod,
       paymentStatus: paymentMethod == 'Cash on Delivery' ? 'Pending' : 'Paid',
-      deliveryAddress: '${selectedAddress.label}: ${selectedAddress.fullAddress}',
+      deliveryAddress: resolvedAddress,
       deliveryInstructions: deliveryInstructions,
       createdAt: now,
     );
@@ -242,7 +248,8 @@ class CustomerStorefrontApiService {
         id: orderId,
         orderNumber: orderNumber,
         items: cartModelItems,
-        orderType: OrderType.delivery,
+        orderType: isDineIn ? OrderType.dineIn : orderType,
+        tableNumber: tableNumber?.trim(),
         status: OrderStatus.pending,
         subtotal: subtotal,
         discountAmount: discount,
@@ -253,9 +260,9 @@ class CustomerStorefrontApiService {
         isPaid: paymentMethod != 'Cash on Delivery',
         customerName: customer.name,
         customerPhone: customer.phone,
-        deliveryAddress: '${selectedAddress.label}: ${selectedAddress.fullAddress}',
+        deliveryAddress: resolvedAddress,
         createdAt: nowIso,
-        orderSource: 'online',
+        orderSource: 'storefront',
       );
 
       await _db.placeOnlineStorefrontOrder(posOrder);
@@ -270,7 +277,8 @@ class CustomerStorefrontApiService {
         id: orderId,
         orderNumber: orderNumber,
         items: cartItems.map((c) => c.toCartItemModel()).toList(),
-        orderType: OrderType.delivery,
+        orderType: isDineIn ? OrderType.dineIn : orderType,
+        tableNumber: tableNumber?.trim(),
         status: OrderStatus.pending,
         subtotal: subtotal,
         discountAmount: discount,
@@ -281,9 +289,9 @@ class CustomerStorefrontApiService {
         isPaid: paymentMethod != 'Cash on Delivery',
         customerName: customer.name,
         customerPhone: customer.phone,
-        deliveryAddress: '${selectedAddress.label}: ${selectedAddress.fullAddress}',
+        deliveryAddress: resolvedAddress,
         createdAt: nowIso,
-        orderSource: 'online',
+        orderSource: 'storefront',
       );
 
       await _firestore.submitStorefrontOrder(cloudOrder, restaurantId: restaurant.id);
@@ -293,18 +301,29 @@ class CustomerStorefrontApiService {
 
     // 5. Post to Backend API
     try {
+      final slugTarget = restaurant.storefrontSlug.isNotEmpty
+          ? restaurant.storefrontSlug
+          : (restaurant.slug.isNotEmpty ? restaurant.slug : 'store');
       await _apiClient.post(
-        ApiEndpoints.orders,
+        ApiEndpoints.storefrontOrder(slugTarget),
         data: {
           'orderId': orderId,
           'orderNumber': orderNumber,
+          'orderType': isDineIn ? 'dineIn' : 'delivery',
+          'tableNumber': tableNumber?.trim(),
+          'orderSource': 'storefront',
           'restaurantId': restaurant.id,
           'customerName': customer.name,
           'customerPhone': customer.phone,
-          'address': selectedAddress.fullAddress,
+          'address': resolvedAddress,
+          'deliveryAddress': resolvedAddress,
+          'deliveryCharge': deliveryFee,
+          'taxAmount': tax,
+          'subtotal': subtotal,
           'totalAmount': grandTotal,
           'paymentMethod': paymentMethod,
           'items': itemSummaries.map((i) => i.toJson()).toList(),
+          'notes': deliveryInstructions,
         },
       );
     } catch (e) {

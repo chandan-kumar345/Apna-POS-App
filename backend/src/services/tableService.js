@@ -597,6 +597,54 @@ class TableService {
       targetTableStatus: newStatus,
     };
   }
+
+  /**
+   * Generate table QR ordering URLs and metadata for all restaurant tables
+   * Format: apnaposs.vercel.app/:slug/R=:restaurantCode&T=T01
+   */
+  async getTableQrs(businessId) {
+    const business = await Business.findById(businessId).lean();
+    if (!business) {
+      throw new ApiError(404, 'Business not found');
+    }
+
+    const rawSlug = business.profile?.slug || business.slug || '';
+    const companyName = business.profile?.companyName || business.profile?.name || 'Restaurant';
+    const slug = rawSlug || companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'store';
+    const restaurantCode = business.restaurantCode || 'R1';
+
+    let tables = await this.getTables(businessId);
+
+    const baseUrl = `https://apnaposs.vercel.app/${slug}`;
+    const tableQrs = tables.map((t) => {
+      const num = t.tableNumber || 1;
+      const tCode = `T${String(num).padStart(2, '0')}`;
+      const directUrl = `${baseUrl}/R=${restaurantCode}&T=${tCode}`;
+      const queryUrl = `${baseUrl}?R=${restaurantCode}&T=${tCode}`;
+      return {
+        id: (t._id || t.id).toString(),
+        tableNumber: num,
+        name: t.name || `Table ${num}`,
+        tableCode: tCode,
+        floor: t.floor || 'Ground Floor',
+        capacity: t.capacity || 4,
+        status: t.status || 'free',
+        directUrl,
+        queryUrl,
+        displayUrl: `apnaposs.vercel.app/${slug}/R=${restaurantCode}&T=${tCode}`,
+      };
+    });
+
+    return {
+      businessId: business._id.toString(),
+      companyName,
+      slug,
+      restaurantCode,
+      baseUrl,
+      count: tableQrs.length,
+      tables: tableQrs,
+    };
+  }
 }
 
 module.exports = new TableService();

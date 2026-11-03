@@ -115,12 +115,28 @@ class StorefrontController {
         },
       ];
 
+      // Parse optional table ordering query parameters (e.g. ?R=R1&T=T01)
+      const tableQuery = (req.query.T || req.query.t || req.query.table || req.query.tableNumber || '').toString().trim();
+      const restaurantCodeQuery = (req.query.R || req.query.r || req.query.restaurant || '').toString().trim();
+      let tableInfo = null;
+      if (tableQuery) {
+        const cleanTable = tableQuery.toUpperCase();
+        tableInfo = {
+          tableCode: cleanTable,
+          tableNumber: cleanTable.replace(/[^0-9]/g, '') || cleanTable,
+          name: cleanTable.startsWith('T') ? `Table ${cleanTable.substring(1)}` : `Table ${cleanTable}`,
+          isTableOrdering: true,
+          restaurantCode: restaurantCodeQuery || 'R1',
+        };
+      }
+
       return ApiResponse.success(res, {
         restaurant,
         categories: categoryNames,
         products,
         addons,
         banners,
+        table: tableInfo,
       }, 'Storefront loaded successfully');
     } catch (error) {
       next(error);
@@ -140,25 +156,40 @@ class StorefrontController {
         business = await Business.findById(rawSlug);
       }
 
-      const businessId = business ? business._id : null;
+      if (!business) {
+        business = await Business.findOne();
+      }
+
+      if (!business) {
+        throw new ApiError(404, 'Storefront business not found');
+      }
+
+      const businessId = business._id;
+
+      const rawOrderType = (orderPayload.orderType || (orderPayload.tableNumber ? 'dineIn' : 'delivery')).toString();
+      const cleanType = rawOrderType.toLowerCase().replace(/[-_\s]/g, '');
+      const isDineIn = cleanType.includes('dine') || !!orderPayload.tableNumber || !!orderPayload.T;
+      const orderType = isDineIn ? 'dineIn' : (cleanType.includes('take') ? 'takeaway' : 'delivery');
+      const tableNumber = isDineIn ? (orderPayload.tableNumber || orderPayload.T || '').toString().trim() : '';
 
       const orderNumber = `ONL-${Math.floor(1000 + Math.random() * 9000)}`;
       const order = new Order({
         businessId,
         orderNumber,
-        orderType: orderPayload.orderType || 'delivery',
+        orderType,
+        tableNumber,
         status: 'pending',
         items: orderPayload.items || [],
         subtotal: orderPayload.subtotal || 0,
         taxAmount: orderPayload.taxAmount || 0,
-        deliveryCharge: orderPayload.deliveryCharge || 0,
+        deliveryCharge: isDineIn ? 0 : (orderPayload.deliveryCharge || 0),
         totalAmount: orderPayload.totalAmount || 0,
         paymentMethod: orderPayload.paymentMethod || 'UPI',
         paymentStatus: 'pending',
-        deliveryAddress: orderPayload.deliveryAddress || '',
-        customerName: orderPayload.customerName || 'Online Guest',
+        deliveryAddress: isDineIn ? '' : (orderPayload.deliveryAddress || ''),
+        customerName: orderPayload.customerName || (isDineIn ? `Guest (${tableNumber || 'Table'})` : 'Online Guest'),
         customerPhone: orderPayload.customerPhone || '',
-        orderSource: 'online',
+        orderSource: 'storefront',
         notes: orderPayload.notes || '',
       });
 
@@ -171,15 +202,19 @@ class StorefrontController {
         const socketService = require('../services/socketService');
         if (socketService) {
           const orderJson = order.toJSON ? order.toJSON() : order;
+          const tableLabel = tableNumber ? ` • Table ${tableNumber}` : '';
           socketService.broadcastToBusiness(bId, 'new_order', {
             order: orderJson,
-            alertTitle: '🔔 New Online Order Received!',
-            alertMessage: `Order #${orderNumber} for ₹${order.totalAmount}`,
+            alertTitle: isDineIn ? `🍽️ New Table Order (${tableNumber || 'Dine-In'})!` : '🔔 New Online Order Received!',
+            alertMessage: `Order #${orderNumber} for ₹${order.totalAmount}${tableLabel}`,
           });
           socketService.emitOrderCreated(bId, {
             orderId: order._id.toString(),
             orderNumber: order.orderNumber,
+            tableNumber: order.tableNumber || '',
             totalAmount: order.totalAmount,
+            orderType: order.orderType,
+            orderSource: 'storefront',
             order: orderJson,
           });
           socketService.emitWhatsAppOrderRequest(bId, {
@@ -188,6 +223,8 @@ class StorefrontController {
             customerPhone: order.customerPhone,
             totalAmount: order.totalAmount,
             orderType: order.orderType,
+            tableNumber: order.tableNumber || '',
+            orderSource: 'storefront',
           });
         }
       } catch (sockErr) {
@@ -197,18 +234,21 @@ class StorefrontController {
       // 2. Dispatch high-priority push notification so device rings even if app is closed / locked
       try {
         const pushNotificationService = require('../services/pushNotificationService');
+        const tableLabel = order.tableNumber ? ` • Table ${order.tableNumber}` : '';
         pushNotificationService.sendPushNotificationToBusiness({
           businessId: bId,
-          title: `🔔 #${order.orderNumber} • ₹${order.totalAmount}`,
-          message: `${order.customerName || 'Online Guest'} • ${(order.orderType || 'takeaway').toUpperCase()}`,
+          title: `🔔 #${order.orderNumber} • ₹${order.totalAmount}${tableLabel}`,
+          message: `${order.customerName || 'Customer'} • ${(order.orderType || 'takeaway').toUpperCase()}${tableLabel}`,
           data: {
             type: 'whatsapp_order_request',
             orderId: order._id.toString(),
             orderNumber: order.orderNumber,
             customerPhone: order.customerPhone || '',
-            customerName: order.customerName || 'Online Guest',
+            customerName: order.customerName || 'Customer',
             totalAmount: String(order.totalAmount || 0),
-            orderType: order.orderType || 'takeaway',
+            orderType: order.orderType || 'dineIn',
+            tableNumber: order.tableNumber || '',
+            orderSource: 'storefront',
             deliveryAddress: order.deliveryAddress || '',
             items: JSON.stringify(order.items || []),
             createdAt: (order.createdAt || new Date()).toISOString(),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/restaurant_model.dart';
+import '../../../core/models/order_model.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../models/storefront_model.dart';
 import '../services/customer_storefront_api_service.dart';
@@ -16,6 +17,8 @@ class StorefrontCheckoutFlowSheet extends StatefulWidget {
   final Color themeColor;
   final Color? themeColorEnd;
   final int initialStep; // 3 to 10
+  final String? tableCode;
+  final String? restaurantCode;
 
   const StorefrontCheckoutFlowSheet({
     super.key,
@@ -28,6 +31,8 @@ class StorefrontCheckoutFlowSheet extends StatefulWidget {
     this.themeColor = const Color(0xFFE65100),
     this.themeColorEnd,
     this.initialStep = 3,
+    this.tableCode,
+    this.restaurantCode,
   });
 
   @override
@@ -61,31 +66,48 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   // Stream subscription for Step 10
   StreamSubscription<CustomerOrderTrackingModel?>? _orderStreamSub;
 
+  bool get _isTableOrder => widget.tableCode != null && widget.tableCode!.trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
     _currentStep = widget.initialStep;
-    _currentCustomer = const CustomerProfileModel(
-      id: 'cust_default',
-      phone: '+91 97095 93705',
-      name: 'Chandan Kumar',
-      addresses: [
-        CustomerAddressModel(
-          id: 'addr_home',
-          label: 'Home',
-          fullAddress: '34, 34, Chanakya Place, Delhi, Delhi - 110021',
-          isDefault: true,
-        ),
-        CustomerAddressModel(
-          id: 'addr_work',
-          label: 'Work',
-          fullAddress: 'Sector 62, Noida - 201309',
-          isDefault: false,
-        ),
-      ],
-    );
-    _selectedAddress = _currentCustomer!.addresses.first;
-    _checkExistingCustomer();
+    if (_isTableOrder) {
+      _selectedAddress = CustomerAddressModel(
+        id: 'addr_table_${widget.tableCode}',
+        label: 'Dining Table',
+        fullAddress: 'Table ${widget.tableCode}, ${widget.restaurant.name}',
+        isDefault: true,
+      );
+      _currentCustomer = CustomerProfileModel(
+        id: 'cust_table_${DateTime.now().millisecondsSinceEpoch}',
+        phone: '+91 97095 93705',
+        name: 'Guest (${widget.tableCode})',
+        addresses: [_selectedAddress!],
+      );
+    } else {
+      _currentCustomer = const CustomerProfileModel(
+        id: 'cust_default',
+        phone: '+91 97095 93705',
+        name: 'Chandan Kumar',
+        addresses: [
+          CustomerAddressModel(
+            id: 'addr_home',
+            label: 'Home',
+            fullAddress: '34, 34, Chanakya Place, Delhi, Delhi - 110021',
+            isDefault: true,
+          ),
+          CustomerAddressModel(
+            id: 'addr_work',
+            label: 'Work',
+            fullAddress: 'Sector 62, Noida - 201309',
+            isDefault: false,
+          ),
+        ],
+      );
+      _selectedAddress = _currentCustomer!.addresses.first;
+      _checkExistingCustomer();
+    }
   }
 
   @override
@@ -132,7 +154,9 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
 
   // Bill Calculations
   double get _itemTotal => widget.cartItems.fold(0.0, (sum, i) => sum + i.totalPrice);
-  double get _deliveryCharge => _itemTotal > 0 ? (widget.restaurant.deliveryBaseCharge > 0 ? widget.restaurant.deliveryBaseCharge : 40.0) : 0.0;
+  double get _deliveryCharge => _isTableOrder
+      ? 0.0
+      : (_itemTotal > 0 ? (widget.restaurant.deliveryBaseCharge > 0 ? widget.restaurant.deliveryBaseCharge : 40.0) : 0.0);
   double get _taxesAndCharges => (_itemTotal * (widget.restaurant.taxRate > 0 ? widget.restaurant.taxRate / 100.0 : 0.05)).roundToDouble() > 0 ? (_itemTotal * 0.09).roundToDouble() : 28.0;
   double get _grandTotal => (_itemTotal + _deliveryCharge + _taxesAndCharges - _couponDiscount).clamp(0.0, double.infinity);
 
@@ -171,6 +195,16 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   }
 
   void _handleProceedToCheckout() {
+    if (_isTableOrder) {
+      _selectedAddress ??= CustomerAddressModel(
+        id: 'addr_table_${widget.tableCode}',
+        label: 'Dining Table',
+        fullAddress: 'Table ${widget.tableCode}, ${widget.restaurant.name}',
+        isDefault: true,
+      );
+      _navigateToStep(8); // Proceed directly to review & payment for table ordering
+      return;
+    }
     if (_currentCustomer != null) {
       _navigateToStep(8); // Delivery Details
     } else {
@@ -210,7 +244,20 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   }
 
   Future<void> _handlePlaceOrder() async {
-    if (_selectedAddress == null) {
+    if (_isTableOrder) {
+      _selectedAddress ??= CustomerAddressModel(
+        id: 'addr_table_${widget.tableCode}',
+        label: 'Dining Table',
+        fullAddress: 'Table ${widget.tableCode}, ${widget.restaurant.name}',
+        isDefault: true,
+      );
+      _currentCustomer ??= CustomerProfileModel(
+        id: 'cust_table_${DateTime.now().millisecondsSinceEpoch}',
+        phone: _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : '+91 97095 93705',
+        name: 'Guest (${widget.tableCode})',
+        addresses: [_selectedAddress!],
+      );
+    } else if (_selectedAddress == null) {
       _showSnackbar('Please select or add a delivery address');
       _navigateToStep(8);
       return;
@@ -230,6 +277,8 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
       grandTotal: _grandTotal,
       discount: _couponDiscount,
       deliveryInstructions: _deliveryInstructionsController.text.trim(),
+      tableNumber: widget.tableCode,
+      orderType: _isTableOrder ? OrderType.dineIn : OrderType.delivery,
     );
 
     setState(() => _isSubmittingOrder = false);
@@ -697,7 +746,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
           const SizedBox(height: 12),
           _buildBillRow('Item Total', '₹${_itemTotal.toStringAsFixed(0)}'),
           const SizedBox(height: 8),
-          _buildBillRow('Delivery Charge', '₹${_deliveryCharge.toStringAsFixed(0)}'),
+          _buildBillRow('Delivery Charge', _isTableOrder ? 'FREE (Dine-In)' : '₹${_deliveryCharge.toStringAsFixed(0)}', isGreen: _isTableOrder),
           const SizedBox(height: 8),
           _buildBillRow('Taxes & Charges (GST)', '₹${_taxesAndCharges.toStringAsFixed(0)}'),
           if (_couponDiscount > 0) ...[
@@ -1408,20 +1457,69 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                 onTap: () => _navigateToStep(3),
               ),
               const SizedBox(width: 14),
-              const Text(
-                'Delivery Details',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+              Text(
+                _isTableOrder ? 'Dining Table Details' : 'Delivery Details',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
               ),
             ],
           ),
 
           const SizedBox(height: 20),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Saved Addresses',
+          if (_isTableOrder) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Dining at Table ${widget.tableCode}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF065F46),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${widget.restaurant.name} • Dine-In Ordering',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF047857), fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Your freshly prepared food will be served directly to your table.',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF065F46)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Saved Addresses',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
               ),
               TextButton(
@@ -1556,11 +1654,12 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
               ),
             ),
           ),
+          ],
 
           // Delivery Instructions (Optional)
-          const Text(
-            'Delivery Instructions (Optional)',
-            style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+          Text(
+            _isTableOrder ? 'Special Instructions for Kitchen (Optional)' : 'Delivery Instructions (Optional)',
+            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
           ),
           const SizedBox(height: 8),
           Container(
@@ -1765,7 +1864,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                 const SizedBox(height: 8),
                 _buildBillRow('Item Total', '₹${_itemTotal.toStringAsFixed(0)}'),
                 const SizedBox(height: 4),
-                _buildBillRow('Delivery Charge', '₹${_deliveryCharge.toStringAsFixed(0)}'),
+                _buildBillRow('Delivery Charge', _isTableOrder ? 'FREE (Dine-In)' : '₹${_deliveryCharge.toStringAsFixed(0)}', isGreen: _isTableOrder),
               ],
             ),
           ),

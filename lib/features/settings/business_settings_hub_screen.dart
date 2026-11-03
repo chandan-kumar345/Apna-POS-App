@@ -18,6 +18,7 @@ import '../coupon/screens/coupon_management_screen.dart';
 import '../wallet/wallet_screen.dart';
 import 'ai_chat_agent_screen.dart';
 import 'meta_partner_channel_screen.dart';
+import 'table_qr_download_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
@@ -4374,7 +4375,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       _buildNeumorphicSectionHeader(
                         title: 'Store & Order Configuration',
                         icon: Icons.storefront_rounded,
-                        countText: '8 Items',
+                        countText: '9 Items',
                         accentColor: const Color(0xFF0052FF),
                       ),
                       const SizedBox(height: 14),
@@ -4383,6 +4384,22 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         spacing: spacing,
                         runSpacing: spacing,
                         children: [
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Table QR Ordering',
+                            subtitle: 'apnaposs.vercel.app/${restaurant?.storefrontSlug ?? "company-name"}/R=R1&T=T01',
+                            icon: Icons.qr_code_2_rounded,
+                            accentColor: const Color(0xFF10B981),
+                            badgeText: '${db.tables.length} Tables',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const TableQrDownloadScreen(),
+                                ),
+                              );
+                            },
+                          ),
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Customer Web Menu',
@@ -5060,6 +5077,27 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _NeumorphicTheme.textDark,
                   side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+
+              // 6. Table QR Codes
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const TableQrDownloadScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.table_restaurant_rounded, size: 13, color: Color(0xFF10B981)),
+                label: const Text('Table QR Codes', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF065F46))),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: const Color(0xFFECFDF5),
+                  side: const BorderSide(color: Color(0xFFA7F3D0)),
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   visualDensity: VisualDensity.compact,
@@ -6530,24 +6568,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildNeumorphicTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    IconData? icon,
-    int maxLines = 1,
-    bool isNumeric = false,
-  }) {
-    return _buildNeumorphicInputField(
-      controller: controller,
-      label: label,
-      hint: hint,
-      prefixIcon: icon,
-      maxLines: maxLines,
-      isNumeric: isNumeric,
     );
   }
 

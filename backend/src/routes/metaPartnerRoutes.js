@@ -36,4 +36,12 @@ router.get('/analytics', (req, res, next) => metaPartnerController.getAnalytics(
 // POST /api/v1/meta-partner/oauth/exchange
 router.post('/oauth/exchange', (req, res, next) => metaPartnerController.exchangeOAuth(req, res, next));
 
+// Channels Fleet Management Routes
+router.get('/channels', (req, res, next) => metaPartnerController.getChannels(req, res, next));
+router.post('/channels', (req, res, next) => metaPartnerController.createChannel(req, res, next));
+router.post('/channels/:id/register-pin', (req, res, next) => metaPartnerController.registerPin(req, res, next));
+router.post('/channels/:id/subscribe-webhook', (req, res, next) => metaPartnerController.subscribeWebhook(req, res, next));
+router.patch('/channels/:id/toggle-active', (req, res, next) => metaPartnerController.toggleActive(req, res, next));
+router.delete('/channels/:id', (req, res, next) => metaPartnerController.deleteChannel(req, res, next));
+
 module.exports = router;

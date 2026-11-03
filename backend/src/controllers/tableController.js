@@ -63,6 +63,15 @@ class TableController {
       next(error);
     }
   }
+
+  async getTableQrs(req, res, next) {
+    try {
+      const data = await tableService.getTableQrs(req.businessId);
+      return ApiResponse.success(res, data, 'Table QRs generated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new TableController();

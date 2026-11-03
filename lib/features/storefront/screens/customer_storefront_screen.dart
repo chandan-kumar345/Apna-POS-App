@@ -18,11 +18,15 @@ import '../../pos/widgets/pos_product_media_box.dart';
 class CustomerStorefrontScreen extends StatefulWidget {
   final String slug;
   final bool isPreviewMode;
+  final String? tableCode;
+  final String? restaurantCode;
 
   const CustomerStorefrontScreen({
     super.key,
     required this.slug,
     this.isPreviewMode = false,
+    this.tableCode,
+    this.restaurantCode,
   });
 
   @override
@@ -51,6 +55,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.tableCode != null && widget.tableCode!.trim().isNotEmpty) {
+      _orderType = OrderType.dineIn;
+    }
     _loadData();
     _startBannerTimer();
   }
@@ -79,7 +86,11 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final data = await _service.loadStorefront(widget.slug);
+    final data = await _service.loadStorefront(
+      widget.slug,
+      tableCode: widget.tableCode,
+      restaurantCode: widget.restaurantCode,
+    );
     if (mounted) {
       setState(() {
         _data = data;
@@ -217,6 +228,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         initialStep: initialStep,
         themeColor: _themeColor,
         themeColorEnd: _themeColorEnd,
+        tableCode: widget.tableCode,
+        restaurantCode: widget.restaurantCode,
         onUpdateQuantity: (item, newQty) {
           setState(() {
             if (newQty <= 0) {
@@ -728,6 +741,63 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                         ),
                       ],
 
+                      // Table Ordering Active Callout Banner
+                      if (widget.tableCode != null && widget.tableCode!.trim().isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF065F46), Color(0xFF059669)],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF059669).withValues(alpha: 0.28),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 16),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Table Ordering Active: ${widget.tableCode}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const Text(
+                                      'Orders are sent directly to the kitchen for your dining table',
+                                      style: TextStyle(
+                                        color: Color(0xFFD1FAE5),
+                                        fontSize: 10.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
                       // 2. ORDER TYPE SWITCHER & LOCATION / ETA BAR
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -755,6 +825,51 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                             ),
                             child: Row(
                               children: [
+                                if (widget.tableCode != null && widget.tableCode!.trim().isNotEmpty)
+                                  Expanded(
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(19),
+                                      onTap: () => setState(() => _orderType = OrderType.dineIn),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 180),
+                                        decoration: BoxDecoration(
+                                          gradient: (_orderType == OrderType.dineIn && _hasGradient) ? _themeGradient : null,
+                                          color: _orderType == OrderType.dineIn && !_hasGradient ? _themeColor : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(19),
+                                          boxShadow: _orderType == OrderType.dineIn
+                                              ? [
+                                                  BoxShadow(
+                                                    color: _themeColor.withValues(alpha: 0.35),
+                                                    blurRadius: 6,
+                                                    offset: const Offset(0, 2),
+                                                  ),
+                                                ]
+                                              : null,
+                                        ),
+                                        child: Center(
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.table_restaurant_rounded,
+                                                size: 15,
+                                                color: _orderType == OrderType.dineIn ? Colors.white : const Color(0xFF64748B),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Table ${widget.tableCode}',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: _orderType == OrderType.dineIn ? Colors.white : const Color(0xFF475569),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 Expanded(
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(19),
@@ -851,7 +966,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                           // 2.2 Location & ETA Bar (Elevated Neumorphic Card)
                           InkWell(
                             borderRadius: BorderRadius.circular(16),
-                            onTap: _showChangeLocationDialog,
+                            onTap: _orderType == OrderType.dineIn ? null : _showChangeLocationDialog,
                             child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -873,7 +988,13 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.location_on_rounded, size: 16, color: Color(0xFFE65100)),
+                                  Icon(
+                                    _orderType == OrderType.dineIn
+                                        ? Icons.table_restaurant_rounded
+                                        : Icons.location_on_rounded,
+                                    size: 16,
+                                    color: _orderType == OrderType.dineIn ? const Color(0xFF10B981) : const Color(0xFFE65100),
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Column(
@@ -881,7 +1002,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
-                                          _deliveryAddress,
+                                          _orderType == OrderType.dineIn
+                                              ? 'Dining at Table ${widget.tableCode ?? "01"}'
+                                              : _deliveryAddress,
                                           style: const TextStyle(
                                             fontSize: 11.5,
                                             fontWeight: FontWeight.w700,
@@ -891,9 +1014,11 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         Text(
-                                          _orderType == OrderType.delivery
-                                              ? 'Delivery in 25–35 mins • Live tracking'
-                                              : 'Ready for pickup in 15–20 mins',
+                                          _orderType == OrderType.dineIn
+                                              ? 'Served fresh to your table • 15–20 mins'
+                                              : (_orderType == OrderType.delivery
+                                                  ? 'Delivery in 25–35 mins • Live tracking'
+                                                  : 'Ready for pickup in 15–20 mins'),
                                           style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                                         ),
                                       ],

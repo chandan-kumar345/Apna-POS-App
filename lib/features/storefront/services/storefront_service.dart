@@ -19,7 +19,7 @@ class StorefrontService {
   final ApiClient _apiClient = ApiClient();
 
   /// Fetch dynamic storefront data for given company slug or business ID
-  Future<StorefrontData> loadStorefront(String slug) async {
+  Future<StorefrontData> loadStorefront(String slug, {String? tableCode, String? restaurantCode}) async {
     final cleanSlug = slug.trim().toLowerCase();
 
     RestaurantModel? restaurant;
@@ -76,7 +76,13 @@ class StorefrontService {
     // 2. Try loading from Backend Storefront API
     if (restaurant == null || menuItems.isEmpty) {
       try {
-        final res = await _apiClient.get(ApiEndpoints.storefront(cleanSlug.isNotEmpty ? cleanSlug : 'store'));
+        final queryParams = <String, dynamic>{};
+        if (tableCode != null && tableCode.isNotEmpty) queryParams['T'] = tableCode;
+        if (restaurantCode != null && restaurantCode.isNotEmpty) queryParams['R'] = restaurantCode;
+        final res = await _apiClient.get(
+          ApiEndpoints.storefront(cleanSlug.isNotEmpty ? cleanSlug : 'store'),
+          queryParameters: queryParams.isNotEmpty ? queryParams : null,
+        );
         if (res['data'] != null && res['data'] is Map) {
           final data = res['data'] as Map<String, dynamic>;
           if (data['restaurant'] is Map) {
@@ -258,28 +264,31 @@ class StorefrontService {
     required double totalAmount,
     required String paymentMethod,
     String specialNote = '',
+    String? tableNumber,
   }) async {
     final orderNumber = 'ONL-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
     final nowIso = DateTime.now().toIso8601String();
+    final bool isDineIn = orderType == OrderType.dineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
 
     final order = OrderModel(
       id: 'ord_onl_${DateTime.now().millisecondsSinceEpoch}',
       orderNumber: orderNumber,
-      orderType: orderType,
+      orderType: isDineIn ? OrderType.dineIn : orderType,
+      tableNumber: tableNumber?.trim(),
       status: OrderStatus.pending,
       items: cartItems.map((c) => c.toCartItemModel()).toList(),
       subtotal: subtotal,
       taxAmount: taxAmount,
-      deliveryCharge: deliveryFee,
+      deliveryCharge: isDineIn ? 0.0 : deliveryFee,
       totalAmount: totalAmount,
       paymentMethod: paymentMethod,
       paymentStatus: paymentMethod == 'UPI' ? 'paid' : 'pending',
       isPaid: paymentMethod == 'UPI',
-      deliveryAddress: orderType == OrderType.delivery ? deliveryAddress : null,
+      deliveryAddress: orderType == OrderType.delivery ? deliveryAddress : (isDineIn ? 'Table ${tableNumber?.trim() ?? "Dine-In"}' : null),
       createdAt: nowIso,
       customerName: customerName,
       customerPhone: customerPhone,
-      orderSource: 'online',
+      orderSource: 'storefront',
     );
 
     // 1. Save locally in DatabaseService
@@ -287,18 +296,23 @@ class StorefrontService {
 
     // 2. Submit to backend API
     try {
+      final slugTarget = restaurant.storefrontSlug.isNotEmpty
+          ? restaurant.storefrontSlug
+          : (restaurant.slug.isNotEmpty ? restaurant.slug : 'store');
       await _apiClient.post(
-        ApiEndpoints.storefrontOrder(restaurant.storefrontSlug),
+        ApiEndpoints.storefrontOrder(slugTarget),
         data: {
           'orderNumber': orderNumber,
-          'orderType': orderType == OrderType.delivery ? 'delivery' : 'takeaway',
+          'orderType': isDineIn ? 'dineIn' : (orderType == OrderType.delivery ? 'delivery' : 'takeaway'),
+          'tableNumber': tableNumber?.trim(),
+          'orderSource': 'storefront',
           'items': order.items.map((i) => i.toJson()).toList(),
           'subtotal': subtotal,
           'taxAmount': taxAmount,
-          'deliveryCharge': deliveryFee,
+          'deliveryCharge': isDineIn ? 0.0 : deliveryFee,
           'totalAmount': totalAmount,
           'paymentMethod': paymentMethod,
-          'deliveryAddress': deliveryAddress,
+          'deliveryAddress': isDineIn ? 'Table ${tableNumber?.trim() ?? "Dine-In"}' : deliveryAddress,
           'customerName': customerName,
           'customerPhone': customerPhone,
           'notes': specialNote,

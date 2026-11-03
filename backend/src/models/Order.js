@@ -377,7 +377,7 @@ const orderSchema = new mongoose.Schema(
     },
     orderSource: {
       type: String,
-      enum: ['pos', 'whatsapp', 'online', 'qr'],
+      enum: ['pos', 'whatsapp', 'online', 'qr', 'storefront'],
       default: 'pos',
       index: true,
     },

@@ -279,6 +279,154 @@ class MetaPartnerService {
       return null;
     }
   }
+
+  /// Get all Meta Channels
+  Future<List<MetaChannelItem>> getChannels() async {
+    try {
+      final response = await _apiClient.get(ApiEndpoints.metaPartnerChannels);
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        final list = (data['channels'] as List?) ?? [];
+        return list.map((item) => MetaChannelItem.fromJson(item as Map<String, dynamic>)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[MetaPartnerService] getChannels error: $e');
+      return [];
+    }
+  }
+
+  /// Create New Meta Channel
+  Future<MetaChannelItem?> createChannel({
+    required String name,
+    required String phoneNumber,
+    bool isActive = true,
+  }) async {
+    try {
+      final response = await _apiClient.post(
+        ApiEndpoints.metaPartnerChannels,
+        data: {
+          'name': name.trim(),
+          'phoneNumber': phoneNumber.trim(),
+          'isActive': isActive,
+        },
+      );
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        if (data['channel'] != null) {
+          return MetaChannelItem.fromJson(data['channel'] as Map<String, dynamic>);
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] createChannel error: $e');
+      rethrow;
+    }
+  }
+
+  /// Register 2-Step PIN for Channel
+  Future<bool> registerPin({required String channelId, String pin = '123456'}) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.metaPartnerChannels}/$channelId/register-pin',
+        data: {'pin': pin},
+      );
+      return response != null && response['success'] != false;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] registerPin error: $e');
+      return false;
+    }
+  }
+
+  /// Subscribe Webhook for Channel
+  Future<bool> subscribeWebhook({required String channelId}) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.metaPartnerChannels}/$channelId/subscribe-webhook',
+      );
+      return response != null && response['success'] != false;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] subscribeWebhook error: $e');
+      return false;
+    }
+  }
+
+  /// Toggle Channel Active state
+  Future<bool> toggleChannelActive({required String channelId, required bool isActive}) async {
+    try {
+      final response = await _apiClient.patch(
+        '${ApiEndpoints.metaPartnerChannels}/$channelId/toggle-active',
+        data: {'isActive': isActive},
+      );
+      return response != null && response['success'] != false;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] toggleChannelActive error: $e');
+      return false;
+    }
+  }
+
+  /// Delete Channel
+  Future<bool> deleteChannel({required String channelId}) async {
+    try {
+      final response = await _apiClient.delete(
+        '${ApiEndpoints.metaPartnerChannels}/$channelId',
+      );
+      return response != null && response['success'] != false;
+    } catch (e) {
+      debugPrint('[MetaPartnerService] deleteChannel error: $e');
+      return false;
+    }
+  }
+}
+
+class MetaChannelItem {
+  final String channelId;
+  final String name;
+  final String phoneNumber;
+  final String phoneNumberId;
+  final String wabaId;
+  final bool isActive;
+  final String status;
+  final String integrationStatus;
+  final bool pinRegistered;
+  final bool webhookSubscribed;
+  final DateTime? createdAt;
+
+  const MetaChannelItem({
+    required this.channelId,
+    required this.name,
+    required this.phoneNumber,
+    this.phoneNumberId = '',
+    this.wabaId = '',
+    this.isActive = true,
+    this.status = 'ACTIVE',
+    this.integrationStatus = 'Active Meta Cloud API',
+    this.pinRegistered = false,
+    this.webhookSubscribed = false,
+    this.createdAt,
+  });
+
+  factory MetaChannelItem.fromJson(Map<String, dynamic> json) {
+    DateTime? dt;
+    if (json['createdAt'] != null) {
+      try {
+        dt = DateTime.parse(json['createdAt'].toString());
+      } catch (_) {}
+    }
+    return MetaChannelItem(
+      channelId: json['channelId']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'WhatsApp Channel',
+      phoneNumber: json['phoneNumber']?.toString() ?? '',
+      phoneNumberId: json['phoneNumberId']?.toString() ?? '',
+      wabaId: json['wabaId']?.toString() ?? '',
+      isActive: json['isActive'] != false,
+      status: json['status']?.toString() ?? 'ACTIVE',
+      integrationStatus: json['integrationStatus']?.toString() ?? 'Active Meta Cloud API',
+      pinRegistered: json['pinRegistered'] == true,
+      webhookSubscribed: json['webhookSubscribed'] == true,
+      createdAt: dt,
+    );
+  }
 }
 
 class MetaTemplateItem {
