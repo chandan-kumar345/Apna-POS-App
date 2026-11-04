@@ -1,5 +1,6 @@
 package com.apnapos.app
 
+import android.app.ActivityOptions
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -38,11 +39,24 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                 data.containsKey("orderId") ||
                 data.containsKey("totalAmount")
 
-        val orderType = (data["orderType"] ?: "").lowercase()
-        val orderSource = (data["orderSource"] ?: "").lowercase()
-        val isDineInOrLocalPos = orderType == "dine_in" || orderType == "dinein" || orderSource == "pos"
+        val rawSource = (data["orderSource"] ?: "").lowercase()
+        val typeStr = (data["type"] ?: "").lowercase()
+        val isExplicitExternal = rawSource == "whatsapp" ||
+                rawSource == "storefront" ||
+                rawSource == "online" ||
+                rawSource == "qr" ||
+                rawSource == "profile" ||
+                typeStr.contains("whatsapp") ||
+                typeStr == "whatsapp_order_request"
 
-        if (isOrder && !isDineInOrLocalPos) {
+        val isLocalPosOrder = !isExplicitExternal && (
+                rawSource == "pos" ||
+                rawSource == "counter" ||
+                rawSource == "local" ||
+                typeStr == "kot_printed"
+        )
+
+        if (isOrder && !isLocalPosOrder) {
             try {
                 // 1. Hardware Screen Wake Lock (force screen on immediately for 30s)
                 val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -71,12 +85,12 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                 prefs.edit().putString("flutter.pending_incoming_order_payload", payloadString).apply()
 
                 // 4. Build Intent to open MainActivity and show Order Accept Screen
-                val launchIntent = Intent(applicationContext, MainActivity::class.java).apply {
+                val launchIntent = (packageManager.getLaunchIntentForPackage(packageName) ?: Intent(applicationContext, MainActivity::class.java)).apply {
                     action = "FLUTTER_NOTIFICATION_CLICK"
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP
                     )
                     putExtra("pending_incoming_order_payload", payloadString)
@@ -115,6 +129,14 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                 }
 
                 // 6. Build fullScreenIntent PendingIntent so Android OS immediately displays Activity over lock screen
+                val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ActivityOptions.makeBasic().apply {
+                        setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                    }
+                } else {
+                    ActivityOptions.makeBasic()
+                }
+
                 val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 } else {
@@ -124,7 +146,8 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                     applicationContext,
                     (data["orderId"]?.hashCode() ?: System.currentTimeMillis().toInt()),
                     launchIntent,
-                    flags
+                    flags,
+                    options.toBundle()
                 )
 
                 // 7. Accept and Reject Notification Action PendingIntents
@@ -204,10 +227,15 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
 
                 notificationManager.notify(notifId, notifBuilder.build())
 
-                // 10. Also attempt direct startActivity (succeeds if app has overlay permission or is in foreground)
+                // 10. Bring app immediately to front over any other app
+                // Succeeds if app has overlay permission ("Display over other apps") or via fullScreenPendingIntent
                 try {
-                    applicationContext.startActivity(launchIntent)
-                } catch (_: Exception) {}
+                    fullScreenPendingIntent.send()
+                } catch (sendErr: Exception) {
+                    try {
+                        applicationContext.startActivity(launchIntent, options.toBundle())
+                    } catch (_: Exception) {}
+                }
 
             } catch (e: Exception) {
                 e.printStackTrace()

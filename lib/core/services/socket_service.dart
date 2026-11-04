@@ -446,8 +446,7 @@ class SocketService {
 
           // 3. Trigger interactive Accept / Reject screen modal
           SoundService.boostHardwareVolume();
-          SoundService.bringAppToFront();
-          LocalNotificationService.handlePayloadDirectly({
+          final orderPayload = {
             'type': 'whatsapp_order_request',
             'orderId': orderModel.id,
             'orderNumber': orderModel.orderNumber,
@@ -458,7 +457,9 @@ class SocketService {
             'orderSource': oSource.isNotEmpty ? oSource : 'whatsapp',
             'deliveryAddress': orderModel.deliveryAddress,
             'items': orderModel.items.map((i) => i.toJson()).toList(),
-          });
+          };
+          SoundService.bringAppToFront(payload: jsonEncode(orderPayload), isUrgent: true);
+          LocalNotificationService.handlePayloadDirectly(orderPayload);
         }
       }
     } catch (e) {
@@ -729,8 +730,7 @@ class SocketService {
 
       // 3. Resiliently trigger the incoming WhatsApp order action dialog & full-screen accept
       SoundService.boostHardwareVolume();
-      SoundService.bringAppToFront();
-      LocalNotificationService.handlePayloadDirectly({
+      final orderPayload = {
         'type': 'whatsapp_order_request',
         'orderId': orderId,
         'orderNumber': orderNumber,
@@ -738,9 +738,12 @@ class SocketService {
         'customerName': customerName,
         'totalAmount': totalAmount.toString(),
         'orderType': orderType,
+        'orderSource': (data['orderSource'] ?? 'whatsapp').toString(),
         'deliveryAddress': deliveryAddress,
         'items': items,
-      });
+      };
+      SoundService.bringAppToFront(payload: jsonEncode(orderPayload), isUrgent: true);
+      LocalNotificationService.handlePayloadDirectly(orderPayload);
     } catch (e) {
       debugPrint('[SocketService] Error processing whatsapp:order:request: $e');
     }

@@ -1,60 +1,65 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/models/table_model.dart';
+import '../../core/network/api_endpoints.dart';
 import '../storefront/screens/customer_storefront_screen.dart';
 
-/// Table Stand Themes for QR Stand Printing
+/// Table Stand Themes for Designer QR Stand Printing (Matching Reference UI)
 enum TableStandTheme {
-  crimsonRuby,
+  midnightCharcoal,
+  oceanSapphire,
+  goldenAmber,
   royalEmerald,
-  sapphireBlue,
-  sunsetAmber,
-  midnightGold,
-  modernClean,
+  crimsonRuby,
 }
 
 class StandThemeConfig {
   final String label;
   final String subtitle;
-  final List<Color> headerGradient;
-  final Color cardBg;
-  final Color tableBadgeBg;
-  final Color tableBadgeText;
-  final Color qrBorderColor;
+  final List<Color> backgroundGradient;
+  final List<Color> buttonGradient;
   final Color qrEyeColor;
   final Color qrDataColor;
-  final Color bodyTextColor;
-  final Color subTextColor;
   final Color accentPillBg;
   final Color accentPillText;
-  final bool isDarkCard;
 
   const StandThemeConfig({
     required this.label,
     required this.subtitle,
-    required this.headerGradient,
-    required this.cardBg,
-    required this.tableBadgeBg,
-    required this.tableBadgeText,
-    required this.qrBorderColor,
+    required this.backgroundGradient,
+    required this.buttonGradient,
     required this.qrEyeColor,
     required this.qrDataColor,
-    required this.bodyTextColor,
-    required this.subTextColor,
     required this.accentPillBg,
     required this.accentPillText,
-    this.isDarkCard = false,
+  });
+}
+
+/// Curated restaurant ambiance background presets for standees
+class StandeeBackgroundPreset {
+  final String id;
+  final String name;
+  final String description;
+  final String imageUrl;
+
+  const StandeeBackgroundPreset({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.imageUrl,
   });
 }
 
@@ -73,20 +78,133 @@ class TableQrDownloadScreen extends StatefulWidget {
 class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
   final DatabaseService _db = DatabaseService();
   final Map<String, GlobalKey> _cardKeys = {};
+  final Map<String, Uint8List> _base64Cache = {};
 
-  TableStandTheme _currentTheme = TableStandTheme.crimsonRuby;
+  static const String _prefStandeeBgKey = 'table_qr_standee_custom_bg_v1';
+
+  TableStandTheme _currentTheme = TableStandTheme.oceanSapphire;
   String _selectedFloor = 'All';
   String _searchQuery = '';
   bool _isDownloadingAll = false;
   final String _restaurantCode = 'R1';
 
+  /// Active custom background image across ALL table standees (URL, local path, or null)
+  String? _customStandeeBg;
+
+  // Curated high-resolution restaurant ambiance presets (Matching Image 3)
+  static const List<StandeeBackgroundPreset> _ambiancePresets = [
+    StandeeBackgroundPreset(
+      id: 'cozy_bistro',
+      name: 'Cozy Bistro & Cafe',
+      description: 'Warm cafe ambiance with pendant lights & wooden tables',
+      imageUrl: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&q=80',
+    ),
+    StandeeBackgroundPreset(
+      id: 'fine_dining',
+      name: 'Fine Dining Room',
+      description: 'Elegant restaurant dining hall with subtle warm lighting',
+      imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80',
+    ),
+    StandeeBackgroundPreset(
+      id: 'rustic_steakhouse',
+      name: 'Rustic Wood Lounge',
+      description: 'Warm dark wood & exposed brick steakhouse aesthetic',
+      imageUrl: 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?w=800&q=80',
+    ),
+    StandeeBackgroundPreset(
+      id: 'modern_lounge',
+      name: 'Modern Bar & Lounge',
+      description: 'Chic contemporary restaurant with neon and ambient glow',
+      imageUrl: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=800&q=80',
+    ),
+    StandeeBackgroundPreset(
+      id: 'trattoria',
+      name: 'Italian Trattoria',
+      description: 'Authentic pizzeria and trattoria dining room ambiance',
+      imageUrl: 'https://images.unsplash.com/photo-1537047902294-62a40c20a6ae?w=800&q=80',
+    ),
+  ];
+
+  // Neumorphic Theme Constants (Matching POS Register & Business Hub)
+  static const Color _bgCanvas = Color(0xFFEEF2F6);
+  static const Color _surface = Color(0xFFEEF2F6);
+  static const Color _textDark = Color(0xFF0F172A);
+  static const Color _textMuted = Color(0xFF64748B);
+  static const Color _blueBrand = Color(0xFF0052FF);
+  static const Color _navyBrand = Color(0xFF051C48);
+
+  static List<BoxShadow> get _neumorphicRaised => [
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.95),
+          offset: const Offset(-4, -4),
+          blurRadius: 10,
+          spreadRadius: 0,
+        ),
+        BoxShadow(
+          color: const Color(0xFFC5D1E0).withValues(alpha: 0.7),
+          offset: const Offset(4, 4),
+          blurRadius: 10,
+          spreadRadius: 0,
+        ),
+      ];
+
+  static List<BoxShadow> get _neumorphicSunken => [
+        BoxShadow(
+          color: const Color(0xFFC5D1E0).withValues(alpha: 0.6),
+          offset: const Offset(2, 2),
+          blurRadius: 4,
+        ),
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.8),
+          offset: const Offset(-2, -2),
+          blurRadius: 4,
+        ),
+      ];
+
   @override
   void initState() {
     super.initState();
     _initKeys();
+    _loadSavedBackground();
+  }
+
+  Future<void> _loadSavedBackground() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_prefStandeeBgKey);
+      if (saved != null && saved.isNotEmpty && mounted) {
+        setState(() => _customStandeeBg = saved);
+      }
+    } catch (e) {
+      debugPrint('[TableQrDownloadScreen] Failed to load saved background: $e');
+    }
+  }
+
+  Future<void> _updateStandeeBackground(String? pathOrUrl) async {
+    setState(() => _customStandeeBg = pathOrUrl);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (pathOrUrl == null || pathOrUrl.isEmpty) {
+        await prefs.remove(_prefStandeeBgKey);
+      } else {
+        await prefs.setString(_prefStandeeBgKey, pathOrUrl);
+      }
+    } catch (e) {
+      debugPrint('[TableQrDownloadScreen] Failed to save background: $e');
+    }
   }
 
   RestaurantModel? get _restaurant => _db.restaurant;
+
+  String get _restaurantName {
+    final restName = _restaurant?.name.trim() ?? '';
+    if (restName.isNotEmpty) return restName;
+    final compName = _db.currentUser?.companyName?.trim() ?? '';
+    if (compName.isNotEmpty) return compName;
+    final userName = _db.currentUser?.name.trim() ?? '';
+    if (userName.isNotEmpty) return userName;
+    return 'Apna POS';
+  }
 
   /// Max table limit for this business
   int get _maxTableCount {
@@ -144,11 +262,6 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     return 'https://apnaposs.vercel.app/$_companySlug/R=$_restaurantCode&T=$tCode';
   }
 
-  String _buildTableDisplayUrl(int tableNum) {
-    final tCode = _formatTableCode(tableNum);
-    return 'apnaposs.vercel.app/$_companySlug/R=$_restaurantCode&T=$tCode';
-  }
-
   List<String> get _floors {
     final list = _allValidTables.map((t) => t.floor.trim()).where((f) => f.isNotEmpty).toSet().toList();
     list.sort();
@@ -174,187 +287,227 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
 
   StandThemeConfig _getThemeConfig(TableStandTheme theme) {
     switch (theme) {
-      case TableStandTheme.crimsonRuby:
+      case TableStandTheme.midnightCharcoal:
         return const StandThemeConfig(
-          label: 'Crimson Ruby & Gold',
-          subtitle: 'Vibrant ruby gradient with amber gold accents',
-          headerGradient: [Color(0xFF881337), Color(0xFFBE123C)],
-          cardBg: Colors.white,
-          tableBadgeBg: Color(0xFFF59E0B),
-          tableBadgeText: Color(0xFF451A03),
-          qrBorderColor: Color(0xFFBE123C),
-          qrEyeColor: Color(0xFF881337),
-          qrDataColor: Color(0xFF4C0519),
-          bodyTextColor: Color(0xFF0F172A),
-          subTextColor: Color(0xFF475569),
-          accentPillBg: Color(0xFFFFF1F2),
-          accentPillText: Color(0xFFBE123C),
+          label: 'Midnight Onyx & Slate',
+          subtitle: 'Deep charcoal slate with electric cyan accents',
+          backgroundGradient: [Color(0xFF181B20), Color(0xFF23272F)],
+          buttonGradient: [Color(0xFF0284C7), Color(0xFF06B6D4)],
+          qrEyeColor: Color(0xFF0F172A),
+          qrDataColor: Color(0xFF1E293B),
+          accentPillBg: Color(0xFFE0F2FE),
+          accentPillText: Color(0xFF0284C7),
+        );
+      case TableStandTheme.oceanSapphire:
+        return const StandThemeConfig(
+          label: 'Ocean Sapphire Blue',
+          subtitle: 'Cobalt deep ocean with bright cyan highlights',
+          backgroundGradient: [Color(0xFF0B2545), Color(0xFF134074)],
+          buttonGradient: [Color(0xFF0052FF), Color(0xFF38BDF8)],
+          qrEyeColor: Color(0xFF0B2545),
+          qrDataColor: Color(0xFF134074),
+          accentPillBg: Color(0xFFEFF6FF),
+          accentPillText: Color(0xFF1D4ED8),
+        );
+      case TableStandTheme.goldenAmber:
+        return const StandThemeConfig(
+          label: 'Golden Amber & Honey',
+          subtitle: 'Rich warm sunburst amber and gold',
+          backgroundGradient: [Color(0xFFD97706), Color(0xFFF59E0B)],
+          buttonGradient: [Color(0xFFD97706), Color(0xFFF59E0B)],
+          qrEyeColor: Color(0xFF78350F),
+          qrDataColor: Color(0xFF451A03),
+          accentPillBg: Color(0xFFFFFBEB),
+          accentPillText: Color(0xFFB45309),
         );
       case TableStandTheme.royalEmerald:
         return const StandThemeConfig(
           label: 'Royal Emerald & Mint',
           subtitle: 'Deep forest emerald with fresh mint accents',
-          headerGradient: [Color(0xFF064E3B), Color(0xFF047857)],
-          cardBg: Colors.white,
-          tableBadgeBg: Color(0xFF10B981),
-          tableBadgeText: Colors.white,
-          qrBorderColor: Color(0xFF059669),
+          backgroundGradient: [Color(0xFF064E3B), Color(0xFF047857)],
+          buttonGradient: [Color(0xFF059669), Color(0xFF10B981)],
           qrEyeColor: Color(0xFF064E3B),
           qrDataColor: Color(0xFF064E3B),
-          bodyTextColor: Color(0xFF0F172A),
-          subTextColor: Color(0xFF475569),
           accentPillBg: Color(0xFFECFDF5),
           accentPillText: Color(0xFF047857),
         );
-      case TableStandTheme.sapphireBlue:
+      case TableStandTheme.crimsonRuby:
         return const StandThemeConfig(
-          label: 'Sapphire Blue & Cyan',
-          subtitle: 'Cobalt electric blue with neon cyan accents',
-          headerGradient: [Color(0xFF0F172A), Color(0xFF1D4ED8)],
-          cardBg: Colors.white,
-          tableBadgeBg: Color(0xFF0284C7),
-          tableBadgeText: Colors.white,
-          qrBorderColor: Color(0xFF2563EB),
-          qrEyeColor: Color(0xFF1E3A8A),
-          qrDataColor: Color(0xFF0F172A),
-          bodyTextColor: Color(0xFF0F172A),
-          subTextColor: Color(0xFF475569),
-          accentPillBg: Color(0xFFEFF6FF),
-          accentPillText: Color(0xFF1D4ED8),
-        );
-      case TableStandTheme.sunsetAmber:
-        return const StandThemeConfig(
-          label: 'Sunset Terracotta & Amber',
-          subtitle: 'Fiery warm terracotta with sunburst yellow',
-          headerGradient: [Color(0xFF7C2D12), Color(0xFFEA580C)],
-          cardBg: Colors.white,
-          tableBadgeBg: Color(0xFFFBBF24),
-          tableBadgeText: Color(0xFF431407),
-          qrBorderColor: Color(0xFFEA580C),
-          qrEyeColor: Color(0xFF7C2D12),
-          qrDataColor: Color(0xFF431407),
-          bodyTextColor: Color(0xFF0F172A),
-          subTextColor: Color(0xFF475569),
-          accentPillBg: Color(0xFFFFF7ED),
-          accentPillText: Color(0xFFC2410C),
-        );
-      case TableStandTheme.midnightGold:
-        return const StandThemeConfig(
-          label: 'Midnight Obsidian & 24K Gold',
-          subtitle: 'Ultra-luxurious dark mode with glowing gold',
-          headerGradient: [Color(0xFF090D16), Color(0xFF1E293B)],
-          cardBg: Color(0xFF0B1120),
-          tableBadgeBg: Color(0xFFF59E0B),
-          tableBadgeText: Color(0xFF0A0F1D),
-          qrBorderColor: Color(0xFFF59E0B),
-          qrEyeColor: Color(0xFF0A0F1D),
-          qrDataColor: Color(0xFF0A0F1D),
-          bodyTextColor: Color(0xFFF8FAFC),
-          subTextColor: Color(0xFF94A3B8),
-          accentPillBg: Color(0xFF1E293B),
-          accentPillText: Color(0xFFF59E0B),
-          isDarkCard: true,
-        );
-      case TableStandTheme.modernClean:
-        return const StandThemeConfig(
-          label: 'Modern Clean Studio',
-          subtitle: 'High contrast electric blue and crisp white',
-          headerGradient: [Color(0xFF0052FF), Color(0xFF3B82F6)],
-          cardBg: Colors.white,
-          tableBadgeBg: Color(0xFF0052FF),
-          tableBadgeText: Colors.white,
-          qrBorderColor: Color(0xFF0052FF),
-          qrEyeColor: Color(0xFF051C48),
-          qrDataColor: Color(0xFF0F172A),
-          bodyTextColor: Color(0xFF0F172A),
-          subTextColor: Color(0xFF475569),
-          accentPillBg: Color(0xFFEEF2FF),
-          accentPillText: Color(0xFF0052FF),
+          label: 'Crimson Ruby Wine',
+          subtitle: 'Luxurious ruby wine with warm gold accents',
+          backgroundGradient: [Color(0xFF881337), Color(0xFFBE123C)],
+          buttonGradient: [Color(0xFFBE123C), Color(0xFFF43F5E)],
+          qrEyeColor: Color(0xFF881337),
+          qrDataColor: Color(0xFF4C0519),
+          accentPillBg: Color(0xFFFFF1F2),
+          accentPillText: Color(0xFFBE123C),
         );
     }
   }
 
-  /// Profile logo resolver with flawless offline / network / monogram fallback
+  /// Authoritative dynamic logo resolution across all database fallbacks
+  String _resolveEffectiveLogo() {
+    final compLogo = _db.companyLogoPath?.trim();
+    final restLogo = _db.restaurant?.logoUrl?.trim();
+    final userLogo = _db.currentUser?.profilePhotoPath?.trim();
+    final ownerLogo = _db.cachedOwnerUser?.profilePhotoPath?.trim();
+
+    if (compLogo != null && compLogo.isNotEmpty && compLogo != 'assets/images/logo.png' && compLogo != 'none') {
+      return compLogo;
+    }
+    if (restLogo != null && restLogo.isNotEmpty && restLogo != 'assets/images/logo.png' && restLogo != 'none') {
+      return restLogo;
+    }
+    if (userLogo != null && userLogo.isNotEmpty && userLogo != 'assets/images/logo.png' && userLogo != 'none') {
+      return userLogo;
+    }
+    if (ownerLogo != null && ownerLogo.isNotEmpty && ownerLogo != 'assets/images/logo.png' && ownerLogo != 'none') {
+      return ownerLogo;
+    }
+    return '';
+  }
+
+  /// Profile logo resolver with dynamic database sources, Base64, network URL,
+  /// local file, assets, and monogram fallback
   Widget _buildProfileLogoWidget({
     required double size,
     required Color borderColor,
     double borderWidth = 2.0,
     bool isCircular = true,
   }) {
-    final logoPath = _db.companyLogoPath ?? _restaurant?.logoUrl;
-    final restName = _restaurant?.name.trim() ?? 'AP';
-    final initial = restName.isNotEmpty ? restName[0].toUpperCase() : 'A';
+    final effectiveLogo = _resolveEffectiveLogo();
+    final displayName = _restaurantName;
+    final initial = displayName.trim().isNotEmpty ? displayName.trim()[0].toUpperCase() : 'P';
 
-    final fallback = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: isCircular ? null : BorderRadius.circular(size * 0.2),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0052FF), Color(0xFF4338CA)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          initial,
-          style: TextStyle(
-            fontSize: size * 0.46,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-          ),
-        ),
-      ),
-    );
-
-    if (logoPath == null || logoPath.trim().isEmpty || logoPath.contains('assets/images/logo.png')) {
+    Widget buildInitialFallback() {
       return Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
           shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
-          borderRadius: isCircular ? null : BorderRadius.circular(size * 0.2),
-          border: Border.all(color: borderColor, width: borderWidth),
+          borderRadius: isCircular ? null : BorderRadius.circular(size * 0.22),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0052FF), Color(0xFF051C48)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-        child: ClipRRect(
-          borderRadius: isCircular ? BorderRadius.circular(size) : BorderRadius.circular(size * 0.2),
-          child: fallback,
+        alignment: Alignment.center,
+        child: Text(
+          initial,
+          style: TextStyle(
+            fontSize: size * 0.44,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+          ),
         ),
       );
     }
 
-    final clean = logoPath.trim();
-    Widget imageWidget;
-    if (clean.startsWith('http://') || clean.startsWith('https://')) {
-      imageWidget = Image.network(
-        clean,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => fallback,
-      );
-    } else if (clean.startsWith('assets/')) {
-      imageWidget = Image.asset(
-        clean,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => fallback,
-      );
+    Widget imageContent;
+
+    if (effectiveLogo.isEmpty) {
+      imageContent = buildInitialFallback();
     } else {
-      final file = File(clean);
-      if (file.existsSync()) {
-        imageWidget = Image.file(
-          file,
+      final trimmed = effectiveLogo;
+
+      // 1. Base64 / Data URI image
+      if (trimmed.startsWith('data:image') ||
+          trimmed.startsWith('data:') ||
+          (trimmed.length > 80 && !trimmed.startsWith('/') && !trimmed.startsWith('assets') && !trimmed.startsWith('http'))) {
+        try {
+          Uint8List? bytes = _base64Cache[trimmed];
+          if (bytes == null) {
+            final commaIdx = trimmed.indexOf(',');
+            final clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
+            bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+            _base64Cache[trimmed] = bytes;
+          }
+          imageContent = Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (context, error, stackTrace) => buildInitialFallback(),
+          );
+        } catch (_) {
+          imageContent = buildInitialFallback();
+        }
+      } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        // 2. HTTP / HTTPS Network image
+        final resolvedUrl = ApiEndpoints.resolveMediaUrl(trimmed);
+        imageContent = Image.network(
+          resolvedUrl.isNotEmpty ? resolvedUrl : trimmed,
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => fallback,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (context, error, stackTrace) => buildInitialFallback(),
+        );
+      } else if (trimmed.startsWith('assets/')) {
+        // 3. Asset Image
+        imageContent = Image.asset(
+          trimmed,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (context, error, stackTrace) => buildInitialFallback(),
         );
       } else {
-        imageWidget = fallback;
+        // 4. File on disk / Relative path resolved via ApiEndpoints
+        if (!kIsWeb) {
+          try {
+            final f = File(trimmed);
+            if (f.existsSync()) {
+              imageContent = Image.file(
+                f,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (context, error, stackTrace) => buildInitialFallback(),
+              );
+            } else {
+              final resolved = ApiEndpoints.resolveMediaUrl(trimmed);
+              if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+                imageContent = Image.network(
+                  resolved,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (context, error, stackTrace) => buildInitialFallback(),
+                );
+              } else {
+                imageContent = buildInitialFallback();
+              }
+            }
+          } catch (_) {
+            imageContent = buildInitialFallback();
+          }
+        } else {
+          final resolved = ApiEndpoints.resolveMediaUrl(trimmed);
+          if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+            imageContent = Image.network(
+              resolved,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (context, error, stackTrace) => buildInitialFallback(),
+            );
+          } else {
+            imageContent = buildInitialFallback();
+          }
+        }
       }
     }
 
@@ -363,8 +516,8 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
       height: size,
       decoration: BoxDecoration(
         shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: isCircular ? null : BorderRadius.circular(size * 0.2),
-        border: Border.all(color: borderColor, width: borderWidth),
+        borderRadius: isCircular ? null : BorderRadius.circular(size * 0.22),
+        border: borderWidth > 0 ? Border.all(color: borderColor, width: borderWidth) : null,
         color: Colors.white,
         boxShadow: [
           BoxShadow(
@@ -375,8 +528,71 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: isCircular ? BorderRadius.circular(size) : BorderRadius.circular(size * 0.2),
-        child: imageWidget,
+        borderRadius: isCircular ? BorderRadius.circular(size) : BorderRadius.circular(size * 0.22),
+        child: imageContent,
+      ),
+    );
+  }
+
+  /// Standee background renderer supporting custom image / preset image / gradient fallback
+  Widget _buildStandeeBackground(StandThemeConfig cfg) {
+    if (_customStandeeBg != null && _customStandeeBg!.trim().isNotEmpty) {
+      final bg = _customStandeeBg!.trim();
+      Widget img;
+      if (bg.startsWith('http://') || bg.startsWith('https://')) {
+        img = Image.network(
+          bg,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildGradientFallback(cfg),
+        );
+      } else if (bg.startsWith('data:image') || bg.startsWith('data:')) {
+        try {
+          final commaIdx = bg.indexOf(',');
+          final clean = commaIdx != -1 ? bg.substring(commaIdx + 1) : bg;
+          final bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          img = Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildGradientFallback(cfg),
+          );
+        } catch (_) {
+          img = _buildGradientFallback(cfg);
+        }
+      } else if (bg.startsWith('assets/')) {
+        img = Image.asset(
+          bg,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildGradientFallback(cfg),
+        );
+      } else if (!kIsWeb) {
+        final f = File(bg);
+        if (f.existsSync()) {
+          img = Image.file(
+            f,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildGradientFallback(cfg),
+          );
+        } else {
+          img = _buildGradientFallback(cfg);
+        }
+      } else {
+        img = _buildGradientFallback(cfg);
+      }
+
+      return SizedBox.expand(child: img);
+    }
+
+    return _buildGradientFallback(cfg);
+  }
+
+  Widget _buildGradientFallback(StandThemeConfig cfg) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: cfg.backgroundGradient,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
       ),
     );
   }
@@ -411,7 +627,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
       }
 
       final tCode = _formatTableCode(table.tableNumber);
-      final fileName = 'Table_${tCode}_QR_Order.png';
+      final fileName = 'Table_${tCode}_Standee_QR.png';
 
       if (!kIsWeb) {
         final dir = await getApplicationDocumentsDirectory();
@@ -428,7 +644,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                   Expanded(
                     child: Text(
                       'Saved $fileName to device storage',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
@@ -438,7 +654,10 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
               action: SnackBarAction(
                 label: 'Share',
                 textColor: Colors.white,
-                onPressed: () => SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'Scan to order at ${table.name}')),
+                onPressed: () => SharePlus.instance.share(ShareParams(
+                  files: [XFile(file.path)],
+                  text: 'Scan to order at $_restaurantName - ${table.name}',
+                )),
               ),
             ),
           );
@@ -446,7 +665,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
       } else {
         await SharePlus.instance.share(ShareParams(
           files: [XFile.fromData(bytes, name: fileName, mimeType: 'image/png')],
-          text: 'Table $tCode QR Code',
+          text: 'Table $tCode QR Standee - $_restaurantName',
         ));
       }
     } catch (e) {
@@ -466,11 +685,12 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
         bytes = await _captureWidgetImage(key);
       }
 
-      final restName = _restaurant?.name ?? 'Restaurant';
-      final shareText = '🍽️ $restName - ${table.name} ($tCode)\nScan to view our digital menu and order directly from your table:\n$directUrl';
+      final shareText = '🍽️ $_restaurantName - ${table.name} ($tCode)\n'
+          'Scan our table QR to view our digital menu and order directly from your table:\n$directUrl';
+
       if (bytes != null && !kIsWeb) {
         final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/Table_${tCode}_QR.png');
+        final file = File('${dir.path}/Table_${tCode}_Standee.png');
         await file.writeAsBytes(bytes);
         await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: shareText));
       } else {
@@ -496,7 +716,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
           final bytes = await _captureWidgetImage(key);
           if (bytes != null) {
             final tCode = _formatTableCode(table.tableNumber);
-            final fileName = 'Table_${tCode}_Stand.png';
+            final fileName = 'Table_${tCode}_Standee.png';
             if (!kIsWeb) {
               final dir = await getApplicationDocumentsDirectory();
               final file = File('${dir.path}/$fileName');
@@ -517,19 +737,22 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Downloaded $successCount Table QR stand cards successfully!',
+                    'Downloaded $successCount Table QR standees successfully!',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
             ),
-            backgroundColor: const Color(0xFF0052FF),
+            backgroundColor: _blueBrand,
             behavior: SnackBarBehavior.floating,
             action: filesToShare.isNotEmpty
                 ? SnackBarAction(
                     label: 'Share All',
                     textColor: Colors.white,
-                    onPressed: () => SharePlus.instance.share(ShareParams(files: filesToShare, text: 'All Table QR Stands - ${_restaurant?.name}')),
+                    onPressed: () => SharePlus.instance.share(ShareParams(
+                      files: filesToShare,
+                      text: 'All Table QR Stands - $_restaurantName',
+                    )),
                   )
                 : null,
           ),
@@ -548,8 +771,8 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Copied $label to clipboard: $text'),
-        backgroundColor: const Color(0xFF051C48),
+        content: Text('Copied $label to clipboard'),
+        backgroundColor: _navyBrand,
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ),
@@ -576,12 +799,13 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.table_restaurant_rounded, color: Color(0xFF0052FF)),
+            Icon(Icons.table_restaurant_rounded, color: _blueBrand),
             SizedBox(width: 10),
-            Text('Configure Total Tables', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text('Configure Active Tables', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _textDark)),
           ],
         ),
         content: Column(
@@ -590,7 +814,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
           children: [
             const Text(
               'Enter the total number of dining tables available at your outlet. Only tables up to this count will be generated and accessible by customers.',
-              style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+              style: TextStyle(fontSize: 13, color: _textMuted),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -600,8 +824,12 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
               decoration: InputDecoration(
                 labelText: 'Total Tables',
                 hintText: 'e.g. 20',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                prefixIcon: const Icon(Icons.pin_rounded),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _blueBrand, width: 2)),
+                prefixIcon: const Icon(Icons.pin_rounded, color: _blueBrand),
               ),
             ),
           ],
@@ -609,7 +837,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+            child: const Text('Cancel', style: TextStyle(color: _textMuted, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -632,9 +860,10 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0052FF),
+              backgroundColor: _blueBrand,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             ),
             child: const Text('Save Count', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
@@ -643,93 +872,466 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     );
   }
 
+  /// Bottom Sheet to customize Standee Background Image across ALL Table QRs
+  void _showBackgroundSelectorModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top drag handle
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Title and Close Button
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.wallpaper_rounded, color: _blueBrand, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Standee Background Image',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                              color: _textDark,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Changes background across all table standees',
+                            style: TextStyle(fontSize: 12, color: _textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: _textMuted),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // Device Gallery / Camera & Reset Buttons
+                Row(
+                  children: [
+                    // Upload from Device
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          try {
+                            final picker = ImagePicker();
+                            final XFile? picked = await picker.pickImage(
+                              source: ImageSource.gallery,
+                              maxWidth: 1200,
+                              maxHeight: 1600,
+                              imageQuality: 88,
+                            );
+                            if (picked != null) {
+                              await _updateStandeeBackground(picked.path);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Custom background applied to all table standees!'),
+                                    backgroundColor: Color(0xFF10B981),
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            debugPrint('[TableQrDownloadScreen] Pick image error: $e');
+                          }
+                        },
+                        icon: const Icon(Icons.add_photo_alternate_rounded, size: 16),
+                        label: const Text('Pick from Gallery', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _navyBrand,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Reset to Theme Gradient
+                    OutlinedButton.icon(
+                      onPressed: _customStandeeBg == null
+                          ? null
+                          : () async {
+                              await _updateStandeeBackground(null);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Reset to theme gradient!'),
+                                    backgroundColor: _navyBrand,
+                                  ),
+                                );
+                              }
+                            },
+                      icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                      label: const Text('Reset', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFEF4444),
+                        side: BorderSide(
+                          color: _customStandeeBg == null ? const Color(0xFFE2E8F0) : const Color(0xFFFCA5A5),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                const Text(
+                  'OR CHOOSE CURATED RESTAURANT AMBIANCE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: _textMuted,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Curated Presets Grid
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: _ambiancePresets.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 10),
+                    itemBuilder: (ctx, idx) {
+                      final preset = _ambiancePresets[idx];
+                      final isSelected = _customStandeeBg == preset.imageUrl;
+
+                      return InkWell(
+                        onTap: () async {
+                          await _updateStandeeBackground(preset.imageUrl);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Applied "${preset.name}" background to all standees!'),
+                                backgroundColor: const Color(0xFF10B981),
+                              ),
+                            );
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected ? _blueBrand : const Color(0xFFE2E8F0),
+                              width: isSelected ? 2.0 : 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              // Preset Thumbnail
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: SizedBox(
+                                  width: 64,
+                                  height: 64,
+                                  child: Image.network(
+                                    preset.imageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      color: const Color(0xFF0F172A),
+                                      child: const Icon(Icons.restaurant_rounded, color: Colors.white, size: 24),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+
+                              // Info
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            preset.name,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              color: isSelected ? _blueBrand : _textDark,
+                                            ),
+                                          ),
+                                        ),
+                                        if (isSelected)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: _blueBrand,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: const Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.check_rounded, color: Colors.white, size: 12),
+                                                SizedBox(width: 3),
+                                                Text(
+                                                  'Active',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      preset.description,
+                                      style: const TextStyle(fontSize: 11.5, color: _textMuted),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _initKeys();
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF0B132B) : const Color(0xFFEEF2F6);
-    final cardBgColor = isDark ? const Color(0xFF1C2541) : Colors.white;
-    final textDark = isDark ? Colors.white : const Color(0xFF0F172A);
-    final textMuted = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
 
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF101B3B) : Colors.white,
-        elevation: 0.5,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Table QR Ordering Hub',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: textDark,
-                letterSpacing: -0.3,
+      backgroundColor: _bgCanvas,
+      // RESPONSIVE APPBAR MATCHING POS SCREEN (ZERO HORIZONTAL OVERFLOW)
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(62),
+        child: Container(
+          decoration: BoxDecoration(
+            color: _surface,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFC5D1E0).withValues(alpha: 0.5),
+                offset: const Offset(0, 2),
+                blurRadius: 6,
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'apnaposs.vercel.app/$_companySlug/R=$_restaurantCode&T=T01',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF0052FF),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ElevatedButton.icon(
-              onPressed: _isDownloadingAll ? null : _downloadAllTableQrs,
-              icon: _isDownloadingAll
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.download_rounded, size: 18),
-              label: Text(
-                _isDownloadingAll ? 'Saving...' : 'Download All',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0052FF),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  // Back Button with Soft Neumorphic Raised Effect
+                  InkWell(
+                    onTap: () => Navigator.pop(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _surface,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: _neumorphicRaised,
+                      ),
+                      child: const Icon(Icons.arrow_back_rounded, color: _textDark, size: 20),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+
+                  // Dynamic Restaurant Logo Emblem
+                  _buildProfileLogoWidget(
+                    size: 36,
+                    borderColor: _blueBrand,
+                    borderWidth: 1.5,
+                    isCircular: true,
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Title & Table Count Info
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _restaurantName,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            color: _textDark,
+                            letterSpacing: -0.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          'Table QR Standees',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 6),
+
+                  // Compact Table Count Config Pill (Matching POS screen actions)
+                  InkWell(
+                    onTap: _showEditTableCountDialog,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: _surface,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: _neumorphicRaised,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.table_restaurant_rounded, size: 14, color: _navyBrand),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$_maxTableCount',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _navyBrand,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  // Download All Button (Vibrant Blue Pill matching POS)
+                  InkWell(
+                    onTap: _isDownloadingAll ? null : _downloadAllTableQrs,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 11),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0052FF), Color(0xFF2563EB)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0052FF).withValues(alpha: 0.35),
+                            offset: const Offset(0, 2),
+                            blurRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isDownloadingAll)
+                            const SizedBox(
+                              width: 13,
+                              height: 13,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          else
+                            const Icon(Icons.download_rounded, size: 15, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Text(
+                            _isDownloadingAll ? 'Saving...' : 'Download All',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. TOP HERO CARD: STOREFRONT & TABLE LIMIT GUARD
-            _buildStorefrontBannerCard(cardBgColor, textDark, textMuted),
+            // 1. NEUMORPHIC SEARCH & CONTROLS (FULL VISIBILITY OF OPTION TEXTS)
+            _buildNeumorphicFilterAndThemeBar(),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // 2. THEME & FLOOR FILTER CONTROLS
-            _buildFilterAndThemeBar(cardBgColor, textDark, textMuted),
-
-            const SizedBox(height: 20),
-
-            // 3. TABLE QR CARDS GRID
+            // 2. DESIGNER TABLE QR CARDS GRID (WITH CUSTOM BACKGROUND SUPPORT)
             if (_filteredTables.isEmpty)
-              _buildEmptyState(cardBgColor, textDark, textMuted)
+              _buildEmptyState()
             else
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -743,7 +1345,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                     children: _filteredTables.map((table) {
                       return SizedBox(
                         width: itemWidth,
-                        child: _buildTableCard(table, cardBgColor, textDark, textMuted),
+                        child: _buildDesignerTableCard(table),
                       );
                     }).toList(),
                   );
@@ -756,249 +1358,139 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     );
   }
 
-  Widget _buildStorefrontBannerCard(Color cardBg, Color textDark, Color textMuted) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 15,
-            offset: const Offset(0, 4),
+  /// Neumorphic Filter and Theme Bar with full text visibility and background customization
+  Widget _buildNeumorphicFilterAndThemeBar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Full Width Sunken Search Bar (Never truncated)
+        Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8EEF5),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: _neumorphicSunken,
+            border: Border.all(color: const Color(0xFFD6E2F0), width: 1.0),
           ),
-        ],
-        border: Border.all(color: const Color(0xFF0052FF).withValues(alpha: 0.12), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+          child: TextField(
+            onChanged: (v) => setState(() => _searchQuery = v),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _textDark),
+            decoration: InputDecoration(
+              hintText: 'Search table (e.g. 01, Table 5)...',
+              hintStyle: const TextStyle(fontSize: 12.5, color: _textMuted),
+              prefixIcon: const Icon(Icons.search_rounded, size: 18, color: _textMuted),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 16, color: _textMuted),
+                      onPressed: () => setState(() => _searchQuery = ''),
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 11),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // Standee Options Row: Theme Dropdown + Standee Background Button
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
             children: [
-              _buildProfileLogoWidget(
-                size: 50,
-                borderColor: const Color(0xFF0052FF),
-                borderWidth: 2,
-                isCircular: true,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _restaurant?.name.toUpperCase() ?? 'RESTAURANT',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: textDark,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+              // 1. Standee Background Image Button (Applies across all QRs)
+              InkWell(
+                onTap: _showBackgroundSelectorModal,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: _customStandeeBg != null ? const Color(0xFF0F2B48) : _surface,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: _neumorphicRaised,
+                    border: Border.all(
+                      color: _customStandeeBg != null ? Colors.transparent : Colors.white,
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.wallpaper_rounded,
+                        size: 16,
+                        color: _customStandeeBg != null ? const Color(0xFF38BDF8) : _blueBrand,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _customStandeeBg != null ? 'Custom Background Active' : 'Standee Background',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: _customStandeeBg != null ? Colors.white : _textDark,
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'ONLINE LIVE',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF10B981),
-                            ),
-                          ),
+                      ),
+                      if (_customStandeeBg != null) ...[
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => _updateStandeeBackground(null),
+                          child: const Icon(Icons.close_rounded, size: 14, color: Colors.white70),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'When customers scan any table QR, the menu opens instantly with that dining table pre-selected.',
-                      style: TextStyle(fontSize: 13, color: textMuted),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              // 2. Stand Theme Selector Dropdown
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: _surface,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: _neumorphicRaised,
+                  border: Border.all(color: Colors.white, width: 1.0),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<TableStandTheme>(
+                    value: _currentTheme,
+                    icon: const Icon(Icons.palette_rounded, size: 16, color: _blueBrand),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _textDark),
+                    onChanged: (val) {
+                      if (val != null) setState(() => _currentTheme = val);
+                    },
+                    items: TableStandTheme.values.map((t) {
+                      final cfg = _getThemeConfig(t);
+                      return DropdownMenuItem(
+                        value: t,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(colors: cfg.backgroundGradient),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(cfg.label),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-
-          // Table Limit Guard Pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFECFDF5),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFA7F3D0)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.security_rounded, color: Color(0xFF059669), size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF065F46)),
-                      children: [
-                        const TextSpan(text: 'Table Limit Guard: ', style: TextStyle(fontWeight: FontWeight.w800)),
-                        TextSpan(
-                          text: '$_maxTableCount Tables Active (T01 – T${_maxTableCount.toString().padLeft(2, "0")}). ',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const TextSpan(
-                          text: 'Links for tables beyond this count (e.g. Table 21+) are strictly blocked.',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _showEditTableCountDialog,
-                  icon: const Icon(Icons.edit_rounded, size: 14, color: Color(0xFF059669)),
-                  label: const Text('Edit Count', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Base Link
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.link_rounded, color: Color(0xFF0052FF), size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'https://apnaposs.vercel.app/$_companySlug/R=$_restaurantCode&T={T01..T${_maxTableCount.toString().padLeft(2, "0")}}',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Copy Storefront Link',
-                  icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF64748B)),
-                  onPressed: () => _copyToClipboard(
-                    'https://apnaposs.vercel.app/$_companySlug',
-                    'Base Storefront Link',
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Open Web Menu in Browser',
-                  icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Color(0xFF0052FF)),
-                  onPressed: () async {
-                    final uri = Uri.parse('https://apnaposs.vercel.app/$_companySlug');
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterAndThemeBar(Color cardBg, Color textDark, Color textMuted) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            // Search Input
-            Expanded(
-              flex: 2,
-              child: Container(
-                height: 44,
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-                ),
-                child: TextField(
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                  decoration: InputDecoration(
-                    hintText: 'Search table (e.g. 01, Table 5)...',
-                    hintStyle: TextStyle(fontSize: 13, color: textMuted),
-                    prefixIcon: Icon(Icons.search_rounded, size: 18, color: textMuted),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-
-            // Stand Theme Dropdown
-            Container(
-              height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<TableStandTheme>(
-                  value: _currentTheme,
-                  icon: const Icon(Icons.palette_outlined, size: 18, color: Color(0xFF0052FF)),
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textDark),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _currentTheme = val);
-                  },
-                  items: TableStandTheme.values.map((t) {
-                    final cfg = _getThemeConfig(t);
-                    return DropdownMenuItem(
-                      value: t,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(colors: cfg.headerGradient),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(cfg.label),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // Floor Filter Chips
+        // Floor Filter Chips with Smooth Neumorphic Styling
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -1006,22 +1498,35 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
               final isSelected = _selectedFloor == floor;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  label: Text(floor == 'All' ? 'All Tables ($_maxTableCount)' : floor),
-                  selected: isSelected,
-                  onSelected: (_) => setState(() => _selectedFloor = floor),
-                  selectedColor: const Color(0xFF0052FF).withValues(alpha: 0.15),
-                  checkmarkColor: const Color(0xFF0052FF),
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                    color: isSelected ? const Color(0xFF0052FF) : textDark,
-                  ),
-                  backgroundColor: cardBg,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(
-                      color: isSelected ? const Color(0xFF0052FF) : Colors.grey.withValues(alpha: 0.2),
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedFloor = floor),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isSelected ? _blueBrand : _surface,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: _blueBrand.withValues(alpha: 0.4),
+                                offset: const Offset(0, 3),
+                                blurRadius: 6,
+                              ),
+                            ]
+                          : _neumorphicRaised,
+                      border: Border.all(
+                        color: isSelected ? Colors.transparent : Colors.white.withValues(alpha: 0.8),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      floor == 'All' ? 'All Tables ($_maxTableCount)' : floor,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+                        color: isSelected ? Colors.white : _textDark,
+                      ),
                     ),
                   ),
                 ),
@@ -1033,404 +1538,388 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     );
   }
 
-  Widget _buildTableCard(TableModel table, Color cardBg, Color textDark, Color textMuted) {
+  /// Designer Table Card with removed link text and neat controls
+  Widget _buildDesignerTableCard(TableModel table) {
     final keyId = 'table_${table.id}_${table.tableNumber}';
     final cardKey = _cardKeys.putIfAbsent(keyId, () => GlobalKey());
     final directUrl = _buildTableDirectUrl(table.tableNumber);
-    final displayUrl = _buildTableDisplayUrl(table.tableNumber);
     final tCode = _formatTableCode(table.tableNumber);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 1. VISUAL REPAINT BOUNDARY: EXACT PHYSICAL STAND TO PRINT / DOWNLOAD
-          RepaintBoundary(
-            key: cardKey,
-            child: _buildPhysicalStandWidget(table, tCode, directUrl, displayUrl),
-          ),
-
-          // 2. CARD CONTROLS / ACTION BUTTONS
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              children: [
-                // Quick info & Direct URL
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        displayUrl,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0052FF),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.copy_rounded, size: 16),
-                      tooltip: 'Copy Link',
-                      onPressed: () => _copyToClipboard(directUrl, 'Table $tCode QR Link'),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.visibility_outlined, size: 16, color: Color(0xFF00897B)),
-                      tooltip: 'Preview Customer Web Screen',
-                      onPressed: () => _openStorefrontPreview(table),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Action buttons: Download, Share
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _downloadTableQrImage(table),
-                        icon: const Icon(Icons.download_rounded, size: 16),
-                        label: const Text('Download', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF051C48),
-                          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _shareTableQr(table),
-                        icon: const Icon(Icons.share_rounded, size: 16),
-                        label: const Text('Share', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0052FF),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Physical Table Tent Stand preview (rendered to PNG on download / print)
-  Widget _buildPhysicalStandWidget(
-    TableModel table,
-    String tCode,
-    String directUrl,
-    String displayUrl,
-  ) {
     final cfg = _getThemeConfig(_currentTheme);
 
     return Container(
       decoration: BoxDecoration(
-        color: cfg.cardBg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        color: _surface,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: _neumorphicRaised,
+        border: Border.all(color: Colors.white, width: 1.5),
       ),
+      padding: const EdgeInsets.all(12),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. TOP HEADER BANNER (Vibrant Theme Gradient + Profile Logo + Store Name)
+          // 1. REPAINT BOUNDARY: STYLISH STAND CARD (WITH RESTAURANT BACKGROUND IMAGE)
+          RepaintBoundary(
+            key: cardKey,
+            child: _buildDesignerStandWidget(table, tCode, directUrl, cfg),
+          ),
+
+          const SizedBox(height: 12),
+
+          // 2. PRIMARY ACTION: DOWNLOAD QR STANDEE
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            height: 42,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: cfg.headerGradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                colors: cfg.buttonGradient,
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
               ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-            ),
-            child: Row(
-              children: [
-                // Profile Logo Avatar
-                _buildProfileLogoWidget(
-                  size: 46,
-                  borderColor: Colors.white,
-                  borderWidth: 2.0,
-                  isCircular: true,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _restaurant?.name.toUpperCase() ?? 'RESTAURANT',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.1,
-                          color: Colors.white,
-                          height: 1.15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _restaurant?.tagline.isNotEmpty == true
-                            ? _restaurant!.tagline
-                            : 'SCAN TO ORDER AT YOUR TABLE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
-                          color: Colors.white.withValues(alpha: 0.85),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: cfg.buttonGradient.first.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
-          ),
-
-          // 2. MAIN STAND BODY
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            child: Column(
-              children: [
-                // Vibrant Table Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: cfg.tableBadgeBg,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cfg.tableBadgeBg.withValues(alpha: 0.35),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _downloadTableQrImage(table),
+                child: const Center(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.table_restaurant_rounded, size: 18, color: cfg.tableBadgeText),
-                      const SizedBox(width: 6),
+                      Icon(Icons.download_rounded, color: Colors.white, size: 17),
+                      SizedBox(width: 8),
                       Text(
-                        'TABLE $tCode',
+                        'Download QR',
                         style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.0,
-                          color: cfg.tableBadgeText,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: cfg.tableBadgeText.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          table.floor.isNotEmpty ? table.floor : 'Ground Floor',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: cfg.tableBadgeText,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Scannable QR Code Frame with Centered Embedded Profile Logo
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: cfg.qrBorderColor.withValues(alpha: 0.6), width: 2.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // QR Code with highest error correction for logo overlay tolerance
-                      QrImageView(
-                        data: directUrl,
-                        version: QrVersions.auto,
-                        size: 175,
-                        gapless: true,
-                        errorCorrectionLevel: QrErrorCorrectLevel.H,
-                        eyeStyle: QrEyeStyle(
-                          eyeShape: QrEyeShape.square,
-                          color: cfg.qrEyeColor,
-                        ),
-                        dataModuleStyle: QrDataModuleStyle(
-                          dataModuleShape: QrDataModuleShape.square,
-                          color: cfg.qrDataColor,
-                        ),
-                      ),
-
-                      // Embedded Profile Logo in Center of QR Code
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
                           color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.22),
-                              blurRadius: 5,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(2.5),
-                        child: _buildProfileLogoWidget(
-                          size: 39,
-                          borderColor: cfg.qrBorderColor,
-                          borderWidth: 1.5,
-                          isCircular: true,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
-
-                // High Visibility Callout
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.camera_alt_rounded, size: 16, color: cfg.qrBorderColor),
-                    const SizedBox(width: 6),
-                    Text(
-                      'POINT CAMERA TO VIEW MENU & ORDER',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                        color: cfg.bodyTextColor,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'No app download required • Orders go directly to the kitchen',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: cfg.subTextColor,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-
-                // Monospace URL Pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: cfg.accentPillBg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    displayUrl,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: cfg.accentPillText,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Security & Brand Verification Footer
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Table ${table.tableNumber} of $_maxTableCount • Apna POS Verified Stand',
-                      style: TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w700,
-                        color: cfg.subTextColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
+
+          const SizedBox(height: 10),
+
+          // 3. SECONDARY CONTROLS (Share, Preview, Copy Link)
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: _surface,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: _neumorphicRaised,
+                  ),
+                  child: TextButton.icon(
+                    onPressed: () => _shareTableQr(table),
+                    icon: const Icon(Icons.share_rounded, size: 14, color: _navyBrand),
+                    label: const Text(
+                      'Share',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _navyBrand),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: _surface,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: _neumorphicRaised,
+                  ),
+                  child: TextButton.icon(
+                    onPressed: () => _openStorefrontPreview(table),
+                    icon: const Icon(Icons.visibility_outlined, size: 14, color: Color(0xFF0D9488)),
+                    label: const Text(
+                      'Preview',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0D9488)),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: _surface,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: _neumorphicRaised,
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.copy_rounded, size: 15, color: _blueBrand),
+                  tooltip: 'Copy Direct Link',
+                  onPressed: () => _copyToClipboard(directUrl, 'Table $tCode QR Link'),
+                ),
+              ),
+            ],
+          ),
+          // Link text removed completely per user request
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState(Color cardBg, Color textDark, Color textMuted) {
+  /// Designer Standee Widget (Matching Image 3 layout with background photo support)
+  Widget _buildDesignerStandWidget(
+    TableModel table,
+    String tCode,
+    String directUrl,
+    StandThemeConfig cfg,
+  ) {
+    final tableNumClean = table.tableNumber.toString().padLeft(2, '0');
+    final floorLabel = table.floor.isNotEmpty && table.floor != 'Ground Floor' ? ' • ${table.floor}' : '';
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
+          children: [
+            // 1. Standee Background: Curated Image or Theme Gradient
+            Positioned.fill(
+              child: _buildStandeeBackground(cfg),
+            ),
+
+            // 2. High-Contrast Dark Translucent Overlay (Ensures text & QR pop cleanly)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(
+                  alpha: _customStandeeBg != null ? 0.42 : 0.0,
+                ),
+              ),
+            ),
+
+            // 3. Foreground Standee Content
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top Capsule Badge: TABLE 01-A
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      'TABLE $tableNumClean$floorLabel',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Circular Emblem with crisp white border ring
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: _buildProfileLogoWidget(
+                        size: 55,
+                        borderColor: Colors.transparent,
+                        borderWidth: 0,
+                        isCircular: true,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // Restaurant Name
+                  Text(
+                    _restaurantName,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 0.4,
+                      shadows: [
+                        Shadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 1.5)),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Pure White Card Holding Sharp QR Code
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        QrImageView(
+                          data: directUrl,
+                          version: QrVersions.auto,
+                          size: 165,
+                          gapless: true,
+                          errorCorrectionLevel: QrErrorCorrectLevel.H,
+                          eyeStyle: QrEyeStyle(
+                            eyeShape: QrEyeShape.square,
+                            color: cfg.qrEyeColor,
+                          ),
+                          dataModuleStyle: QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.square,
+                            color: cfg.qrDataColor,
+                          ),
+                        ),
+                        // Branded micro logo badge in center of QR
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.all(2),
+                          child: _buildProfileLogoWidget(
+                            size: 34,
+                            borderColor: cfg.qrEyeColor,
+                            borderWidth: 1.2,
+                            isCircular: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // SCAN FOR MENU
+                  const Text(
+                    'SCAN FOR MENU',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(color: Colors.black54, blurRadius: 5, offset: Offset(0, 1.5)),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 3),
+
+                  // Powered by Apna POS
+                  Text(
+                    'Powered by Apna POS',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                      color: Colors.white.withValues(alpha: 0.85),
+                      shadows: const [
+                        Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 1)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
     return Container(
       padding: const EdgeInsets.all(40),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: cardBg,
+        color: _surface,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: _neumorphicRaised,
       ),
-      child: Column(
+      child: const Column(
         children: [
-          Icon(Icons.table_restaurant_outlined, size: 48, color: textMuted),
-          const SizedBox(height: 14),
+          Icon(Icons.table_restaurant_outlined, size: 48, color: _textMuted),
+          SizedBox(height: 14),
           Text(
             'No Tables Found',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textDark),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _textDark),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             'Try adjusting your search query or floor filter.',
-            style: TextStyle(fontSize: 13, color: textMuted),
+            style: TextStyle(fontSize: 13, color: _textMuted),
           ),
         ],
       ),

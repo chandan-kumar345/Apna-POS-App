@@ -4968,26 +4968,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                 ),
               ),
 
-              // 6. Table QR Codes
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const TableQrDownloadScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.table_restaurant_rounded, size: 13, color: Color(0xFF10B981)),
-                label: const Text('Table QR Codes', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF065F46))),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: const Color(0xFFECFDF5),
-                  side: const BorderSide(color: Color(0xFFA7F3D0)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
             ],
           ),
         ],

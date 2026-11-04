@@ -216,7 +216,7 @@ class LocalNotificationService with WidgetsBindingObserver {
           }
 
           SoundService.boostHardwareVolume();
-          SoundService.bringAppToFront();
+          SoundService.bringAppToFront(payload: jsonEncode(decoded), isUrgent: true);
           if (SplashScreen.isSplashActive) {
             debugPrint('[LocalNotificationService] ⏳ SplashScreen active. Queueing order payload for display post-splash.');
             _pendingIncomingOrderPayload = decoded;
@@ -275,6 +275,8 @@ class LocalNotificationService with WidgetsBindingObserver {
   /// Directly handle payload map from FCM or Socket background handlers
   static void handlePayloadDirectly(Map<String, dynamic> data, {bool autoAccept = false}) {
     try {
+      SoundService.boostHardwareVolume();
+      SoundService.bringAppToFront(payload: jsonEncode(data), isUrgent: true);
       _handleNotificationPayload(jsonEncode(data), autoAccept: autoAccept);
     } catch (e) {
       debugPrint('[LocalNotificationService] Error in handlePayloadDirectly: $e');

@@ -176,8 +176,16 @@ class StorefrontController {
       return ApiResponse.success(res, {
         restaurant,
         categories: categoryNames,
-        products,
-        addons,
+        products: products.map((p) => ({
+          ...p,
+          id: p._id ? p._id.toString() : (p.id || p.productId),
+          productId: p.productId || (p._id ? p._id.toString() : p.id),
+          variants: Array.isArray(p.variants) ? p.variants : [],
+        })),
+        addons: addons.map((a) => ({
+          ...a,
+          id: a._id ? a._id.toString() : a.id,
+        })),
         banners,
         table: tableInfo,
       }, 'Storefront loaded successfully');

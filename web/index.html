@@ -77,9 +77,115 @@
       box-shadow: 0 8px 24px -4px rgba(255, 87, 34, 0.4);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
+
+    /* Restaurant Pan Toss HTML Preloader */
+    #app-preloader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #EFF3F8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999999;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+    #app-preloader.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .loader-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 16px;
+      max-width: 320px;
+    }
+    .loader-img-box {
+      width: 175px;
+      height: 175px;
+      padding: 12px;
+      background: #FFFFFF;
+      border-radius: 24px;
+      border: 1.2px solid #E2E8F0;
+      box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .loader-gif {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 16px;
+    }
+    .loader-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+      color: #0F172A;
+      margin-bottom: 6px;
+    }
+    .loader-subtitle {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #64748B;
+      margin-bottom: 16px;
+    }
+    .loader-bar-wrap {
+      width: 130px;
+      height: 4px;
+      background: #E2E8F0;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .loader-bar-fill {
+      width: 40%;
+      height: 100%;
+      background: #FF5722;
+      border-radius: 4px;
+      position: absolute;
+      animation: loaderSlide 1.2s infinite ease-in-out;
+    }
+    @keyframes loaderSlide {
+      0% { left: -40%; }
+      50% { left: 40%; }
+      100% { left: 100%; }
+    }
   </style>
 </head>
 <body>
+  <div id="app-preloader">
+    <div class="loader-card">
+      <div class="loader-img-box">
+        <img src="restaurant_loader.gif" alt="Preparing Your Menu" class="loader-gif" onerror="this.style.display='none'" />
+      </div>
+      <div class="loader-title">Preparing Your Menu...</div>
+      <div class="loader-subtitle">Tossing fresh ingredients &amp; dishes</div>
+      <div class="loader-bar-wrap">
+        <div class="loader-bar-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function hidePreloader() {
+      const p = document.getElementById('app-preloader');
+      if (p && !p.classList.contains('fade-out')) {
+        p.classList.add('fade-out');
+        setTimeout(() => { if (p && p.parentNode) p.parentNode.removeChild(p); }, 450);
+      }
+    }
+    window.addEventListener('flutter-first-frame', hidePreloader);
+    // Safety fallback in case flutter-first-frame is missed or delayed
+    setTimeout(hidePreloader, 10000);
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

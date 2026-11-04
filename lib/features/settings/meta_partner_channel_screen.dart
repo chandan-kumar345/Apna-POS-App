@@ -2216,53 +2216,113 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
         const SizedBox(height: 12),
 
         // Live Metrics Row (Responsive, no overflow)
-        Row(
-          children: [
-            Expanded(
-              child: _buildMetricCard(
-                title: 'Quality Rating',
-                customValue: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF22C55E),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          _analytics?.qualityRating == 'GREEN' ? 'HIGH (Green)' : (_analytics?.qualityRating ?? 'HIGH (Green)'),
-                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isVeryNarrow = constraints.maxWidth < 320;
+            if (isVeryNarrow) {
+              return Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMetricCard(
+                          title: 'Quality Rating',
+                          customValue: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF22C55E),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    _analytics?.qualityRating == 'GREEN' ? 'HIGH (Green)' : (_analytics?.qualityRating ?? 'HIGH (Green)'),
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _buildMetricCard(
+                          title: 'Messaging Tier',
+                          textValue: _analytics?.messagingTier ?? '1K msgs/24h',
+                          valueColor: _NeumorphicTheme.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  _buildMetricCard(
+                    title: 'Display Name',
+                    textValue: 'Approved',
+                    valueColor: const Color(0xFF15803D),
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildMetricCard(
+                    title: 'Quality Rating',
+                    customValue: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF22C55E),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              _analytics?.qualityRating == 'GREEN' ? 'HIGH (Green)' : (_analytics?.qualityRating ?? 'HIGH (Green)'),
+                              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildMetricCard(
-                title: 'Messaging Tier',
-                textValue: _analytics?.messagingTier ?? '1K msgs/24h',
-                valueColor: _NeumorphicTheme.textDark,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildMetricCard(
-                title: 'Display Name',
-                textValue: 'Approved',
-                valueColor: const Color(0xFF15803D),
-              ),
-            ),
-          ],
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _buildMetricCard(
+                    title: 'Messaging Tier',
+                    textValue: _analytics?.messagingTier ?? '1K msgs/24h',
+                    valueColor: _NeumorphicTheme.textDark,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _buildMetricCard(
+                    title: 'Display Name',
+                    textValue: 'Approved',
+                    valueColor: const Color(0xFF15803D),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 12),
 
@@ -2593,7 +2653,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
     Color valueColor = _NeumorphicTheme.textDark,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -2601,16 +2661,27 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+              maxLines: 1,
+            ),
           ),
           const SizedBox(height: 3),
           customValue ??
-              Text(
-                textValue ?? '--',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: valueColor),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  textValue ?? '--',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: valueColor),
+                  maxLines: 1,
+                ),
               ),
         ],
       ),

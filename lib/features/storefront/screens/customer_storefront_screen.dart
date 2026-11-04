@@ -91,6 +91,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    final stopwatch = Stopwatch()..start();
     final data = await _service.loadStorefront(
       widget.slug,
       tableCode: _activeTableCode ?? widget.tableCode,
@@ -110,11 +111,17 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       } else if (widget.tableCode != null && widget.tableCode!.trim().isNotEmpty) {
         _activeTableCode = widget.tableCode;
       }
-      setState(() {
-        _data = data;
-        _deliveryAddress = data.restaurant.address.isNotEmpty ? data.restaurant.address : 'Sector 62, Noida';
-        _isLoading = false;
-      });
+      final elapsed = stopwatch.elapsedMilliseconds;
+      if (elapsed < 700) {
+        await Future.delayed(Duration(milliseconds: 700 - elapsed));
+      }
+      if (mounted) {
+        setState(() {
+          _data = data;
+          _deliveryAddress = data.restaurant.address.isNotEmpty ? data.restaurant.address : 'Sector 62, Noida';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -329,6 +336,24 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       return 'https://images.unsplash.com/photo-1509722747041-616f39b57569?auto=format&fit=crop&w=200&q=80';
     }
     return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=200&q=80';
+  }
+
+  String _getVariantBadgeLabel(List<ProductVariant> variants) {
+    final lowerNames = variants.map((v) => v.name.toLowerCase()).join(' ');
+    if (lowerNames.contains('size') ||
+        lowerNames.contains('small') ||
+        lowerNames.contains('medium') ||
+        lowerNames.contains('large') ||
+        lowerNames.contains('reg')) {
+      return '${variants.length} Sizes';
+    } else if (lowerNames.contains('half') || lowerNames.contains('full') || lowerNames.contains('quarter')) {
+      return '${variants.length} Portions';
+    } else if (lowerNames.contains('ml') || lowerNames.contains('ltr') || lowerNames.contains('liter')) {
+      return '${variants.length} Volumes';
+    } else if (lowerNames.contains('gm') || lowerNames.contains('kg')) {
+      return '${variants.length} Weights';
+    }
+    return '${variants.length} Options';
   }
 
   void _openCustomizationModal(MenuItemModel item) {
@@ -2014,7 +2039,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                         ],
                       ),
                       child: Text(
-                        '${item.variants.length} Sizes',
+                        _getVariantBadgeLabel(item.variants),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 8,

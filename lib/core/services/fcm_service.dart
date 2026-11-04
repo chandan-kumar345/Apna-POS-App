@@ -103,7 +103,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       }
       try {
         SoundService.boostHardwareVolume();
-        SoundService.bringAppToFront();
+        SoundService.bringAppToFront(payload: jsonEncode(data), isUrgent: true);
       } catch (_) {}
     }
 
@@ -304,7 +304,7 @@ class FcmService {
     // If order alert received, directly trigger the action screen
     if (isOrder) {
       SoundService.boostHardwareVolume();
-      SoundService.bringAppToFront();
+      SoundService.bringAppToFront(payload: jsonEncode(data), isUrgent: true);
       LocalNotificationService.handlePayloadDirectly(data);
     }
   }

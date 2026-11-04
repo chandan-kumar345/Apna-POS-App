@@ -1451,22 +1451,18 @@ class _OrdersScreenState extends State<OrdersScreen> {
             effectiveStatus = OrderStatus.completed;
           } else if (o.status == OrderStatus.ready) {
             effectiveStatus = OrderStatus.ready;
+          } else if (o.status == OrderStatus.preparing) {
+            // An order with status preparing IS preparing (never downgrade to pending)
+            effectiveStatus = OrderStatus.preparing;
           } else {
             final tKey = (o.tableNumber ?? '').trim().toLowerCase();
             final isRunningKot = tKey.isNotEmpty && runningKotTables.contains(tKey);
-            final isFree = tKey.isNotEmpty && freeTables.contains(tKey);
 
             if (o.status == OrderStatus.pending) {
               if (o.orderType == OrderType.dineIn && isRunningKot) {
                 effectiveStatus = OrderStatus.preparing;
               } else {
                 effectiveStatus = OrderStatus.pending;
-              }
-            } else if (o.status == OrderStatus.preparing) {
-              if (o.orderType == OrderType.dineIn && isFree) {
-                effectiveStatus = OrderStatus.pending;
-              } else {
-                effectiveStatus = OrderStatus.preparing;
               }
             } else {
               effectiveStatus = o.status;

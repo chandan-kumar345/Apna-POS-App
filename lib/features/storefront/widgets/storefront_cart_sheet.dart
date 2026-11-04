@@ -449,9 +449,9 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                                     color: Color(0xFF0F172A),
                                   ),
                                 ),
-                                if (cartItem.selectedSize != null)
+                                if (cartItem.selectedSize != null && cartItem.selectedSize!.name.isNotEmpty)
                                   Text(
-                                    'Size: ${cartItem.selectedSize!.name} (₹${cartItem.selectedSize!.price.toStringAsFixed(0)})',
+                                    '${cartItem.selectedSize!.name}${cartItem.selectedSize!.description.isNotEmpty ? " (${cartItem.selectedSize!.description})" : ""} • ₹${cartItem.selectedSize!.price.toStringAsFixed(0)}',
                                     style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                                   ),
                                 if (cartItem.selectedAddons.where((a) => a.isSelected).isNotEmpty)

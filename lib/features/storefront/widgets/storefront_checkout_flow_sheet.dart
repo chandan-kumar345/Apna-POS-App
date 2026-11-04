@@ -517,9 +517,16 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   }
 
   Widget _buildCartItemCard(StorefrontCartItem cartItem) {
-    final sizeText = cartItem.selectedSize != null
-        ? '${cartItem.selectedSize!.name} (${cartItem.selectedSize!.description})'
-        : 'Regular';
+    final String sizeText;
+    if (cartItem.selectedSize != null && cartItem.selectedSize!.name.isNotEmpty) {
+      if (cartItem.selectedSize!.description.isNotEmpty) {
+        sizeText = '${cartItem.selectedSize!.name} (${cartItem.selectedSize!.description})';
+      } else {
+        sizeText = cartItem.selectedSize!.name;
+      }
+    } else {
+      sizeText = '';
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

@@ -1,5 +1,7 @@
 package com.apnapos.app
 
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
@@ -77,16 +79,55 @@ class MainActivity : FlutterActivity() {
                 }
                 "bringToFront" -> {
                     try {
+                        val payload = call.argument<String>("payload")
+                        if (!payload.isNullOrEmpty()) {
+                            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                            prefs.edit().putString("flutter.pending_incoming_order_payload", payload).apply()
+                        }
+
                         wakeAndShowOverLockScreen()
-                        if (!hasWindowFocus()) {
-                            val bringToFrontIntent = Intent(this@MainActivity, MainActivity::class.java).apply {
-                                addFlags(
-                                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                )
+
+                        val launchIntent = (packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this@MainActivity, MainActivity::class.java)).apply {
+                            action = "FLUTTER_NOTIFICATION_CLICK"
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            )
+                            if (!payload.isNullOrEmpty()) {
+                                putExtra("pending_incoming_order_payload", payload)
+                                putExtra("direct_open", true)
                             }
-                            startActivity(bringToFrontIntent)
+                        }
+
+                        val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            ActivityOptions.makeBasic().apply {
+                                setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                            }
+                        } else {
+                            ActivityOptions.makeBasic()
+                        }
+
+                        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        } else {
+                            PendingIntent.FLAG_UPDATE_CURRENT
+                        }
+
+                        try {
+                            val pi = PendingIntent.getActivity(
+                                applicationContext,
+                                (System.currentTimeMillis() % 100000).toInt(),
+                                launchIntent,
+                                pendingIntentFlags,
+                                options.toBundle()
+                            )
+                            pi.send()
+                        } catch (_: Exception) {
+                            try {
+                                startActivity(launchIntent, options.toBundle())
+                            } catch (_: Exception) {}
                         }
                         result.success(true)
                     } catch (e: Exception) {
@@ -206,11 +247,24 @@ class MainActivity : FlutterActivity() {
                 extras.containsKey("totalAmount") ||
                 orderId.isNotEmpty()
 
-        val orderType = (extras.getString("orderType") ?: "").lowercase()
-        val orderSource = (extras.getString("orderSource") ?: "").lowercase()
-        val isDineInOrLocalPos = orderType == "dine_in" || orderType == "dinein" || orderSource == "pos"
+        val rawSource = (extras.getString("orderSource") ?: "").lowercase()
+        val typeStr = (extras.getString("type") ?: "").lowercase()
+        val isExplicitExternal = rawSource == "whatsapp" ||
+                rawSource == "storefront" ||
+                rawSource == "online" ||
+                rawSource == "qr" ||
+                rawSource == "profile" ||
+                typeStr.contains("whatsapp") ||
+                typeStr == "whatsapp_order_request"
 
-        if (isOrder && !isDineInOrLocalPos) {
+        val isLocalPosOrder = !isExplicitExternal && (
+                rawSource == "pos" ||
+                rawSource == "counter" ||
+                rawSource == "local" ||
+                typeStr == "kot_printed"
+        )
+
+        if (isOrder && !isLocalPosOrder) {
             try {
                 val payloadObj = JSONObject()
                 for (key in extras.keySet()) {

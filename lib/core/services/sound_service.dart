@@ -114,15 +114,18 @@ class SoundService {
     } catch (_) {}
   }
 
-  /// Bring Android app / MainActivity directly over lock screen or home screen
-  static Future<void> bringAppToFront() async {
+  /// Bring Android app / MainActivity directly to the front over any currently open app or lock screen
+  static Future<void> bringAppToFront({String? payload, bool isUrgent = true}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastBringToFrontTime < 6000) return;
+    final cooldown = isUrgent ? 1500 : 6000;
+    if (now - _lastBringToFrontTime < cooldown) return;
     _lastBringToFrontTime = now;
 
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-        await _nativeAlertChannel.invokeMethod('bringToFront');
+        await _nativeAlertChannel.invokeMethod('bringToFront', {
+          if (payload != null) ...{'payload': payload},
+        });
       }
     } catch (_) {}
   }

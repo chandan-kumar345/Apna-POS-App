@@ -1,8 +1,11 @@
 package com.apnapos.app
 
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.PowerManager
 import org.json.JSONObject
 
@@ -29,7 +32,24 @@ class OrderWakeBroadcastReceiver : BroadcastReceiver() {
                     extras.containsKey("totalAmount") ||
                     orderId.isNotEmpty()
 
-            if (!isOrder) return
+            val rawSource = (extras.getString("orderSource") ?: "").lowercase()
+            val typeStr = type.lowercase()
+            val isExplicitExternal = rawSource == "whatsapp" ||
+                    rawSource == "storefront" ||
+                    rawSource == "online" ||
+                    rawSource == "qr" ||
+                    rawSource == "profile" ||
+                    typeStr.contains("whatsapp") ||
+                    typeStr == "whatsapp_order_request"
+
+            val isLocalPosOrder = !isExplicitExternal && (
+                    rawSource == "pos" ||
+                    rawSource == "counter" ||
+                    rawSource == "local" ||
+                    typeStr == "kot_printed"
+            )
+
+            if (!isOrder || isLocalPosOrder) return
 
             // 1. Force hardware screen wake up
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -58,19 +78,47 @@ class OrderWakeBroadcastReceiver : BroadcastReceiver() {
             }
 
             // 3. Immediately launch MainActivity so the screen takes over
-            val launchIntent = Intent(context, MainActivity::class.java).apply {
+            val launchIntent = (context.packageManager.getLaunchIntentForPackage(context.packageName) ?: Intent(context, MainActivity::class.java)).apply {
                 action = "FLUTTER_NOTIFICATION_CLICK"
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
                 )
                 putExtra("pending_incoming_order_payload", payloadString)
                 putExtra("direct_open", true)
                 putExtras(extras)
             }
-            context.startActivity(launchIntent)
+
+            val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                }
+            } else {
+                ActivityOptions.makeBasic()
+            }
+
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
+            try {
+                val pi = PendingIntent.getActivity(
+                    context.applicationContext,
+                    (System.currentTimeMillis() % 100000).toInt(),
+                    launchIntent,
+                    flags,
+                    options.toBundle()
+                )
+                pi.send()
+            } catch (_: Exception) {
+                try {
+                    context.startActivity(launchIntent, options.toBundle())
+                } catch (_: Exception) {}
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

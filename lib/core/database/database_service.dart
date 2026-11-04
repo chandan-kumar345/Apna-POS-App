@@ -1436,6 +1436,13 @@ class DatabaseService extends ChangeNotifier {
           }
         }
         notifyListeners();
+      } else if (data['order'] is Map) {
+        try {
+          final newOrder = OrderModel.fromJson(Map<String, dynamic>.from(data['order'] as Map));
+          orders.insert(0, newOrder);
+          _saveOrdersToPrefs();
+          notifyListeners();
+        } catch (_) {}
       }
     };
 
@@ -3267,8 +3274,7 @@ class DatabaseService extends ChangeNotifier {
           playSound: true,
         );
         SoundService.boostHardwareVolume();
-        SoundService.bringAppToFront();
-        LocalNotificationService.handlePayloadDirectly({
+        final orderMap = {
           'type': 'whatsapp_order_request',
           'orderId': order.id,
           'orderNumber': order.orderNumber,
@@ -3279,7 +3285,9 @@ class DatabaseService extends ChangeNotifier {
           'orderSource': order.orderSource ?? 'profile',
           'deliveryAddress': order.deliveryAddress,
           'items': order.items.map((i) => i.toJson()).toList(),
-        });
+        };
+        SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);
+        LocalNotificationService.handlePayloadDirectly(orderMap);
       } catch (_) {}
 
       // 3. Sync to Firestore
@@ -4968,7 +4976,26 @@ class DatabaseService extends ChangeNotifier {
       }
       notifyListeners();
       _saveOrdersToPrefs();
+    } else {
+      syncOrdersOnly();
     }
+  }
+
+  /// Public trigger to notify all UI listeners of database changes
+  void notifyUI() {
+    notifyListeners();
+  }
+
+  /// Inserts or updates an order in local memory and persists immediately with UI notification
+  void upsertOrderLocally(OrderModel order) {
+    final index = orders.indexWhere((o) => (order.id.isNotEmpty && o.id == order.id) || (order.orderNumber.isNotEmpty && o.orderNumber == order.orderNumber));
+    if (index >= 0) {
+      orders[index] = order;
+    } else {
+      orders.insert(0, order);
+    }
+    _saveOrdersToPrefs();
+    notifyListeners();
   }
 
   /// Fast, targeted order sync (<100ms) for OrdersScreen without reloading entire catalogs or assets

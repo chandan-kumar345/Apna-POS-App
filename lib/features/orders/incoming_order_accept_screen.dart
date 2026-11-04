@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
+import '../../core/models/menu_item_model.dart';
+import '../../core/models/table_model.dart';
 import '../../core/services/order_service.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/services/socket_service.dart';
@@ -340,6 +342,13 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     // Play incoming order ringtone
     SoundService.playOrderRingtone();
 
+    // Guarantee that this order is seeded into DatabaseService as 'pending' immediately.
+    // If the user ignores it, closes the screen, or navigates away without accepting/rejecting,
+    // the order will safely exist in DatabaseService in 'pending' status!
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncOrderToDatabase(targetStatus: OrderStatus.pending);
+    });
+
     // 90-second countdown for accepting order
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
@@ -368,6 +377,10 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     SoundService.stopOrderRingtone();
     if (IncomingOrderAcceptScreen._currentScreenContext == context) {
       IncomingOrderAcceptScreen._currentScreenContext = null;
+    }
+    final existing = _db.orders.where((o) => (widget.orderId.isNotEmpty && o.id == widget.orderId) || (widget.orderNumber.isNotEmpty && o.orderNumber == widget.orderNumber)).firstOrNull;
+    if (existing == null) {
+      _syncOrderToDatabase(targetStatus: OrderStatus.pending);
     }
     super.dispose();
   }
@@ -462,6 +475,107 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     return price;
   }
 
+  /// Ensures this incoming order exists in DatabaseService.orders with the specified status.
+  /// If the order already exists, updates its status and details.
+  /// If it does not exist, parses and inserts it as a first-class OrderModel.
+  OrderModel _syncOrderToDatabase({OrderStatus targetStatus = OrderStatus.pending}) {
+    // Resolve order type
+    final cleanType = widget.orderType.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final OrderType resolvedType;
+    if (cleanType.contains('delivery')) {
+      resolvedType = OrderType.delivery;
+    } else if (cleanType.contains('takeaway') || cleanType.contains('pickup') || cleanType.contains('parcel')) {
+      resolvedType = OrderType.takeaway;
+    } else if (cleanType.contains('dine') || cleanType.contains('table') || widget.deliveryAddress.toLowerCase().contains('table')) {
+      resolvedType = OrderType.dineIn;
+    } else {
+      resolvedType = OrderType.takeaway;
+    }
+
+    // Resolve table number if dine-in
+    String? tableNum;
+    if (resolvedType == OrderType.dineIn) {
+      final match = RegExp(r'(?:table|tbl|t)\s*[:#\-]?\s*([0-9a-zA-Z]+)', caseSensitive: false)
+          .firstMatch('${widget.deliveryAddress} ${widget.orderNumber}');
+      if (match != null) {
+        tableNum = match.group(1);
+      } else if (widget.deliveryAddress.trim().isNotEmpty) {
+        tableNum = widget.deliveryAddress.trim();
+      }
+      if (tableNum != null && !tableNum.toLowerCase().startsWith('table') && !tableNum.toLowerCase().startsWith('t')) {
+        final existingTable = _db.tables.where((t) => isSameTable(t.name, tableNum)).firstOrNull;
+        if (existingTable != null) {
+          tableNum = existingTable.name;
+        }
+      }
+    }
+
+    final existingIdx = _db.orders.indexWhere(
+      (o) => (widget.orderId.isNotEmpty && o.id == widget.orderId) ||
+             (widget.orderNumber.isNotEmpty && o.orderNumber == widget.orderNumber),
+    );
+
+    if (existingIdx >= 0) {
+      final existing = _db.orders[existingIdx];
+      final updated = existing.copyWith(
+        status: targetStatus,
+        
+        tableNumber: tableNum ?? existing.tableNumber,
+        deliveryAddress: widget.deliveryAddress.isNotEmpty ? widget.deliveryAddress : existing.deliveryAddress,
+        customerName: widget.customerName.isNotEmpty ? widget.customerName : existing.customerName,
+        customerPhone: widget.customerPhone.isNotEmpty ? widget.customerPhone : existing.customerPhone,
+      );
+      _db.upsertOrderLocally(updated);
+      return updated;
+    }
+
+    final List<CartItemModel> cartItems = [];
+    for (int i = 0; i < widget.items.length; i++) {
+      final it = widget.items[i];
+      final actualItem = it['item'] is Map ? Map<String, dynamic>.from(it['item'] as Map) : it;
+      final name = (actualItem['name'] ?? actualItem['title'] ?? it['name'] ?? 'Item ${i + 1}').toString();
+      final qty = (it['quantity'] is num)
+          ? (it['quantity'] as num).toInt()
+          : (int.tryParse(it['quantity']?.toString() ?? '1') ?? 1);
+      final price = _resolveItemPrice(it, actualItem, qty);
+
+      final menuItem = MenuItemModel(
+        id: (actualItem['id'] ?? actualItem['productId'] ?? it['productId'] ?? 'item_$i').toString(),
+        name: name,
+        price: price,
+        category: (actualItem['category'] ?? it['category'] ?? 'General').toString(),
+        description: name,
+        itemType: (actualItem['isVeg'] == true || it['isVeg'] == true) ? 'Veg' : 'Non-Veg',
+      );
+      cartItems.add(CartItemModel(
+        item: menuItem,
+        quantity: qty,
+        note: (it['notes'] ?? it['note'] ?? actualItem['notes'] ?? actualItem['note'])?.toString(),
+      ));
+    }
+
+    final newOrder = OrderModel(
+      id: widget.orderId.isNotEmpty ? widget.orderId : 'ord_${DateTime.now().millisecondsSinceEpoch}',
+      orderNumber: widget.orderNumber.isNotEmpty ? widget.orderNumber : '${DateTime.now().millisecondsSinceEpoch.remainder(10000)}',
+      customerName: widget.customerName,
+      customerPhone: widget.customerPhone,
+      deliveryAddress: widget.deliveryAddress,
+      tableNumber: tableNum,
+      orderType: resolvedType,
+      status: targetStatus,
+      items: cartItems,
+      subtotal: widget.totalAmount,
+      taxAmount: 0.0,
+      totalAmount: widget.totalAmount,
+      orderSource: widget.source.isNotEmpty ? widget.source : 'whatsapp',
+      createdAt: widget.createdAt.toIso8601String(),
+      isSynced: true,
+    );
+
+    _db.upsertOrderLocally(newOrder);
+    return newOrder;
+  }
+
   Future<void> _handleAccept() async {
     if (_isProcessing) return;
     SoundService.stopOrderRingtone();
@@ -481,8 +595,21 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     }
 
     try {
-      // 1. Optimistic local status change
-      _db.updateOrderStatusLocally(widget.orderId, OrderStatus.preparing);
+      // 1. Immediately update order in DatabaseService to 'OrderStatus.preparing'
+      final updatedOrder = _syncOrderToDatabase(targetStatus: OrderStatus.preparing);
+
+      // If Dine-In with table, update table status to runningKot
+      if (updatedOrder.orderType == OrderType.dineIn && updatedOrder.tableNumber != null && updatedOrder.tableNumber!.isNotEmpty) {
+        final tbl = _db.tables.where((t) => isSameTable(t.name, updatedOrder.tableNumber)).firstOrNull;
+        if (tbl != null) {
+          _db.updateTableStatus(
+            tbl.id,
+            TableStatus.runningKot,
+            orderId: updatedOrder.id,
+            occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String(),
+          );
+        }
+      }
 
       // 2. Dispatch backend acceptance
       await _orderService.acceptWhatsAppOrder(
@@ -490,15 +617,15 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
         prepTimeMinutes: _selectedPrepTime,
       );
 
-      // 3. Auto-print KOT if thermal printer configured
+      // 3. Proactively sync orders in background to keep all fields fresh
+      unawaited(_db.syncOrdersOnly());
+
+      // 4. Auto-print KOT if thermal printer configured
       try {
         final printer = BluetoothPrinterService();
         final connected = await printer.isConnected();
         if (connected) {
-          final order = _db.orders.where((o) => o.id == widget.orderId || o.orderNumber == widget.orderNumber).firstOrNull;
-          if (order != null) {
-            await printer.printKOT(order: order);
-          }
+          await printer.printKOT(order: updatedOrder);
         }
       } catch (printErr) {
         debugPrint('[IncomingOrderAcceptScreen] Auto-print KOT notice: $printErr');
@@ -703,8 +830,9 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     } catch (_) {}
 
     try {
-      _db.updateOrderStatusLocally(widget.orderId, OrderStatus.cancelled);
+      _syncOrderToDatabase(targetStatus: OrderStatus.cancelled);
       await _orderService.rejectWhatsAppOrder(widget.orderId, reason: finalReason);
+      unawaited(_db.syncOrdersOnly());
 
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
