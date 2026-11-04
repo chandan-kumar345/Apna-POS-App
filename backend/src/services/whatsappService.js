@@ -201,10 +201,11 @@ class WhatsAppService {
       };
     }
 
+    const cleanToken = (accessToken || '').toString().trim().replace(/^Bearer\s+/i, '');
     let response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'Authorization': `Bearer ${cleanToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),

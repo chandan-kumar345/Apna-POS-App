@@ -172,12 +172,27 @@ class EbillService {
     idempotencyKey = '',
     customerPhoneOverride = null,
   }) {
-    const bId = mongoose.Types.ObjectId.isValid(businessId)
+    let bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
     // 1. Authoritative Bill Retrieval
-    const order = await this.findOrder(bId, billId);
+    let order = null;
+    if (bId) {
+      order = await this.findOrder(bId, billId);
+    } else {
+      // Only perform unscoped order lookup when businessId is completely absent
+      const Order = require('../models/Order');
+      if (mongoose.Types.ObjectId.isValid(billId)) {
+        order = await Order.findById(billId);
+      }
+      if (!order) {
+        order = await Order.findOne({ orderNumber: billId });
+      }
+      if (order && order.businessId) {
+        bId = order.businessId;
+      }
+    }
     if (!order) {
       throw ApiError.notFound('Bill not found in your business records', 'BILL_NOT_FOUND');
     }
@@ -298,17 +313,19 @@ class EbillService {
 
     if (userId) {
       const user = await User.findById(userId).select('whatsappSettings').lean();
-      if (user?.whatsappSettings?.enabled && user.whatsappSettings.phoneNumberId && user.whatsappSettings.accessToken) {
-        customPhoneNumberId = user.whatsappSettings.phoneNumberId.trim();
-        customAccessToken = user.whatsappSettings.accessToken.trim();
-        customAppSecret = (user.whatsappSettings.appSecret || '').trim() || null;
+      const uWa = user?.whatsappSettings || {};
+      if (uWa.phoneNumberId && uWa.accessToken) {
+        customPhoneNumberId = uWa.phoneNumberId.toString().trim();
+        customAccessToken = uWa.accessToken.toString().trim().replace(/^Bearer\s+/i, '');
+        customAppSecret = (uWa.appSecret || '').toString().trim() || null;
       }
     }
 
-    if (!customPhoneNumberId && business?.whatsappSettings?.enabled && business.whatsappSettings.phoneNumberId && business.whatsappSettings.accessToken) {
-      customPhoneNumberId = business.whatsappSettings.phoneNumberId.trim();
-      customAccessToken = business.whatsappSettings.accessToken.trim();
-      customAppSecret = (business.whatsappSettings.appSecret || '').trim() || null;
+    const bizWa = business?.whatsappSettings || {};
+    if (!customPhoneNumberId && bizWa.phoneNumberId && bizWa.accessToken) {
+      customPhoneNumberId = bizWa.phoneNumberId.toString().trim();
+      customAccessToken = bizWa.accessToken.toString().trim().replace(/^Bearer\s+/i, '');
+      customAppSecret = (bizWa.appSecret || '').toString().trim() || null;
     }
 
     // 8. Submit to WhatsApp Cloud API (routes through custom credentials if integrated, else default WhatsApp)
