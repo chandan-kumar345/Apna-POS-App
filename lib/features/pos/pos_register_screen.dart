@@ -29,6 +29,12 @@ import '../../core/utils/ai_nutrition_estimator.dart';
 enum ManualItemPersistenceMode { temporary, permanent }
 
 class PosRegisterScreen extends StatefulWidget {
+  /// Whether the POS register screen is actively open and mounted
+  static bool isPosScreenActive = false;
+
+  /// Whether user is currently taking an order (cart has items, KOT processing, or table open)
+  static bool isActivelyTakingOrder = false;
+
   final String? initialTable;
   final OrderType? initialOrderType;
   final int? tableSelectionToken;
@@ -247,6 +253,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   @override
   void initState() {
     super.initState();
+    PosRegisterScreen.isPosScreenActive = true;
     db.addListener(_onDbChange);
     _chotuService.addActionListener(_onChotuCommandReceived);
     _initLoyaltyStatus();
@@ -303,6 +310,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
   @override
   void dispose() {
+    PosRegisterScreen.isPosScreenActive = false;
+    PosRegisterScreen.isActivelyTakingOrder = false;
     _promoCodeController.dispose();
     db.removeListener(_onDbChange);
     _chotuService.removeActionListener(_onChotuCommandReceived);
@@ -497,7 +506,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     _checkCustomerLoyalty();
 
-    if (openCartModal && _cartItems.isNotEmpty) {
+    if (openCartModal) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _openCartScreenModal();
@@ -648,6 +657,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             }
             DatabaseService.registerPosOrderIdentifier(newOrder.id);
             DatabaseService.registerPosOrderIdentifier(newOrder.orderNumber);
+            DatabaseService.markOrderDismissed(newOrder.id, newOrder.orderNumber);
 
             if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
               final tbl = db.tables.where((t) =>

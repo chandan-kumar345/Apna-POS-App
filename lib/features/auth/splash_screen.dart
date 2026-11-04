@@ -240,13 +240,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     ).then((_) {
       SplashScreen.isSplashActive = false;
       LocalNotificationService.checkAndShowPendingIncomingOrder();
-      DatabaseService().checkAndPromptPendingWhatsAppOrders();
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SplashScreen.isSplashActive = false;
       LocalNotificationService.checkAndShowPendingIncomingOrder();
-      DatabaseService().checkAndPromptPendingWhatsAppOrders();
     });
   }
 

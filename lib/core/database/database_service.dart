@@ -78,6 +78,23 @@ class DatabaseService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  static final Set<String> _dismissedOrPromptedOrderIds = <String>{};
+
+  static bool isOrderDismissed(String? id, [String? orderNumber]) {
+    final cleanId = (id ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+    final cleanNum = (orderNumber ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+    if (cleanId.isNotEmpty && _dismissedOrPromptedOrderIds.contains(cleanId)) return true;
+    if (cleanNum.isNotEmpty && _dismissedOrPromptedOrderIds.contains(cleanNum)) return true;
+    return false;
+  }
+
+  static void markOrderDismissed(String? id, [String? orderNumber]) {
+    final cleanId = (id ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+    final cleanNum = (orderNumber ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+    if (cleanId.isNotEmpty) _dismissedOrPromptedOrderIds.add(cleanId);
+    if (cleanNum.isNotEmpty) _dismissedOrPromptedOrderIds.add(cleanNum);
+  }
+
   static bool isKnownPosOrder(String? idOrNumber) {
     if (idOrNumber == null || idOrNumber.trim().isEmpty) return false;
     final clean = idOrNumber.replaceAll(RegExp(r'^#'), '').trim();
@@ -1144,6 +1161,9 @@ class DatabaseService extends ChangeNotifier {
 
     if (loadedOrders.isNotEmpty) {
       orders = deduplicateOrdersList(loadedOrders);
+      for (final o in orders) {
+        markOrderDismissed(o.id, o.orderNumber);
+      }
     } else {
       orders = [];
     }
@@ -1797,65 +1817,9 @@ class DatabaseService extends ChangeNotifier {
             }
           }
         }
-        // Detect brand-new pending orders that were not previously present locally
-        // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
-        final existingLocalIds = orders.map((o) => o.id).toSet();
+        // Mark all existing remote orders as dismissed so background sync never hijacks the screen
         for (final r in remoteOrders) {
-          final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
-              r.status == OrderStatus.preparing;
-
-          final bool isExplicitExternal = r.isWhatsAppOrder ||
-              r.isProfileOrder ||
-              r.isExternalOnlineOrder ||
-              r.orderSource == 'whatsapp' ||
-              r.orderSource == 'online' ||
-              r.orderSource == 'storefront' ||
-              r.orderSource == 'profile' ||
-              r.orderSource == 'qr';
-          final bool isPosOrder = !isExplicitExternal && (
-              r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local' ||
-              DatabaseService.isKnownPosOrder(r.id) ||
-              DatabaseService.isKnownPosOrder(r.orderNumber)
-          );
-          final bool isExternalIncoming = isExplicitExternal && !isKot && !isPosOrder;
-          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
-            final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
-            if (diffSec < 600) {
-              SoundService.playNotificationSound();
-              LocalNotificationService().showPushNotification(
-                title: '🔔 #${r.orderNumber} • ₹${r.totalAmount.toStringAsFixed(0)}',
-                body: '${r.customerName ?? "Customer"} • ${r.orderType.name.toUpperCase()} • Tap to Accept/Reject',
-                payload: jsonEncode({
-                  'type': 'whatsapp_order_request',
-                  'orderId': r.id,
-                  'orderNumber': r.orderNumber,
-                  'customerPhone': r.customerPhone,
-                  'customerName': r.customerName,
-                  'totalAmount': r.totalAmount.toString(),
-                  'orderType': r.orderType.name,
-                  'orderSource': r.orderSource ?? 'whatsapp',
-                  'deliveryAddress': r.deliveryAddress,
-                  'items': r.items.map((i) => i.toJson()).toList(),
-                }),
-                type: NotificationType.whatsappOrderRequest,
-                channelId: 'apna_pos_whatsapp_orders_v2',
-                playSound: true,
-              );
-              LocalNotificationService.handlePayloadDirectly({
-                'type': 'whatsapp_order_request',
-                'orderId': r.id,
-                'orderNumber': r.orderNumber,
-                'customerPhone': r.customerPhone,
-                'customerName': r.customerName,
-                'totalAmount': r.totalAmount.toString(),
-                'orderType': r.orderType.name,
-                'orderSource': r.orderSource ?? 'whatsapp',
-                'deliveryAddress': r.deliveryAddress,
-                'items': r.items.map((i) => i.toJson()).toList(),
-              });
-              break;
-            }
-          }
+          markOrderDismissed(r.id, r.orderNumber);
         }
 
         final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
@@ -5030,65 +4994,9 @@ class DatabaseService extends ChangeNotifier {
           }
         }
 
-        // Detect brand-new pending orders that were not previously present locally
-        // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
-        final existingLocalIds = orders.map((o) => o.id).toSet();
+        // Mark all existing remote orders as dismissed so targeted order sync never hijacks the screen
         for (final r in remoteOrders) {
-          final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
-              r.status == OrderStatus.preparing;
-
-          final bool isExplicitExternal = r.isWhatsAppOrder ||
-              r.isProfileOrder ||
-              r.isExternalOnlineOrder ||
-              r.orderSource == 'whatsapp' ||
-              r.orderSource == 'online' ||
-              r.orderSource == 'storefront' ||
-              r.orderSource == 'profile' ||
-              r.orderSource == 'qr';
-          final bool isPosOrder = !isExplicitExternal && (
-              r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local' ||
-              DatabaseService.isKnownPosOrder(r.id) ||
-              DatabaseService.isKnownPosOrder(r.orderNumber)
-          );
-          final bool isExternalIncoming = isExplicitExternal && !isKot && !isPosOrder;
-          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
-            final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
-            if (diffSec < 600) {
-              SoundService.playNotificationSound();
-              LocalNotificationService().showPushNotification(
-                title: '🔔 #${r.orderNumber} • ₹${r.totalAmount.toStringAsFixed(0)}',
-                body: '${r.customerName ?? "Customer"} • ${r.orderType.name.toUpperCase()} • Tap to Accept/Reject',
-                payload: jsonEncode({
-                  'type': 'whatsapp_order_request',
-                  'orderId': r.id,
-                  'orderNumber': r.orderNumber,
-                  'customerPhone': r.customerPhone,
-                  'customerName': r.customerName,
-                  'totalAmount': r.totalAmount.toString(),
-                  'orderType': r.orderType.name,
-                  'orderSource': r.orderSource ?? 'whatsapp',
-                  'deliveryAddress': r.deliveryAddress,
-                  'items': r.items.map((i) => i.toJson()).toList(),
-                }),
-                type: NotificationType.whatsappOrderRequest,
-                channelId: 'apna_pos_whatsapp_orders_v2',
-                playSound: true,
-              );
-              LocalNotificationService.handlePayloadDirectly({
-                'type': 'whatsapp_order_request',
-                'orderId': r.id,
-                'orderNumber': r.orderNumber,
-                'customerPhone': r.customerPhone,
-                'customerName': r.customerName,
-                'totalAmount': r.totalAmount.toString(),
-                'orderType': r.orderType.name,
-                'orderSource': r.orderSource ?? 'whatsapp',
-                'deliveryAddress': r.deliveryAddress,
-                'items': r.items.map((i) => i.toJson()).toList(),
-              });
-              break;
-            }
-          }
+          markOrderDismissed(r.id, r.orderNumber);
         }
 
         final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
@@ -5107,8 +5015,11 @@ class DatabaseService extends ChangeNotifier {
 
   /// Start persistent Order Radar polling (every 20s) as a fail-safe monitor
   void startOrderRadar() {
+    for (final o in orders) {
+      markOrderDismissed(o.id, o.orderNumber);
+    }
     _orderRadarTimer?.cancel();
-    _orderRadarTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+    _orderRadarTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       checkAndPromptPendingWhatsAppOrders();
     });
   }
@@ -5156,9 +5067,13 @@ class DatabaseService extends ChangeNotifier {
         );
         final bool isExternalOrder = isExplicitExternal && !isKot && !isPosOrder;
 
+        if (isOrderDismissed(r.id, r.orderNumber)) continue;
+
         if (r.status == OrderStatus.pending && isExternalOrder) {
           final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
-          if (diffSec < 2700) {
+          // Strictly only prompt live unhandled orders created in the last 90 seconds while actively listening
+          if (diffSec < 90) {
+            markOrderDismissed(r.id, r.orderNumber);
             LocalNotificationService.handlePayloadDirectly({
               'type': 'whatsapp_order_request',
               'orderId': r.id,
@@ -5172,6 +5087,9 @@ class DatabaseService extends ChangeNotifier {
               'createdAt': r.createdDateTime.toIso8601String(),
             });
             break;
+          } else {
+            // Older order: mark as dismissed so it never pops up on screen launch
+            markOrderDismissed(r.id, r.orderNumber);
           }
         }
       }

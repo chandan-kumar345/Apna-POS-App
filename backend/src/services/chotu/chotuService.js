@@ -1,5 +1,6 @@
 const { DefaultSpeechProvider } = require('./speechProvider');
 const AICommandEngine = require('./aiCommandEngine');
+const GeminiCommandEngine = require('./geminiCommandEngine');
 const ChotuActionLog = require('../../models/ChotuActionLog');
 const Product = require('../../models/Product');
 const Table = require('../../models/Table');
@@ -20,6 +21,10 @@ class ChotuService {
   /**
    * Set or replace active speech provider at runtime
    */
+  isGeminiConfigured() {
+    return GeminiCommandEngine.isConfigured();
+  }
+
   setSpeechProvider(provider) {
     this.speechProvider = provider;
   }
@@ -98,19 +103,44 @@ class ChotuService {
     const startTime = Date.now();
     const cleanSessionId = sessionId || `sess_${Date.now()}`;
 
-    // 1. Fetch available products with aliases for this business
-    const products = await Product.find({ businessId, isAvailable: true }).lean();
+    // 1. Fetch available products and tables for this business
+    const [products, tables] = await Promise.all([
+      Product.find({ businessId, isAvailable: true }).lean(),
+      Table.find({ businessId }).lean(),
+    ]);
 
     // 2. Retrieve session memory for contextual conversation (Section 10)
     const existingSession = this.sessionMemory.get(cleanSessionId) || null;
 
-    // 3. Parse intent & entities
-    const parsed = AICommandEngine.parseCommand({
-      text,
-      availableProducts: products,
-      currentTableContext,
-      sessionContext: existingSession,
-    });
+    // 3. Parse intent & entities (Gemini AI first if GEMINI_API_KEY is configured, fallback to rule engine)
+    let parsed = null;
+    let engineUsed = 'regex_engine';
+
+    if (GeminiCommandEngine.isConfigured()) {
+      try {
+        parsed = await GeminiCommandEngine.parseCommandWithGemini({
+          text,
+          availableProducts: products,
+          availableTables: tables,
+          currentTableContext,
+          sessionContext: existingSession,
+        });
+        if (parsed) {
+          engineUsed = 'gemini_flash';
+        }
+      } catch (geminiErr) {
+        console.warn('[ChotuService] Gemini parsing notice:', geminiErr.message, 'Falling back to regex engine.');
+      }
+    }
+
+    if (!parsed) {
+      parsed = AICommandEngine.parseCommand({
+        text,
+        availableProducts: products,
+        currentTableContext,
+        sessionContext: existingSession,
+      });
+    }
 
     // Update short-term session memory if table was found
     if (parsed.table_number) {
@@ -147,6 +177,7 @@ class ChotuService {
       sessionId: cleanSessionId,
       logId: logRecord?._id ? logRecord._id.toString() : null,
       command: parsed,
+      engine: engineUsed,
       durationMs: executionTimeMs,
     };
   }

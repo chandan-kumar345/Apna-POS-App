@@ -251,6 +251,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
 
     if (!isMatch) return;
 
+    DatabaseService.markOrderDismissed(orderId, orderNumber);
     debugPrint('[IncomingOrderAcceptScreen] Auto-dismissing for order $orderId (#$orderNumber) due to remote action ($action)');
     SoundService.stopOrderRingtone();
 
@@ -332,6 +333,7 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
   void initState() {
     super.initState();
     IncomingOrderAcceptScreen._currentScreenContext = context;
+    DatabaseService.markOrderDismissed(widget.orderId, widget.orderNumber);
 
     // Start pulsing alert glow
     _pulseController = AnimationController(
@@ -942,6 +944,7 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
           InkWell(
             onTap: () {
               SoundService.stopOrderRingtone();
+              DatabaseService.markOrderDismissed(widget.orderId, widget.orderNumber);
               Navigator.of(context).pop();
             },
             borderRadius: BorderRadius.circular(10),

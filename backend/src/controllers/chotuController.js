@@ -82,6 +82,8 @@ class ChotuController {
         supportedLanguages: ['English', 'Hindi', 'Hinglish'],
         orderFlowAutomationEnabled: true,
         posMutationsEnabled: true,
+        geminiConfigured: chotuService.isGeminiConfigured(),
+        geminiModel: 'gemini-2.0-flash',
       }, 'Chotu AI Voice Assistant is online');
     } catch (error) {
       next(error);

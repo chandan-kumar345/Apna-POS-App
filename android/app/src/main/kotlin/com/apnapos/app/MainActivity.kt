@@ -21,6 +21,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         const val CHANNEL = "com.apnapos.app/order_alert"
         var activeInstance: MainActivity? = null
+        var isAppInForeground: Boolean = false
         private var lastWakeTime: Long = 0L
         private var activeWakeLock: PowerManager.WakeLock? = null
     }
@@ -38,7 +39,18 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         activeInstance = this
+        isAppInForeground = true
         wakeAndShowOverLockScreen()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isAppInForeground = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isAppInForeground = false
     }
 
     override fun onDestroy() {
@@ -83,6 +95,13 @@ class MainActivity : FlutterActivity() {
                         if (!payload.isNullOrEmpty()) {
                             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                             prefs.edit().putString("flutter.pending_incoming_order_payload", payload).apply()
+                        }
+
+                        // If app is already in the foreground, do not relaunch or churn message queue
+                        if (isAppInForeground && !isFinishing && !isDestroyed) {
+                            wakeAndShowOverLockScreen()
+                            result.success(true)
+                            return@setMethodCallHandler
                         }
 
                         wakeAndShowOverLockScreen()
@@ -284,7 +303,7 @@ class MainActivity : FlutterActivity() {
 
     fun wakeAndShowOverLockScreen() {
         val now = System.currentTimeMillis()
-        if (now - lastWakeTime < 3000) {
+        if (now - lastWakeTime < 5000) {
             return
         }
         lastWakeTime = now
@@ -295,12 +314,12 @@ class MainActivity : FlutterActivity() {
             }
             val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
             activeWakeLock = pm?.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                PowerManager.SCREEN_DIM_WAKE_LOCK or
                 PowerManager.ACQUIRE_CAUSES_WAKEUP or
                 PowerManager.ON_AFTER_RELEASE,
                 "apnapos:main_activity_wake"
             )
-            activeWakeLock?.acquire(30000)
+            activeWakeLock?.acquire(5000)
         } catch (e: Exception) {
             e.printStackTrace()
         }

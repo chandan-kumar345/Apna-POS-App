@@ -50,12 +50,23 @@ const resolveBusinessSession = async (req) => {
 
       if (targetId && targetId !== 'null' && targetId !== 'undefined') {
         const Order = require('../models/Order');
+        const cleanTarget = targetId.replace(/^[#\s]+/, '').trim();
         let order = null;
-        if (mongoose.Types.ObjectId.isValid(targetId)) {
-          order = await Order.findById(targetId);
+        if (mongoose.Types.ObjectId.isValid(cleanTarget)) {
+          order = await Order.findById(cleanTarget);
         }
         if (!order) {
-          order = await Order.findOne({ orderNumber: targetId });
+          order = await Order.findOne({
+            $or: [
+              { orderNumber: targetId },
+              { orderNumber: cleanTarget },
+              { orderNumber: `#${cleanTarget}` },
+              { invoiceNumber: targetId },
+              { invoiceNumber: cleanTarget },
+              { clientSyncId: targetId },
+              { clientSyncId: cleanTarget },
+            ],
+          });
         }
         if (order && order.businessId) {
           business = await Business.findById(order.businessId);
@@ -63,9 +74,24 @@ const resolveBusinessSession = async (req) => {
       }
     }
 
-    // Default fallback in development/test or if only 1 business exists
-    if (!business && (process.env.NODE_ENV !== 'production')) {
-      business = await Business.findById('6ad46853ea47d6b3e13d633d') || await Business.findOne();
+    // If still unresolved, attempt CRM customer phone matching
+    if (!business && (req.body?.customerPhone || req.query?.customerPhone)) {
+      const cleanPhone = (req.body?.customerPhone || req.query?.customerPhone).toString().replace(/[^0-9]/g, '').slice(-10);
+      if (cleanPhone) {
+        const Customer = require('../models/Customer');
+        const customer = await Customer.findOne({ phone: new RegExp(`${cleanPhone}$`) });
+        if (customer && customer.businessId) {
+          business = await Business.findById(customer.businessId);
+        }
+      }
+    }
+
+    // Default fallback in development/test, or in production if single business deployment
+    if (!business) {
+      const bCount = await Business.countDocuments();
+      if (bCount === 1 || process.env.NODE_ENV !== 'production') {
+        business = await Business.findById('6ad46853ea47d6b3e13d633d') || await Business.findOne();
+      }
     }
 
     if (business) {

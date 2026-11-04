@@ -442,10 +442,7 @@ class LocalNotificationService with WidgetsBindingObserver {
       try {
         FcmService().registerTokenWithBackend();
       } catch (_) {}
-      // 3. Proactively query backend for any unaccepted orders received while asleep
-      try {
-        DatabaseService().checkAndPromptPendingWhatsAppOrders();
-      } catch (_) {}
+
     }
   }
 
@@ -511,6 +508,21 @@ class LocalNotificationService with WidgetsBindingObserver {
             if (isPos) {
               debugPrint('[LocalNotificationService] Discarding pending POS order payload from prefs');
               return;
+            }
+            if (DatabaseService.isOrderDismissed(ordId, ordNum)) {
+              debugPrint('[LocalNotificationService] Discarding already dismissed order payload: $ordNum / $ordId');
+              return;
+            }
+            final createdAtStr = m['createdAt']?.toString();
+            if (createdAtStr != null && createdAtStr.isNotEmpty) {
+              final parsed = DateTime.tryParse(createdAtStr);
+              if (parsed != null) {
+                final ageSec = DateTime.now().difference(parsed).inSeconds.abs();
+                if (ageSec > 300) {
+                  debugPrint('[LocalNotificationService] Discarding stale order payload from prefs (age: ${ageSec}s)');
+                  return;
+                }
+              }
             }
           }
         } catch (_) {}

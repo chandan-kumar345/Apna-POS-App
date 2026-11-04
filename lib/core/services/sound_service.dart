@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../features/pos/pos_register_screen.dart';
 
 class SoundService {
   static final SoundService _instance = SoundService._internal();
@@ -116,8 +117,11 @@ class SoundService {
 
   /// Bring Android app / MainActivity directly to the front over any currently open app or lock screen
   static Future<void> bringAppToFront({String? payload, bool isUrgent = true}) async {
+    if (PosRegisterScreen.isPosScreenActive) {
+      return;
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
-    final cooldown = isUrgent ? 1500 : 6000;
+    final cooldown = isUrgent ? 4000 : 8000;
     if (now - _lastBringToFrontTime < cooldown) return;
     _lastBringToFrontTime = now;
 

@@ -503,7 +503,6 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       });
       // Check for incoming orders delivered while app was asleep or closed
       LocalNotificationService.checkAndShowPendingIncomingOrder();
-      db.checkAndPromptPendingWhatsAppOrders();
     });
   }
 

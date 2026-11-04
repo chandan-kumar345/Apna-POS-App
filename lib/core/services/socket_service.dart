@@ -13,6 +13,7 @@ import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import '../../features/notifications/models/notification_model.dart';
 import '../../features/orders/whatsapp_order_action_dialog.dart';
 import '../../features/orders/incoming_order_accept_screen.dart';
+import '../../features/pos/pos_register_screen.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -392,15 +393,21 @@ class SocketService {
             oSource == 'qr' ||
             cleanType.contains('whatsapp') ||
             cleanType.contains('profile');
-        final bool isPosOrder = !isExplicitExternal && (
+        final bool isPosOrder = orderModel.isPosOrder ||
+            !isExplicitExternal ||
             oSource == 'pos' ||
             oSource == 'counter' ||
             oSource == 'local' ||
             DatabaseService.isKnownPosOrder(orderId) ||
-            DatabaseService.isKnownPosOrder(orderNum)
-        );
+            DatabaseService.isKnownPosOrder(orderNum) ||
+            DatabaseService.isOrderDismissed(orderId, orderNum);
 
         final bool isExternalIncomingOrder = isExplicitExternal && !isKot && !isPosOrder;
+
+        if (PosRegisterScreen.isPosScreenActive || isPosOrder || isKot || !isExternalIncomingOrder) {
+          debugPrint('[SocketService] Suppressing incoming alert for POS / KOT order or active POS screen: #${orderModel.orderNumber}');
+          return;
+        }
 
         if (orderModel.status == OrderStatus.pending && isExternalIncomingOrder) {
           final dedupeOrderKey = orderId.isNotEmpty ? orderId : orderNum;
