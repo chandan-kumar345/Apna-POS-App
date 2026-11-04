@@ -16,10 +16,46 @@ import '../storefront/screens/customer_storefront_screen.dart';
 
 /// Table Stand Themes for QR Stand Printing
 enum TableStandTheme {
+  crimsonRuby,
+  royalEmerald,
+  sapphireBlue,
+  sunsetAmber,
+  midnightGold,
   modernClean,
-  midnightDark,
-  warmWood,
-  acrylicMinimal,
+}
+
+class StandThemeConfig {
+  final String label;
+  final String subtitle;
+  final List<Color> headerGradient;
+  final Color cardBg;
+  final Color tableBadgeBg;
+  final Color tableBadgeText;
+  final Color qrBorderColor;
+  final Color qrEyeColor;
+  final Color qrDataColor;
+  final Color bodyTextColor;
+  final Color subTextColor;
+  final Color accentPillBg;
+  final Color accentPillText;
+  final bool isDarkCard;
+
+  const StandThemeConfig({
+    required this.label,
+    required this.subtitle,
+    required this.headerGradient,
+    required this.cardBg,
+    required this.tableBadgeBg,
+    required this.tableBadgeText,
+    required this.qrBorderColor,
+    required this.qrEyeColor,
+    required this.qrDataColor,
+    required this.bodyTextColor,
+    required this.subTextColor,
+    required this.accentPillBg,
+    required this.accentPillText,
+    this.isDarkCard = false,
+  });
 }
 
 class TableQrDownloadScreen extends StatefulWidget {
@@ -38,7 +74,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
   final DatabaseService _db = DatabaseService();
   final Map<String, GlobalKey> _cardKeys = {};
 
-  TableStandTheme _currentTheme = TableStandTheme.modernClean;
+  TableStandTheme _currentTheme = TableStandTheme.crimsonRuby;
   String _selectedFloor = 'All';
   String _searchQuery = '';
   bool _isDownloadingAll = false;
@@ -50,16 +86,47 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     _initKeys();
   }
 
+  RestaurantModel? get _restaurant => _db.restaurant;
+
+  /// Max table limit for this business
+  int get _maxTableCount {
+    final configured = _restaurant?.tableCount ?? 0;
+    final maxDbNum = _db.tables.fold<int>(0, (prev, t) => t.tableNumber > prev ? t.tableNumber : prev);
+    final count = configured > 0 ? configured : (maxDbNum > 0 ? maxDbNum : _db.tables.length);
+    return count > 0 ? count : 20;
+  }
+
+  /// All valid tables strictly bounded by _maxTableCount (1 to _maxTableCount)
+  List<TableModel> get _allValidTables {
+    final total = _maxTableCount;
+    final existingMap = {for (final t in _db.tables) t.tableNumber: t};
+    final List<TableModel> result = [];
+    for (int i = 1; i <= total; i++) {
+      if (existingMap.containsKey(i)) {
+        result.add(existingMap[i]!);
+      } else {
+        result.add(TableModel(
+          id: 'TBL_AUTO_$i',
+          tableNumber: i,
+          name: 'Table ${i.toString().padLeft(2, '0')}',
+          floor: 'Ground Floor',
+          capacity: 4,
+          status: TableStatus.free,
+          position: i,
+        ));
+      }
+    }
+    return result;
+  }
+
   void _initKeys() {
-    for (final table in _db.tables) {
+    for (final table in _allValidTables) {
       final keyId = 'table_${table.id}_${table.tableNumber}';
       if (!_cardKeys.containsKey(keyId)) {
         _cardKeys[keyId] = GlobalKey();
       }
     }
   }
-
-  RestaurantModel? get _restaurant => _db.restaurant;
 
   String get _companySlug {
     final slug = _restaurant?.storefrontSlug.trim() ?? '';
@@ -83,13 +150,13 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
   }
 
   List<String> get _floors {
-    final list = _db.tables.map((t) => t.floor.trim()).where((f) => f.isNotEmpty).toSet().toList();
+    final list = _allValidTables.map((t) => t.floor.trim()).where((f) => f.isNotEmpty).toSet().toList();
     list.sort();
     return ['All', ...list];
   }
 
   List<TableModel> get _filteredTables {
-    var list = _db.tables;
+    var list = _allValidTables;
     if (_selectedFloor != 'All') {
       list = list.where((t) => t.floor.trim() == _selectedFloor).toList();
     }
@@ -103,6 +170,215 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
       }).toList();
     }
     return list;
+  }
+
+  StandThemeConfig _getThemeConfig(TableStandTheme theme) {
+    switch (theme) {
+      case TableStandTheme.crimsonRuby:
+        return const StandThemeConfig(
+          label: 'Crimson Ruby & Gold',
+          subtitle: 'Vibrant ruby gradient with amber gold accents',
+          headerGradient: [Color(0xFF881337), Color(0xFFBE123C)],
+          cardBg: Colors.white,
+          tableBadgeBg: Color(0xFFF59E0B),
+          tableBadgeText: Color(0xFF451A03),
+          qrBorderColor: Color(0xFFBE123C),
+          qrEyeColor: Color(0xFF881337),
+          qrDataColor: Color(0xFF4C0519),
+          bodyTextColor: Color(0xFF0F172A),
+          subTextColor: Color(0xFF475569),
+          accentPillBg: Color(0xFFFFF1F2),
+          accentPillText: Color(0xFFBE123C),
+        );
+      case TableStandTheme.royalEmerald:
+        return const StandThemeConfig(
+          label: 'Royal Emerald & Mint',
+          subtitle: 'Deep forest emerald with fresh mint accents',
+          headerGradient: [Color(0xFF064E3B), Color(0xFF047857)],
+          cardBg: Colors.white,
+          tableBadgeBg: Color(0xFF10B981),
+          tableBadgeText: Colors.white,
+          qrBorderColor: Color(0xFF059669),
+          qrEyeColor: Color(0xFF064E3B),
+          qrDataColor: Color(0xFF064E3B),
+          bodyTextColor: Color(0xFF0F172A),
+          subTextColor: Color(0xFF475569),
+          accentPillBg: Color(0xFFECFDF5),
+          accentPillText: Color(0xFF047857),
+        );
+      case TableStandTheme.sapphireBlue:
+        return const StandThemeConfig(
+          label: 'Sapphire Blue & Cyan',
+          subtitle: 'Cobalt electric blue with neon cyan accents',
+          headerGradient: [Color(0xFF0F172A), Color(0xFF1D4ED8)],
+          cardBg: Colors.white,
+          tableBadgeBg: Color(0xFF0284C7),
+          tableBadgeText: Colors.white,
+          qrBorderColor: Color(0xFF2563EB),
+          qrEyeColor: Color(0xFF1E3A8A),
+          qrDataColor: Color(0xFF0F172A),
+          bodyTextColor: Color(0xFF0F172A),
+          subTextColor: Color(0xFF475569),
+          accentPillBg: Color(0xFFEFF6FF),
+          accentPillText: Color(0xFF1D4ED8),
+        );
+      case TableStandTheme.sunsetAmber:
+        return const StandThemeConfig(
+          label: 'Sunset Terracotta & Amber',
+          subtitle: 'Fiery warm terracotta with sunburst yellow',
+          headerGradient: [Color(0xFF7C2D12), Color(0xFFEA580C)],
+          cardBg: Colors.white,
+          tableBadgeBg: Color(0xFFFBBF24),
+          tableBadgeText: Color(0xFF431407),
+          qrBorderColor: Color(0xFFEA580C),
+          qrEyeColor: Color(0xFF7C2D12),
+          qrDataColor: Color(0xFF431407),
+          bodyTextColor: Color(0xFF0F172A),
+          subTextColor: Color(0xFF475569),
+          accentPillBg: Color(0xFFFFF7ED),
+          accentPillText: Color(0xFFC2410C),
+        );
+      case TableStandTheme.midnightGold:
+        return const StandThemeConfig(
+          label: 'Midnight Obsidian & 24K Gold',
+          subtitle: 'Ultra-luxurious dark mode with glowing gold',
+          headerGradient: [Color(0xFF090D16), Color(0xFF1E293B)],
+          cardBg: Color(0xFF0B1120),
+          tableBadgeBg: Color(0xFFF59E0B),
+          tableBadgeText: Color(0xFF0A0F1D),
+          qrBorderColor: Color(0xFFF59E0B),
+          qrEyeColor: Color(0xFF0A0F1D),
+          qrDataColor: Color(0xFF0A0F1D),
+          bodyTextColor: Color(0xFFF8FAFC),
+          subTextColor: Color(0xFF94A3B8),
+          accentPillBg: Color(0xFF1E293B),
+          accentPillText: Color(0xFFF59E0B),
+          isDarkCard: true,
+        );
+      case TableStandTheme.modernClean:
+        return const StandThemeConfig(
+          label: 'Modern Clean Studio',
+          subtitle: 'High contrast electric blue and crisp white',
+          headerGradient: [Color(0xFF0052FF), Color(0xFF3B82F6)],
+          cardBg: Colors.white,
+          tableBadgeBg: Color(0xFF0052FF),
+          tableBadgeText: Colors.white,
+          qrBorderColor: Color(0xFF0052FF),
+          qrEyeColor: Color(0xFF051C48),
+          qrDataColor: Color(0xFF0F172A),
+          bodyTextColor: Color(0xFF0F172A),
+          subTextColor: Color(0xFF475569),
+          accentPillBg: Color(0xFFEEF2FF),
+          accentPillText: Color(0xFF0052FF),
+        );
+    }
+  }
+
+  /// Profile logo resolver with flawless offline / network / monogram fallback
+  Widget _buildProfileLogoWidget({
+    required double size,
+    required Color borderColor,
+    double borderWidth = 2.0,
+    bool isCircular = true,
+  }) {
+    final logoPath = _db.companyLogoPath ?? _restaurant?.logoUrl;
+    final restName = _restaurant?.name.trim() ?? 'AP';
+    final initial = restName.isNotEmpty ? restName[0].toUpperCase() : 'A';
+
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: isCircular ? null : BorderRadius.circular(size * 0.2),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0052FF), Color(0xFF4338CA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          initial,
+          style: TextStyle(
+            fontSize: size * 0.46,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+
+    if (logoPath == null || logoPath.trim().isEmpty || logoPath.contains('assets/images/logo.png')) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
+          borderRadius: isCircular ? null : BorderRadius.circular(size * 0.2),
+          border: Border.all(color: borderColor, width: borderWidth),
+        ),
+        child: ClipRRect(
+          borderRadius: isCircular ? BorderRadius.circular(size) : BorderRadius.circular(size * 0.2),
+          child: fallback,
+        ),
+      );
+    }
+
+    final clean = logoPath.trim();
+    Widget imageWidget;
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      imageWidget = Image.network(
+        clean,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
+    } else if (clean.startsWith('assets/')) {
+      imageWidget = Image.asset(
+        clean,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
+    } else {
+      final file = File(clean);
+      if (file.existsSync()) {
+        imageWidget = Image.file(
+          file,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => fallback,
+        );
+      } else {
+        imageWidget = fallback;
+      }
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: isCircular ? null : BorderRadius.circular(size * 0.2),
+        border: Border.all(color: borderColor, width: borderWidth),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: isCircular ? BorderRadius.circular(size) : BorderRadius.circular(size * 0.2),
+        child: imageWidget,
+      ),
+    );
   }
 
   Future<Uint8List?> _captureWidgetImage(GlobalKey key) async {
@@ -168,7 +444,6 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
           );
         }
       } else {
-        // On web, share / download
         await SharePlus.instance.share(ShareParams(
           files: [XFile.fromData(bytes, name: fileName, mimeType: 'image/png')],
           text: 'Table $tCode QR Code',
@@ -191,9 +466,8 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
         bytes = await _captureWidgetImage(key);
       }
 
-      final shareText = '🍽️ ${_restaurant?.name ?? "Restaurant"} - ${table.name} ($tCode)\n'
-          'Scan to view our digital menu and order directly from your table:\n$directUrl';
-
+      final restName = _restaurant?.name ?? 'Restaurant';
+      final shareText = '🍽️ $restName - ${table.name} ($tCode)\nScan to view our digital menu and order directly from your table:\n$directUrl';
       if (bytes != null && !kIsWeb) {
         final dir = await getTemporaryDirectory();
         final file = File('${dir.path}/Table_${tCode}_QR.png');
@@ -297,6 +571,78 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     );
   }
 
+  void _showEditTableCountDialog() {
+    final ctrl = TextEditingController(text: _maxTableCount.toString());
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.table_restaurant_rounded, color: Color(0xFF0052FF)),
+            SizedBox(width: 10),
+            Text('Configure Total Tables', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the total number of dining tables available at your outlet. Only tables up to this count will be generated and accessible by customers.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'Total Tables',
+                hintText: 'e.g. 20',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                prefixIcon: const Icon(Icons.pin_rounded),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newCount = int.tryParse(ctrl.text.trim()) ?? 0;
+              if (newCount > 0 && newCount <= 200) {
+                Navigator.pop(ctx);
+                await _db.syncTableCount(newCount);
+                if (mounted) {
+                  setState(() {
+                    _cardKeys.clear();
+                    _initKeys();
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Updated to $newCount tables successfully.'),
+                      backgroundColor: const Color(0xFF10B981),
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0052FF),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Save Count', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _initKeys();
@@ -371,7 +717,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. TOP HERO CARD: LIVE STOREFRONT & TABLE ORDERING INFO
+            // 1. TOP HERO CARD: STOREFRONT & TABLE LIMIT GUARD
             _buildStorefrontBannerCard(cardBgColor, textDark, textMuted),
 
             const SizedBox(height: 20),
@@ -430,13 +776,11 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0052FF).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF0052FF), size: 24),
+              _buildProfileLogoWidget(
+                size: 50,
+                borderColor: const Color(0xFF0052FF),
+                borderWidth: 2,
+                isCircular: true,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -445,17 +789,20 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          _restaurant?.name ?? 'Restaurant Table Ordering',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: textDark,
+                        Expanded(
+                          child: Text(
+                            _restaurant?.name.toUpperCase() ?? 'RESTAURANT',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: textDark,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: const Color(0xFF10B981).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
@@ -473,7 +820,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'When customers scan any table QR, the menu opens instantly with the dining table pre-selected.',
+                      'When customers scan any table QR, the menu opens instantly with that dining table pre-selected.',
                       style: TextStyle(fontSize: 13, color: textMuted),
                     ),
                   ],
@@ -481,7 +828,53 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+
+          // Table Limit Guard Pill
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFA7F3D0)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.security_rounded, color: Color(0xFF059669), size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF065F46)),
+                      children: [
+                        const TextSpan(text: 'Table Limit Guard: ', style: TextStyle(fontWeight: FontWeight.w800)),
+                        TextSpan(
+                          text: '$_maxTableCount Tables Active (T01 – T${_maxTableCount.toString().padLeft(2, "0")}). ',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const TextSpan(
+                          text: 'Links for tables beyond this count (e.g. Table 21+) are strictly blocked.',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _showEditTableCountDialog,
+                  icon: const Icon(Icons.edit_rounded, size: 14, color: Color(0xFF059669)),
+                  label: const Text('Edit Count', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Base Link
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -495,11 +888,11 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'https://apnaposs.vercel.app/$_companySlug/R=$_restaurantCode&T={T01..T${_db.tables.length.toString().padLeft(2, '0')}}',
+                    'https://apnaposs.vercel.app/$_companySlug/R=$_restaurantCode&T={T01..T${_maxTableCount.toString().padLeft(2, "0")}}',
                     style: const TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF0F172A),
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -550,7 +943,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                 child: TextField(
                   onChanged: (v) => setState(() => _searchQuery = v),
                   decoration: InputDecoration(
-                    hintText: 'Search by table name or number...',
+                    hintText: 'Search table (e.g. 01, Table 5)...',
                     hintStyle: TextStyle(fontSize: 13, color: textMuted),
                     prefixIcon: Icon(Icons.search_rounded, size: 18, color: textMuted),
                     border: InputBorder.none,
@@ -574,28 +967,30 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                 child: DropdownButton<TableStandTheme>(
                   value: _currentTheme,
                   icon: const Icon(Icons.palette_outlined, size: 18, color: Color(0xFF0052FF)),
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textDark),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textDark),
                   onChanged: (val) {
                     if (val != null) setState(() => _currentTheme = val);
                   },
-                  items: const [
-                    DropdownMenuItem(
-                      value: TableStandTheme.modernClean,
-                      child: Text('Modern Clean Stand'),
-                    ),
-                    DropdownMenuItem(
-                      value: TableStandTheme.midnightDark,
-                      child: Text('Midnight Dark Stand'),
-                    ),
-                    DropdownMenuItem(
-                      value: TableStandTheme.warmWood,
-                      child: Text('Warm Wood Stand'),
-                    ),
-                    DropdownMenuItem(
-                      value: TableStandTheme.acrylicMinimal,
-                      child: Text('Acrylic Minimalist'),
-                    ),
-                  ],
+                  items: TableStandTheme.values.map((t) {
+                    final cfg = _getThemeConfig(t);
+                    return DropdownMenuItem(
+                      value: t,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(colors: cfg.headerGradient),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(cfg.label),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
             ),
@@ -612,14 +1007,14 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: FilterChip(
-                  label: Text(floor == 'All' ? 'All Tables (${_db.tables.length})' : floor),
+                  label: Text(floor == 'All' ? 'All Tables ($_maxTableCount)' : floor),
                   selected: isSelected,
                   onSelected: (_) => setState(() => _selectedFloor = floor),
                   selectedColor: const Color(0xFF0052FF).withValues(alpha: 0.15),
                   checkmarkColor: const Color(0xFF0052FF),
                   labelStyle: TextStyle(
                     fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
                     color: isSelected ? const Color(0xFF0052FF) : textDark,
                   ),
                   backgroundColor: cardBg,
@@ -648,11 +1043,11 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     return Container(
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -681,7 +1076,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                         style: const TextStyle(
                           fontFamily: 'monospace',
                           fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           color: Color(0xFF0052FF),
                         ),
                         maxLines: 1,
@@ -702,17 +1097,17 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // Action buttons: Download, Share, Print
+                // Action buttons: Download, Share
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => _downloadTableQrImage(table),
                         icon: const Icon(Icons.download_rounded, size: 16),
-                        label: const Text('Download', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        label: const Text('Download', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF051C48),
-                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           padding: const EdgeInsets.symmetric(vertical: 8),
                         ),
@@ -723,7 +1118,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                       child: ElevatedButton.icon(
                         onPressed: () => _shareTableQr(table),
                         icon: const Icon(Icons.share_rounded, size: 16),
-                        label: const Text('Share', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        label: const Text('Share', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0052FF),
                           foregroundColor: Colors.white,
@@ -750,187 +1145,266 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     String directUrl,
     String displayUrl,
   ) {
-    // Theme colors for physical stand
-    Color standBg;
-    Color standHeaderColor;
-    Color qrBorderColor;
-    Color standTextColor;
-    Color standSubtextColor;
-    Color badgeBg;
-    Color badgeTextColor;
-
-    switch (_currentTheme) {
-      case TableStandTheme.midnightDark:
-        standBg = const Color(0xFF0A1128);
-        standHeaderColor = Colors.white;
-        qrBorderColor = const Color(0xFFFFB703);
-        standTextColor = Colors.white;
-        standSubtextColor = const Color(0xFF94A3B8);
-        badgeBg = const Color(0xFFFFB703);
-        badgeTextColor = const Color(0xFF0A1128);
-        break;
-      case TableStandTheme.warmWood:
-        standBg = const Color(0xFFFDFBF7);
-        standHeaderColor = const Color(0xFF3E2723);
-        qrBorderColor = const Color(0xFF8D6E63);
-        standTextColor = const Color(0xFF3E2723);
-        standSubtextColor = const Color(0xFF5D4037);
-        badgeBg = const Color(0xFF4E342E);
-        badgeTextColor = Colors.white;
-        break;
-      case TableStandTheme.acrylicMinimal:
-        standBg = Colors.white;
-        standHeaderColor = Colors.black;
-        qrBorderColor = const Color(0xFFE2E8F0);
-        standTextColor = Colors.black;
-        standSubtextColor = const Color(0xFF64748B);
-        badgeBg = Colors.black;
-        badgeTextColor = Colors.white;
-        break;
-      case TableStandTheme.modernClean:
-        standBg = Colors.white;
-        standHeaderColor = const Color(0xFF051C48);
-        qrBorderColor = const Color(0xFF0052FF);
-        standTextColor = const Color(0xFF0F172A);
-        standSubtextColor = const Color(0xFF475569);
-        badgeBg = const Color(0xFF0052FF);
-        badgeTextColor = Colors.white;
-        break;
-    }
+    final cfg = _getThemeConfig(_currentTheme);
 
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: standBg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
-        ),
+        color: cfg.cardBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Restaurant Name
-          Text(
-            _restaurant?.name.toUpperCase() ?? 'RESTAURANT',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
-              color: standHeaderColor,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 8),
-
-          // Table Badge
+          // 1. TOP HEADER BANNER (Vibrant Theme Gradient + Profile Logo + Store Name)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
-              color: badgeBg,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '${table.name.toUpperCase()} ($tCode)',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.8,
-                color: badgeTextColor,
+              gradient: LinearGradient(
+                colors: cfg.headerGradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
             ),
-          ),
-          const SizedBox(height: 14),
-
-          // Scannable QR Code
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: qrBorderColor.withValues(alpha: 0.5), width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+            child: Row(
+              children: [
+                // Profile Logo Avatar
+                _buildProfileLogoWidget(
+                  size: 46,
+                  borderColor: Colors.white,
+                  borderWidth: 2.0,
+                  isCircular: true,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _restaurant?.name.toUpperCase() ?? 'RESTAURANT',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                          color: Colors.white,
+                          height: 1.15,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _restaurant?.tagline.isNotEmpty == true
+                            ? _restaurant!.tagline
+                            : 'SCAN TO ORDER AT YOUR TABLE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            child: QrImageView(
-              data: directUrl,
-              version: QrVersions.auto,
-              size: 160,
-              gapless: true,
-              eyeStyle: QrEyeStyle(
-                eyeShape: QrEyeShape.square,
-                color: _currentTheme == TableStandTheme.midnightDark
-                    ? const Color(0xFF0A1128)
-                    : const Color(0xFF051C48),
-              ),
-              dataModuleStyle: QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
-                color: _currentTheme == TableStandTheme.midnightDark
-                    ? const Color(0xFF0A1128)
-                    : const Color(0xFF051C48),
-              ),
-            ),
           ),
-          const SizedBox(height: 14),
 
-          // Scan to Order Callout
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.camera_alt_outlined, size: 16, color: qrBorderColor),
-              const SizedBox(width: 6),
-              Text(
-                'SCAN TO VIEW MENU & ORDER',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  color: standTextColor,
+          // 2. MAIN STAND BODY
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              children: [
+                // Vibrant Table Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: cfg.tableBadgeBg,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cfg.tableBadgeBg.withValues(alpha: 0.35),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.table_restaurant_rounded, size: 18, color: cfg.tableBadgeText),
+                      const SizedBox(width: 6),
+                      Text(
+                        'TABLE $tCode',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.0,
+                          color: cfg.tableBadgeText,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cfg.tableBadgeText.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          table.floor.isNotEmpty ? table.floor : 'Ground Floor',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: cfg.tableBadgeText,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Point your phone camera or Google Lens to order directly to this table',
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w500,
-              color: standSubtextColor,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
+                const SizedBox(height: 16),
 
-          // Footer
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981),
-                  shape: BoxShape.circle,
+                // Scannable QR Code Frame with Centered Embedded Profile Logo
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: cfg.qrBorderColor.withValues(alpha: 0.6), width: 2.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // QR Code with highest error correction for logo overlay tolerance
+                      QrImageView(
+                        data: directUrl,
+                        version: QrVersions.auto,
+                        size: 175,
+                        gapless: true,
+                        errorCorrectionLevel: QrErrorCorrectLevel.H,
+                        eyeStyle: QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: cfg.qrEyeColor,
+                        ),
+                        dataModuleStyle: QrDataModuleStyle(
+                          dataModuleShape: QrDataModuleShape.square,
+                          color: cfg.qrDataColor,
+                        ),
+                      ),
+
+                      // Embedded Profile Logo in Center of QR Code
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.22),
+                              blurRadius: 5,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(2.5),
+                        child: _buildProfileLogoWidget(
+                          size: 39,
+                          borderColor: cfg.qrBorderColor,
+                          borderWidth: 1.5,
+                          isCircular: true,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Apna POS Digital Ordering',
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  color: standSubtextColor,
+                const SizedBox(height: 14),
+
+                // High Visibility Callout
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.camera_alt_rounded, size: 16, color: cfg.qrBorderColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      'POINT CAMERA TO VIEW MENU & ORDER',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                        color: cfg.bodyTextColor,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  'No app download required • Orders go directly to the kitchen',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: cfg.subTextColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+
+                // Monospace URL Pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: cfg.accentPillBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    displayUrl,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: cfg.accentPillText,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Security & Brand Verification Footer
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF10B981),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Table ${table.tableNumber} of $_maxTableCount • Apna POS Verified Stand',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                        color: cfg.subTextColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),

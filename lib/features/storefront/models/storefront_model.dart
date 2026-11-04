@@ -187,6 +187,65 @@ class StorefrontCartItem {
   }
 }
 
+class StorefrontTableInfo {
+  final bool isValid;
+  final String tableCode;
+  final int? tableNumber;
+  final String name;
+  final String floor;
+  final int capacity;
+  final int totalTables;
+  final String? error;
+
+  const StorefrontTableInfo({
+    this.isValid = true,
+    required this.tableCode,
+    this.tableNumber,
+    this.name = '',
+    this.floor = 'Ground Floor',
+    this.capacity = 4,
+    this.totalTables = 0,
+    this.error,
+  });
+
+  factory StorefrontTableInfo.fromJson(Map<String, dynamic> json) {
+    return StorefrontTableInfo(
+      isValid: json['isValid'] is bool ? json['isValid'] as bool : true,
+      tableCode: json['tableCode']?.toString() ?? '',
+      tableNumber: json['tableNumber'] is num
+          ? (json['tableNumber'] as num).toInt()
+          : int.tryParse(json['tableNumber']?.toString() ?? ''),
+      name: json['name']?.toString() ?? '',
+      floor: json['floor']?.toString() ?? 'Ground Floor',
+      capacity: (json['capacity'] as num?)?.toInt() ?? 4,
+      totalTables: (json['totalTables'] as num?)?.toInt() ?? 0,
+      error: json['error']?.toString(),
+    );
+  }
+
+  StorefrontTableInfo copyWith({
+    bool? isValid,
+    String? tableCode,
+    int? tableNumber,
+    String? name,
+    String? floor,
+    int? capacity,
+    int? totalTables,
+    String? error,
+  }) {
+    return StorefrontTableInfo(
+      isValid: isValid ?? this.isValid,
+      tableCode: tableCode ?? this.tableCode,
+      tableNumber: tableNumber ?? this.tableNumber,
+      name: name ?? this.name,
+      floor: floor ?? this.floor,
+      capacity: capacity ?? this.capacity,
+      totalTables: totalTables ?? this.totalTables,
+      error: error,
+    );
+  }
+}
+
 class StorefrontData {
   final RestaurantModel restaurant;
   final List<String> categories;
@@ -196,6 +255,7 @@ class StorefrontData {
   final bool isOnline;
   final int themeColorHex;
   final int? themeColorEndHex;
+  final StorefrontTableInfo? tableInfo;
 
   const StorefrontData({
     required this.restaurant,
@@ -206,7 +266,32 @@ class StorefrontData {
     this.isOnline = true,
     this.themeColorHex = 0xFFE65100,
     this.themeColorEndHex,
+    this.tableInfo,
   });
 
   bool get hasGradient => themeColorEndHex != null && themeColorEndHex != themeColorHex;
+
+  StorefrontData copyWith({
+    RestaurantModel? restaurant,
+    List<String>? categories,
+    List<MenuItemModel>? menuItems,
+    List<ExtraModel>? addOns,
+    List<StorefrontBanner>? banners,
+    bool? isOnline,
+    int? themeColorHex,
+    int? themeColorEndHex,
+    StorefrontTableInfo? tableInfo,
+  }) {
+    return StorefrontData(
+      restaurant: restaurant ?? this.restaurant,
+      categories: categories ?? this.categories,
+      menuItems: menuItems ?? this.menuItems,
+      addOns: addOns ?? this.addOns,
+      banners: banners ?? this.banners,
+      isOnline: isOnline ?? this.isOnline,
+      themeColorHex: themeColorHex ?? this.themeColorHex,
+      themeColorEndHex: themeColorEndHex ?? this.themeColorEndHex,
+      tableInfo: tableInfo ?? this.tableInfo,
+    );
+  }
 }

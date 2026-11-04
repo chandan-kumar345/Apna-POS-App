@@ -38,7 +38,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final rawType = (data['orderType'] ?? '').toString().toLowerCase();
     final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
     final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
-    final tableNum = (data['tableNumber'] ?? '').toString().trim();
     final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
     final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
 
@@ -49,13 +48,22 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         DatabaseService.isKnownPosOrder(orderId) ||
         DatabaseService.isKnownPosOrder(orderNum);
 
-    final bool isDineInOrLocalPos = cleanType.contains('dine') ||
-        tableNum.isNotEmpty ||
-        isKot ||
-        rawSource == 'pos' ||
-        rawSource == 'counter' ||
-        rawSource == 'local' ||
-        isKnownPos;
+    final bool isExplicitExternal = rawSource == 'whatsapp' ||
+        rawSource == 'profile' ||
+        rawSource == 'storefront' ||
+        rawSource == 'online' ||
+        rawSource == 'qr' ||
+        cleanType.contains('whatsapp') ||
+        cleanType.contains('profile') ||
+        typeStr == 'whatsapp_order_request';
+
+    final bool isDineInOrLocalPos = isKot ||
+        (!isExplicitExternal && (
+          rawSource == 'pos' ||
+          rawSource == 'counter' ||
+          rawSource == 'local' ||
+          isKnownPos
+        ));
 
     if (isDineInOrLocalPos) {
       debugPrint('[FCM Background] Suppressing background push & popup for in-store POS order: $orderNum / $orderId');
@@ -182,18 +190,26 @@ class FcmService {
     final rawType = (data['orderType'] ?? '').toString().toLowerCase();
     final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
     final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
-    final tableNum = (data['tableNumber'] ?? '').toString().trim();
     final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
     final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
 
-    final bool isDineInOrLocalPos = cleanType.contains('dine') ||
-        tableNum.isNotEmpty ||
-        isKot ||
-        rawSource == 'pos' ||
-        rawSource == 'counter' ||
-        rawSource == 'local' ||
-        DatabaseService.isKnownPosOrder(orderId) ||
-        DatabaseService.isKnownPosOrder(orderNum);
+    final bool isExplicitExternal = rawSource == 'whatsapp' ||
+        rawSource == 'profile' ||
+        rawSource == 'storefront' ||
+        rawSource == 'online' ||
+        rawSource == 'qr' ||
+        cleanType.contains('whatsapp') ||
+        cleanType.contains('profile') ||
+        typeStr == 'whatsapp_order_request';
+
+    final bool isDineInOrLocalPos = isKot ||
+        (!isExplicitExternal && (
+          rawSource == 'pos' ||
+          rawSource == 'counter' ||
+          rawSource == 'local' ||
+          DatabaseService.isKnownPosOrder(orderId) ||
+          DatabaseService.isKnownPosOrder(orderNum)
+        ));
 
     if (isDineInOrLocalPos) {
       debugPrint('[FcmService] Suppressing notification for in-store POS order: $orderNum / $orderId');

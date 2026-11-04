@@ -81,10 +81,6 @@ class DatabaseService extends ChangeNotifier {
   static bool isKnownPosOrder(String? idOrNumber) {
     if (idOrNumber == null || idOrNumber.trim().isEmpty) return false;
     final clean = idOrNumber.replaceAll(RegExp(r'^#'), '').trim();
-    if (_recentPosOrderIdentifiers.contains(clean) ||
-        _recentPosOrderIdentifiers.contains(idOrNumber.trim())) {
-      return true;
-    }
     try {
       final match = _instance.orders.where((o) =>
         o.id == clean ||
@@ -94,11 +90,26 @@ class DatabaseService extends ChangeNotifier {
       ).firstOrNull;
       if (match != null) {
         final src = (match.orderSource ?? 'pos').toLowerCase();
-        if (src == 'pos' || src == 'counter' || src == 'local' || !match.isWhatsAppOrder) {
+        final bool isExternal = match.isWhatsAppOrder ||
+            match.isProfileOrder ||
+            match.isExternalOnlineOrder ||
+            src == 'whatsapp' ||
+            src == 'online' ||
+            src == 'storefront' ||
+            src == 'profile' ||
+            src == 'qr';
+        if (isExternal) {
+          return false;
+        }
+        if (src == 'pos' || src == 'counter' || src == 'local') {
           return true;
         }
       }
     } catch (_) {}
+    if (_recentPosOrderIdentifiers.contains(clean) ||
+        _recentPosOrderIdentifiers.contains(idOrNumber.trim())) {
+      return true;
+    }
     return false;
   }
 
@@ -1783,19 +1794,23 @@ class DatabaseService extends ChangeNotifier {
         // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
         final existingLocalIds = orders.map((o) => o.id).toSet();
         for (final r in remoteOrders) {
-          final rawType = r.orderType.name.toLowerCase();
-          final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-          final bool isDineIn = cleanType.contains('dine') ||
-              r.orderType == OrderType.dineIn ||
-              (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty);
           final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
               r.status == OrderStatus.preparing;
-          final bool isPos = r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local';
 
-          final bool isExternalIncoming = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
-              !isDineIn &&
-              !isKot &&
-              !isPos;
+          final bool isExplicitExternal = r.isWhatsAppOrder ||
+              r.isProfileOrder ||
+              r.isExternalOnlineOrder ||
+              r.orderSource == 'whatsapp' ||
+              r.orderSource == 'online' ||
+              r.orderSource == 'storefront' ||
+              r.orderSource == 'profile' ||
+              r.orderSource == 'qr';
+          final bool isPosOrder = !isExplicitExternal && (
+              r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local' ||
+              DatabaseService.isKnownPosOrder(r.id) ||
+              DatabaseService.isKnownPosOrder(r.orderNumber)
+          );
+          final bool isExternalIncoming = isExplicitExternal && !isKot && !isPosOrder;
           if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
             final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
             if (diffSec < 600) {
@@ -3228,9 +3243,43 @@ class DatabaseService extends ChangeNotifier {
       orders.insert(0, order);
       await _saveOrdersToPrefs();
 
-      // 2. Play audible order chime if POS is running
+      // 2. Play audible order chime and trigger instant order accept notification & popup
       try {
         SoundService.playOrderRingtone();
+        LocalNotificationService().showPushNotification(
+          id: order.id.isNotEmpty ? order.id.hashCode.abs().remainder(100000) : 0,
+          title: '🔔 #${order.orderNumber} • ₹${order.totalAmount.toStringAsFixed(0)}',
+          body: '${order.customerName ?? "Customer"} • ${order.orderType.name.toUpperCase()}',
+          payload: jsonEncode({
+            'type': 'whatsapp_order_request',
+            'orderId': order.id,
+            'orderNumber': order.orderNumber,
+            'customerPhone': order.customerPhone,
+            'customerName': order.customerName,
+            'totalAmount': order.totalAmount.toString(),
+            'orderType': order.orderType.name,
+            'orderSource': order.orderSource ?? 'profile',
+            'deliveryAddress': order.deliveryAddress,
+            'items': order.items.map((i) => i.toJson()).toList(),
+          }),
+          type: NotificationType.whatsappOrderRequest,
+          channelId: 'apna_pos_whatsapp_orders_v2',
+          playSound: true,
+        );
+        SoundService.boostHardwareVolume();
+        SoundService.bringAppToFront();
+        LocalNotificationService.handlePayloadDirectly({
+          'type': 'whatsapp_order_request',
+          'orderId': order.id,
+          'orderNumber': order.orderNumber,
+          'customerPhone': order.customerPhone,
+          'customerName': order.customerName,
+          'totalAmount': order.totalAmount.toString(),
+          'orderType': order.orderType.name,
+          'orderSource': order.orderSource ?? 'profile',
+          'deliveryAddress': order.deliveryAddress,
+          'items': order.items.map((i) => i.toJson()).toList(),
+        });
       } catch (_) {}
 
       // 3. Sync to Firestore
@@ -4958,19 +5007,23 @@ class DatabaseService extends ChangeNotifier {
         // Strictly filter for external online/WhatsApp orders. In-store Dine-in table orders must NEVER trigger accept screen/notifications!
         final existingLocalIds = orders.map((o) => o.id).toSet();
         for (final r in remoteOrders) {
-          final rawType = r.orderType.name.toLowerCase();
-          final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-          final bool isDineIn = cleanType.contains('dine') ||
-              r.orderType == OrderType.dineIn ||
-              (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty);
           final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
               r.status == OrderStatus.preparing;
-          final bool isPos = r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local';
 
-          final bool isExternalIncoming = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
-              !isDineIn &&
-              !isKot &&
-              !isPos;
+          final bool isExplicitExternal = r.isWhatsAppOrder ||
+              r.isProfileOrder ||
+              r.isExternalOnlineOrder ||
+              r.orderSource == 'whatsapp' ||
+              r.orderSource == 'online' ||
+              r.orderSource == 'storefront' ||
+              r.orderSource == 'profile' ||
+              r.orderSource == 'qr';
+          final bool isPosOrder = !isExplicitExternal && (
+              r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local' ||
+              DatabaseService.isKnownPosOrder(r.id) ||
+              DatabaseService.isKnownPosOrder(r.orderNumber)
+          );
+          final bool isExternalIncoming = isExplicitExternal && !isKot && !isPosOrder;
           if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending && isExternalIncoming) {
             final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
             if (diffSec < 600) {
@@ -5058,19 +5111,23 @@ class DatabaseService extends ChangeNotifier {
       if (pendingOrders.isEmpty) return;
 
       for (final r in pendingOrders) {
-        final rawType = r.orderType.name.toLowerCase();
-        final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-        final bool isDineIn = cleanType.contains('dine') ||
-            r.orderType == OrderType.dineIn ||
-            (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty);
         final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
-            r.status == OrderStatus.preparing;
-        final bool isPos = r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local';
+              r.status == OrderStatus.preparing;
 
-        final bool isExternalOrder = (r.isWhatsAppOrder || r.orderSource == 'whatsapp' || r.orderSource == 'online' || r.orderSource == 'storefront') &&
-            !isDineIn &&
-            !isKot &&
-            !isPos;
+        final bool isExplicitExternal = r.isWhatsAppOrder ||
+            r.isProfileOrder ||
+            r.isExternalOnlineOrder ||
+            r.orderSource == 'whatsapp' ||
+            r.orderSource == 'online' ||
+            r.orderSource == 'storefront' ||
+            r.orderSource == 'profile' ||
+            r.orderSource == 'qr';
+        final bool isPosOrder = !isExplicitExternal && (
+            r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local' ||
+            DatabaseService.isKnownPosOrder(r.id) ||
+            DatabaseService.isKnownPosOrder(r.orderNumber)
+        );
+        final bool isExternalOrder = isExplicitExternal && !isKot && !isPosOrder;
 
         if (r.status == OrderStatus.pending && isExternalOrder) {
           final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();

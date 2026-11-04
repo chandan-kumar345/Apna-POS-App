@@ -70,12 +70,20 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
   }) async {
     final cleanType = (orderType ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
     final cleanSource = (source ?? '').toLowerCase().trim();
-    final bool isPosOrder = cleanSource == 'pos' ||
+    final bool isExplicitExternal = cleanSource == 'whatsapp' ||
+        cleanSource == 'profile' ||
+        cleanSource == 'storefront' ||
+        cleanSource == 'online' ||
+        cleanSource == 'qr' ||
+        cleanType.contains('whatsapp') ||
+        cleanType.contains('profile');
+
+    final bool isPosOrder = !isExplicitExternal && (
+        cleanSource == 'pos' ||
         cleanSource == 'counter' ||
         cleanSource == 'local' ||
-        cleanType.contains('dine') ||
         DatabaseService.isKnownPosOrder(orderId) ||
-        DatabaseService.isKnownPosOrder(orderNumber);
+        DatabaseService.isKnownPosOrder(orderNumber));
 
     if (isPosOrder) {
       debugPrint('[IncomingOrderAcceptScreen] Blocked order accept screen for in-store POS order: $orderNumber / $orderId (source: $source, type: $orderType)');
@@ -172,16 +180,28 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
                 data['totalAmount']?.toString() ??
                 '0') ??
         0.0;
-    final orderType = metadata['orderType']?.toString() ??
+    final rawOrderType = metadata['orderType']?.toString() ??
         data['orderType']?.toString() ??
+        metadata['type']?.toString() ??
+        data['type']?.toString() ??
         'takeaway';
+    final source = metadata['orderSource']?.toString() ??
+        data['orderSource']?.toString() ??
+        metadata['source']?.toString() ??
+        data['source']?.toString() ??
+        (rawOrderType.toLowerCase().contains('whatsapp') ? 'whatsapp' : null) ??
+        (rawOrderType.toLowerCase().contains('profile') ? 'profile' : null) ??
+        (rawOrderType.toLowerCase().contains('storefront') ? 'storefront' : null) ??
+        'whatsapp';
+    final orderType = (rawOrderType.toLowerCase().contains('whatsapp') || rawOrderType.toLowerCase().contains('profile'))
+        ? ((metadata['tableNumber'] != null || data['tableNumber'] != null) ? 'dineIn' : 'takeaway')
+        : rawOrderType;
     final deliveryAddress = metadata['deliveryAddress']?.toString() ??
         data['deliveryAddress']?.toString() ??
         '';
     final itemsPayload = metadata['items'] ?? data['items'];
     final createdAtStr = metadata['createdAt']?.toString() ?? data['createdAt']?.toString();
     final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr) : null;
-    final source = metadata['orderSource']?.toString() ?? data['orderSource']?.toString() ?? 'whatsapp';
 
     if (orderId.isEmpty && orderNumber.isEmpty) return;
 

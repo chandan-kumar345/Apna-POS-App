@@ -378,23 +378,28 @@ class SocketService {
         final oSource = (orderModel.orderSource ?? rawMap['orderSource'] ?? '').toString().toLowerCase();
         final rawOrderType = '${orderModel.orderType.name} ${rawMap['orderType'] ?? ''}'.toLowerCase();
         final cleanType = rawOrderType.replaceAll(RegExp(r'[-_\s]'), '');
-        final bool isDineIn = cleanType.contains('dine') ||
-            orderModel.orderType == OrderType.dineIn ||
-            (orderModel.tableNumber != null && orderModel.tableNumber!.trim().isNotEmpty) ||
-            (rawMap['tableNumber'] != null && rawMap['tableNumber'].toString().trim().isNotEmpty);
         final bool isKot = orderModel.paymentMethod.toLowerCase().contains('kot') ||
             orderModel.status == OrderStatus.preparing ||
             rawMap['isKot'] == true;
-        final bool isPos = oSource == 'pos' ||
+        final bool isExplicitExternal = orderModel.isExternalOnlineOrder ||
+            orderModel.isWhatsAppOrder ||
+            orderModel.isProfileOrder ||
+            oSource == 'whatsapp' ||
+            oSource == 'profile' ||
+            oSource == 'online' ||
+            oSource == 'storefront' ||
+            oSource == 'qr' ||
+            cleanType.contains('whatsapp') ||
+            cleanType.contains('profile');
+        final bool isPosOrder = !isExplicitExternal && (
+            oSource == 'pos' ||
             oSource == 'counter' ||
             oSource == 'local' ||
             DatabaseService.isKnownPosOrder(orderId) ||
-            DatabaseService.isKnownPosOrder(orderNum);
+            DatabaseService.isKnownPosOrder(orderNum)
+        );
 
-        final bool isExternalIncomingOrder = (orderModel.isWhatsAppOrder || oSource == 'whatsapp' || oSource == 'online' || oSource == 'storefront') &&
-            !isDineIn &&
-            !isKot &&
-            !isPos;
+        final bool isExternalIncomingOrder = isExplicitExternal && !isKot && !isPosOrder;
 
         if (orderModel.status == OrderStatus.pending && isExternalIncomingOrder) {
           // 1. Play incoming order ringtone
@@ -641,18 +646,25 @@ class SocketService {
       final items = orderData['items'];
 
       final cleanType = orderType.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-      final tableNum = (orderData['tableNumber'] ?? '').toString().trim();
-      final oSource = (orderData['orderSource'] ?? rawMap['orderSource'] ?? '').toString().toLowerCase();
-      final bool isPosOrder = oSource == 'pos' ||
+      final oSource = (orderData['orderSource'] ?? rawMap['orderSource'] ?? rawMap['source'] ?? '').toString().toLowerCase();
+      final bool isExplicitExternal = oSource == 'whatsapp' ||
+          oSource == 'profile' ||
+          oSource == 'storefront' ||
+          oSource == 'online' ||
+          oSource == 'qr' ||
+          rawMap['type'] == 'whatsapp_order_request' ||
+          cleanType.contains('whatsapp') ||
+          cleanType.contains('profile');
+
+      final bool isPosOrder = !isExplicitExternal && (
+          oSource == 'pos' ||
           oSource == 'counter' ||
           oSource == 'local' ||
-          cleanType.contains('dine') ||
-          tableNum.isNotEmpty ||
           DatabaseService.isKnownPosOrder(orderId) ||
-          DatabaseService.isKnownPosOrder(orderNumber);
+          DatabaseService.isKnownPosOrder(orderNumber));
 
       if (isPosOrder) {
-        debugPrint('[SocketService] Suppressing whatsapp:order:request for POS/Dine-in order: $orderNumber / $orderId');
+        debugPrint('[SocketService] Suppressing whatsapp:order:request for POS order: $orderNumber / $orderId');
         return;
       }
 

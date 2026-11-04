@@ -283,13 +283,16 @@ class OrderModel {
 
     // Order Type normalization
     final String rawTypeStr = (json['orderType'] ?? json['type'] ?? json['order_type'] ?? '').toString().toLowerCase().trim();
+    final String rawTableStr = (json['tableNumber'] ?? json['table'] ?? json['T'] ?? '').toString().trim();
     final OrderType parsedType;
     if (rawTypeStr.contains('takeaway') || rawTypeStr.contains('take_away') || rawTypeStr.contains('pickup') || rawTypeStr.contains('parcel')) {
       parsedType = OrderType.takeaway;
     } else if (rawTypeStr.contains('delivery') || rawTypeStr.contains('deliv')) {
       parsedType = OrderType.delivery;
-    } else {
+    } else if (rawTypeStr.contains('dine') || rawTableStr.isNotEmpty) {
       parsedType = OrderType.dineIn;
+    } else {
+      parsedType = OrderType.takeaway;
     }
 
     // Order Number resolution
@@ -372,8 +375,14 @@ class OrderModel {
         json['updatedAt']?.toString() ??
         '';
 
-    final String? resolvedOrderSource = json['orderSource']?.toString() ??
-        (json['whatsappDetails'] != null ? 'whatsapp' : null);
+    final String? rawSrcCandidate = json['orderSource']?.toString() ??
+        json['source']?.toString() ??
+        json['order_source']?.toString() ??
+        (json['whatsappDetails'] != null ? 'whatsapp' : null) ??
+        (rawTypeStr.contains('whatsapp') ? 'whatsapp' : null) ??
+        (rawTypeStr.contains('profile') ? 'profile' : null) ??
+        (rawTypeStr.contains('storefront') ? 'storefront' : null);
+    final String? resolvedOrderSource = rawSrcCandidate?.toLowerCase().trim();
     String? resolvedWhatsappStatus = json['whatsappAcceptanceStatus']?.toString();
     if (resolvedWhatsappStatus == null && json['whatsappDetails'] is Map) {
       resolvedWhatsappStatus = (json['whatsappDetails'] as Map)['acceptanceStatus']?.toString();
@@ -486,9 +495,19 @@ class OrderModel {
   /// Whether this order originated from WhatsApp
   bool get isWhatsAppOrder => (orderSource?.toLowerCase() == 'whatsapp') || (whatsappAcceptanceStatus != null);
 
-  /// Whether this order is a WhatsApp order awaiting merchant acceptance/rejection
+  /// Whether this order originated from Storefront / Profile
+  bool get isProfileOrder => (orderSource?.toLowerCase() == 'profile') || (orderSource?.toLowerCase() == 'storefront');
+
+  /// Whether this order is an external online/remote customer order requiring merchant attention
+  bool get isExternalOnlineOrder => isWhatsAppOrder || isProfileOrder ||
+      orderSource?.toLowerCase() == 'online' ||
+      orderSource?.toLowerCase() == 'qr' ||
+      orderSource?.toLowerCase() == 'storefront' ||
+      orderSource?.toLowerCase() == 'profile';
+
+  /// Whether this order is a WhatsApp or external online order awaiting merchant acceptance/rejection
   bool get isWhatsAppPendingReview =>
-      isWhatsAppOrder &&
+      (isWhatsAppOrder || isProfileOrder || isExternalOnlineOrder) &&
       (whatsappAcceptanceStatus == 'pending_review' ||
           (status == OrderStatus.pending && whatsappAcceptanceStatus != 'accepted' && whatsappAcceptanceStatus != 'rejected'));
 

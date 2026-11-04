@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const Category = require('../models/Category');
 const Extra = require('../models/Extra');
 const Order = require('../models/Order');
+const Table = require('../models/Table');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
 
@@ -121,13 +122,55 @@ class StorefrontController {
       let tableInfo = null;
       if (tableQuery) {
         const cleanTable = tableQuery.toUpperCase();
-        tableInfo = {
-          tableCode: cleanTable,
-          tableNumber: cleanTable.replace(/[^0-9]/g, '') || cleanTable,
-          name: cleanTable.startsWith('T') ? `Table ${cleanTable.substring(1)}` : `Table ${cleanTable}`,
-          isTableOrdering: true,
-          restaurantCode: restaurantCodeQuery || 'R1',
-        };
+        const parsedNum = parseInt(cleanTable.replace(/[^0-9]/g, ''), 10);
+
+        // Retrieve existing tables & configured limit for this business
+        const businessId = business?._id;
+        let tables = [];
+        if (businessId) {
+          tables = await Table.find({ businessId }).sort({ tableNumber: 1 }).lean();
+        }
+        const configuredCount = (business?.orderSettings?.tableCount && business.orderSettings.tableCount > 0)
+          ? business.orderSettings.tableCount
+          : (tables.length > 0 ? tables.length : 12);
+        const maxDbTableNum = tables.length > 0
+          ? Math.max(...tables.map((t) => t.tableNumber || 0))
+          : configuredCount;
+        const totalTables = Math.max(configuredCount, tables.length, maxDbTableNum);
+
+        // Check if the requested table exists or is within the business's allowed table limit (1..totalTables)
+        const matchedTable = tables.find((t) =>
+          (parsedNum && t.tableNumber === parsedNum) ||
+          (t.name && t.name.toUpperCase().replace(/\s+/g, '') === cleanTable.replace(/\s+/g, '')) ||
+          (cleanTable === `T${String(t.tableNumber).padStart(2, '0')}`)
+        );
+
+        const isWithinRange = !isNaN(parsedNum) && parsedNum >= 1 && parsedNum <= totalTables;
+        const isValid = !!matchedTable || isWithinRange;
+
+        if (isValid) {
+          const finalNum = matchedTable ? matchedTable.tableNumber : parsedNum;
+          tableInfo = {
+            isValid: true,
+            tableCode: `T${String(finalNum).padStart(2, '0')}`,
+            tableNumber: finalNum,
+            name: matchedTable?.name || `Table ${finalNum}`,
+            floor: matchedTable?.floor || 'Ground Floor',
+            capacity: matchedTable?.capacity || 4,
+            isTableOrdering: true,
+            restaurantCode: restaurantCodeQuery || 'R1',
+            totalTables,
+          };
+        } else {
+          tableInfo = {
+            isValid: false,
+            tableCode: cleanTable,
+            tableNumber: !isNaN(parsedNum) ? parsedNum : null,
+            totalTables,
+            isTableOrdering: false,
+            error: `Table ${cleanTable} is not available at ${restaurant.name}. This outlet only has ${totalTables} tables (Table 1 to Table ${totalTables}).`,
+          };
+        }
       }
 
       return ApiResponse.success(res, {
@@ -172,6 +215,33 @@ class StorefrontController {
       const orderType = isDineIn ? 'dineIn' : (cleanType.includes('take') ? 'takeaway' : 'delivery');
       const tableNumber = isDineIn ? (orderPayload.tableNumber || orderPayload.T || '').toString().trim() : '';
 
+      if (isDineIn) {
+        const cleanTable = (tableNumber || '').toString().trim().toUpperCase();
+        const parsedNum = parseInt(cleanTable.replace(/[^0-9]/g, ''), 10);
+        const tables = await Table.find({ businessId }).lean();
+        const configuredCount = (business?.orderSettings?.tableCount && business.orderSettings.tableCount > 0)
+          ? business.orderSettings.tableCount
+          : (tables.length > 0 ? tables.length : 12);
+        const maxDbTableNum = tables.length > 0
+          ? Math.max(...tables.map((t) => t.tableNumber || 0))
+          : configuredCount;
+        const totalTables = Math.max(configuredCount, tables.length, maxDbTableNum);
+
+        const matchedTable = tables.find((t) =>
+          (parsedNum && t.tableNumber === parsedNum) ||
+          (t.name && t.name.toUpperCase().replace(/\s+/g, '') === cleanTable.replace(/\s+/g, '')) ||
+          (cleanTable === `T${String(t.tableNumber).padStart(2, '0')}`)
+        );
+        const isWithinRange = !isNaN(parsedNum) && parsedNum >= 1 && parsedNum <= totalTables;
+
+        if (!matchedTable && !isWithinRange) {
+          throw new ApiError(
+            400,
+            `Table ${tableNumber} is not available. This outlet only supports tables from 1 to ${totalTables}.`
+          );
+        }
+      }
+
       const orderNumber = `ONL-${Math.floor(1000 + Math.random() * 9000)}`;
       const order = new Order({
         businessId,
@@ -189,7 +259,7 @@ class StorefrontController {
         deliveryAddress: isDineIn ? '' : (orderPayload.deliveryAddress || ''),
         customerName: orderPayload.customerName || (isDineIn ? `Guest (${tableNumber || 'Table'})` : 'Online Guest'),
         customerPhone: orderPayload.customerPhone || '',
-        orderSource: 'storefront',
+        orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
         notes: orderPayload.notes || '',
       });
 
@@ -214,7 +284,7 @@ class StorefrontController {
             tableNumber: order.tableNumber || '',
             totalAmount: order.totalAmount,
             orderType: order.orderType,
-            orderSource: 'storefront',
+            orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
             order: orderJson,
           });
           socketService.emitWhatsAppOrderRequest(bId, {
@@ -224,7 +294,7 @@ class StorefrontController {
             totalAmount: order.totalAmount,
             orderType: order.orderType,
             tableNumber: order.tableNumber || '',
-            orderSource: 'storefront',
+            orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
           });
         }
       } catch (sockErr) {
@@ -248,7 +318,7 @@ class StorefrontController {
             totalAmount: String(order.totalAmount || 0),
             orderType: order.orderType || 'dineIn',
             tableNumber: order.tableNumber || '',
-            orderSource: 'storefront',
+            orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
             deliveryAddress: order.deliveryAddress || '',
             items: JSON.stringify(order.items || []),
             createdAt: (order.createdAt || new Date()).toISOString(),

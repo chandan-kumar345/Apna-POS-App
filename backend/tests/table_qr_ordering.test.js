@@ -116,4 +116,72 @@ describe('Table QR Ordering System Tests', () => {
     expect(savedOrder.orderSource).toBe('storefront');
     expect(savedOrder.totalAmount).toBe(577.5);
   });
+
+  test('Table limit logic: table within count is valid, table beyond count (e.g. 5 or 21) is blocked', async () => {
+    // 1. Valid Table 4 (Within 4 tables)
+    const reqValid = {
+      params: { slug: 'pizza-47' },
+      query: { R: 'R1', T: 'T04' },
+    };
+    let jsonValid = null;
+    const resValid = {
+      status: () => resValid,
+      json: (data) => { jsonValid = data; },
+    };
+    await storefrontController.getStorefront(reqValid, resValid, (err) => { if (err) throw err; });
+    expect(jsonValid.data.table).toBeDefined();
+    expect(jsonValid.data.table.isValid).toBe(true);
+    expect(jsonValid.data.table.tableNumber).toBe(4);
+
+    // 2. Invalid Table 5 (Beyond 4 tables)
+    const reqInvalid = {
+      params: { slug: 'pizza-47' },
+      query: { R: 'R1', T: 'T05' },
+    };
+    let jsonInvalid = null;
+    const resInvalid = {
+      status: () => resInvalid,
+      json: (data) => { jsonInvalid = data; },
+    };
+    await storefrontController.getStorefront(reqInvalid, resInvalid, (err) => { if (err) throw err; });
+    expect(jsonInvalid.data.table).toBeDefined();
+    expect(jsonInvalid.data.table.isValid).toBe(false);
+    expect(jsonInvalid.data.table.error).toContain('is not available');
+
+    // 3. Invalid Table 21 (Beyond 4 tables)
+    const reqInvalid21 = {
+      params: { slug: 'pizza-47' },
+      query: { R: 'R1', T: 'T21' },
+    };
+    let jsonInvalid21 = null;
+    const resInvalid21 = {
+      status: () => resInvalid21,
+      json: (data) => { jsonInvalid21 = data; },
+    };
+    await storefrontController.getStorefront(reqInvalid21, resInvalid21, (err) => { if (err) throw err; });
+    expect(jsonInvalid21.data.table).toBeDefined();
+    expect(jsonInvalid21.data.table.isValid).toBe(false);
+
+    // 4. Attempting to create order for Table 21 should fail with ApiError 400
+    const reqOrderInvalid = {
+      params: { slug: 'pizza-47' },
+      body: {
+        tableNumber: 'T21',
+        orderType: 'dineIn',
+        totalAmount: 100,
+        items: [{ name: 'Test', price: 100, quantity: 1 }],
+      },
+    };
+    let thrownError = null;
+    try {
+      await storefrontController.createStorefrontOrder(reqOrderInvalid, {}, (err) => {
+        if (err) throw err;
+      });
+    } catch (e) {
+      thrownError = e;
+    }
+    expect(thrownError).toBeDefined();
+    expect(thrownError.statusCode).toBe(400);
+    expect(thrownError.message).toContain('Table T21 is not available');
+  });
 });

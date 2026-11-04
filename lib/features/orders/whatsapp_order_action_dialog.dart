@@ -58,9 +58,7 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
     dynamic itemsPayload,
     DateTime? createdAt,
   }) async {
-    final cleanType = (orderType ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final bool isPosOrder = cleanType.contains('dine') ||
-        DatabaseService.isKnownPosOrder(orderId) ||
+    final bool isPosOrder = DatabaseService.isKnownPosOrder(orderId) ||
         DatabaseService.isKnownPosOrder(orderNumber);
 
     if (isPosOrder) {

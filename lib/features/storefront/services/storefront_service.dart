@@ -17,6 +17,15 @@ class StorefrontService {
   final DatabaseService _db = DatabaseService();
   final FirestoreService _firestore = FirestoreService();
   final ApiClient _apiClient = ApiClient();
+  final Map<String, String> _categoryCache = {};
+
+  String? getCachedCategory(String slug) => _categoryCache[slug.trim().toLowerCase()];
+
+  void cacheCategory(String slug, String category) {
+    if (slug.isNotEmpty && category.isNotEmpty) {
+      _categoryCache[slug.trim().toLowerCase()] = category.trim();
+    }
+  }
 
   /// Fetch dynamic storefront data for given company slug or business ID
   Future<StorefrontData> loadStorefront(String slug, {String? tableCode, String? restaurantCode}) async {
@@ -27,6 +36,7 @@ class StorefrontService {
     List<MenuItemModel> menuItems = [];
     List<ExtraModel> addOns = [];
     List<StorefrontBanner> banners = [];
+    StorefrontTableInfo? resolvedTableInfo;
 
     // 1. Resolve dynamic local restaurant, logo, store name and menu data from DatabaseService
     final localRest = _db.restaurant;
@@ -105,6 +115,9 @@ class StorefrontService {
             banners = (data['banners'] as List)
                 .map((e) => StorefrontBanner.fromJson(Map<String, dynamic>.from(e as Map)))
                 .toList();
+          }
+          if (data['table'] is Map) {
+            resolvedTableInfo = StorefrontTableInfo.fromJson(Map<String, dynamic>.from(data['table'] as Map));
           }
         }
       } catch (e) {
@@ -238,6 +251,43 @@ class StorefrontService {
       ];
     }
 
+    if (resolvedTableInfo == null && tableCode != null && tableCode.trim().isNotEmpty) {
+      final clean = tableCode.trim().toUpperCase();
+      final numPart = int.tryParse(clean.replaceAll(RegExp(r'[^0-9]'), ''));
+      final total = _db.tables.isNotEmpty ? _db.tables.length : 20;
+      final matching = _db.tables.where((t) =>
+          t.tableNumber == numPart ||
+          t.name.toUpperCase().replaceAll(' ', '') == clean.replaceAll(' ', '') ||
+          clean == 'T${t.tableNumber.toString().padLeft(2, '0')}').firstOrNull;
+
+      final isWithin = numPart != null && numPart >= 1 && numPart <= total;
+      if (matching != null || isWithin) {
+        final tNum = matching?.tableNumber ?? numPart!;
+        resolvedTableInfo = StorefrontTableInfo(
+          isValid: true,
+          tableCode: 'T${tNum.toString().padLeft(2, '0')}',
+          tableNumber: tNum,
+          name: matching?.name ?? 'Table $tNum',
+          floor: matching?.floor ?? 'Ground Floor',
+          capacity: matching?.capacity ?? 4,
+          totalTables: total,
+        );
+      } else {
+        resolvedTableInfo = StorefrontTableInfo(
+          isValid: false,
+          tableCode: clean,
+          tableNumber: numPart,
+          totalTables: total,
+          error: 'Table \$clean is not available at this outlet. Available tables are Table 1 to Table \$total.',
+        );
+      }
+    }
+
+    cacheCategory(cleanSlug, resolvedRestaurant.cuisineType);
+    if (resolvedRestaurant.slug.isNotEmpty) {
+      cacheCategory(resolvedRestaurant.slug, resolvedRestaurant.cuisineType);
+    }
+
     return StorefrontData(
       restaurant: resolvedRestaurant,
       categories: categories,
@@ -247,6 +297,7 @@ class StorefrontService {
       isOnline: _db.isStorefrontOnline,
       themeColorHex: _db.storefrontThemeColor,
       themeColorEndHex: _db.storefrontThemeColorEnd,
+      tableInfo: resolvedTableInfo,
     );
   }
 

@@ -250,12 +250,7 @@ class OrderService {
     const paymentMode = (rawData.paymentMode || rawData.paymentMethod || '').toString().trim();
     const orderDevice = (rawData.orderDevice || 'web').toString().trim();
     const rawMethod = (rawData.paymentMethod || paymentMode || '').toLowerCase();
-    const isKotOrder = isKOT ||
-      rawMethod.includes('kot') ||
-      rawMethod.includes('pending') ||
-      rawMethod === 'unpaid' ||
-      rawData.status === 'pending' ||
-      rawData.status === 'preparing';
+        const isKotOrder = isKOT || Boolean(rawData.isKot) || rawMethod.includes('kot');
     const isPaid = !isKotOrder && (
       rawData.isPaid === true ||
       (rawData.paymentStatus === 'paid' && rawData.status === 'completed') ||
@@ -331,22 +326,34 @@ class OrderService {
     }
 
     // Determine normalized paymentMethod and status
-    let paymentMethod = (rawData.paymentMethod || paymentMode || (isKotOrder ? 'kot pending' : 'cash')).toLowerCase();
+    let paymentMethod = (rawData.paymentMethod || paymentMode || (isKotOrder ? 'kot pending' : (isPaid ? 'cash' : 'unpaid'))).toLowerCase();
     if (isPaid) {
       if (paymentDetails.length > 1) {
         paymentMethod = 'split';
       } else if (paymentDetails.length === 1 && paymentDetails[0].paymentMethod) {
         paymentMethod = paymentDetails[0].paymentMethod.toLowerCase();
       }
-    } else {
-      if (!paymentMethod.includes('kot') && isKotOrder) {
+    } else if (isKotOrder) {
+      if (!paymentMethod.includes('kot')) {
         paymentMethod = 'kot pending';
       }
     }
 
     const status = isPaid ? 'completed' : (rawData.status || 'pending');
     const paymentStatus = isPaid ? 'paid' : 'pending';
-    const orderType = isDineIn ? 'dineIn' : (rawData.orderType || (tableCode ? 'dineIn' : 'takeaway'));
+    const rawTypeCandidate = (rawData.orderType || (tableCode ? 'dineIn' : 'takeaway')).toString().toLowerCase();
+    let orderType = isDineIn ? 'dineIn' : 'takeaway';
+    if (rawTypeCandidate.includes('takeaway') || rawTypeCandidate.includes('pickup') || rawTypeCandidate.includes('take_away') || rawTypeCandidate.includes('parcel')) {
+      orderType = 'takeaway';
+    } else if (rawTypeCandidate.includes('delivery') || rawTypeCandidate.includes('deliv')) {
+      orderType = 'delivery';
+    } else if (rawTypeCandidate.includes('dine') || isDineIn || Boolean(tableCode || rawData.tableNumber)) {
+      orderType = 'dineIn';
+    } else if (rawTypeCandidate.includes('whatsapp') || rawTypeCandidate.includes('profile') || rawTypeCandidate.includes('storefront') || rawTypeCandidate.includes('online')) {
+      orderType = (isDineIn || Boolean(tableCode || rawData.tableNumber)) ? 'dineIn' : (rawData.deliveryAddress ? 'delivery' : 'takeaway');
+    } else {
+      orderType = isDineIn ? 'dineIn' : 'takeaway';
+    }
     const tableNumber = orderType === 'dineIn' ? (tableCode || rawData.tableNumber || '') : '';
     const deliveryAddress = orderType === 'delivery' ? (rawData.deliveryAddress || '').trim() : '';
 
@@ -498,14 +505,30 @@ class OrderService {
       tokenNo,
       invoiceNumber,
       invoiceGenerated: status === 'completed',
-      orderSource: (rawData.orderSource || rawData.source || 'pos').toString().toLowerCase().includes('whatsapp') ? 'whatsapp' : (rawData.orderSource || 'pos'),
-      whatsappDetails: (rawData.orderSource || rawData.source || '').toString().toLowerCase().includes('whatsapp') ? {
-        chatId: rawData.chatId || null,
-        customerPhone: rawData.customerPhone || '',
-        customerName: rawData.customerName || '',
-        acceptanceStatus: 'pending_review',
-        estimatedPrepTimeMinutes: Number(rawData.estimatedPrepTimeMinutes) || 20,
-      } : undefined,
+      orderSource: (() => {
+        const rawSrc = (rawData.orderSource || rawData.source || '').toString().toLowerCase();
+        const rawType = (rawData.orderType || '').toString().toLowerCase();
+        if (rawSrc.includes('whatsapp') || rawType.includes('whatsapp')) return 'whatsapp';
+        if (rawSrc.includes('profile') || rawType.includes('profile')) return 'profile';
+        if (rawSrc.includes('storefront') || rawType.includes('storefront')) return 'storefront';
+        if (rawSrc.includes('online') || rawType.includes('online')) return 'online';
+        if (rawSrc.includes('qr') || rawType.includes('qr')) return 'qr';
+        return rawData.orderSource || rawData.source || 'pos';
+      })(),
+      whatsappDetails: (() => {
+        const rawSrc = (rawData.orderSource || rawData.source || '').toString().toLowerCase();
+        const rawType = (rawData.orderType || '').toString().toLowerCase();
+        if (rawSrc.includes('whatsapp') || rawType.includes('whatsapp')) {
+          return {
+            chatId: rawData.chatId || null,
+            customerPhone: rawData.customerPhone || '',
+            customerName: rawData.customerName || '',
+            acceptanceStatus: 'pending_review',
+            estimatedPrepTimeMinutes: Number(rawData.estimatedPrepTimeMinutes) || 20,
+          };
+        }
+        return undefined;
+      })(),
     });
 
     // 8. Update Table status
@@ -714,24 +737,33 @@ class OrderService {
           order: order.toJSON ? order.toJSON() : order,
         });
 
-        // Broadcast high-priority push notification only for external online/WhatsApp orders requiring merchant acceptance.
-        // Never send incoming accept push notifications for in-store Dine-in table orders or local POS counter orders!
-        const cleanType = oType.replace(/[-_\s]/g, '');
-        const isDineIn = cleanType.includes('dine') || !!order.tableNumber || !!rawData.tableNumber;
-        const isKot = (order.paymentMethod && order.paymentMethod.toString().toLowerCase().includes('kot')) ||
-                      (rawData.paymentMethod && rawData.paymentMethod.toString().toLowerCase().includes('kot')) ||
-                      order.status === 'preparing' ||
-                      rawData.status === 'preparing' ||
-                      rawData.isKot === true ||
-                      order.isKot === true;
         const isPosOrder = oSource === 'pos' || oSource === 'counter' || oSource === 'local';
-
-        const isExternalAcceptOrder = (oSource === 'whatsapp' || oSource === 'online' || oSource === 'storefront') &&
-          !isDineIn &&
-          !isKot &&
-          !isPosOrder;
+        const isExternalAcceptOrder = (
+          oSource === 'whatsapp' ||
+          oSource === 'online' ||
+          oSource === 'storefront' ||
+          oSource === 'profile' ||
+          oSource === 'qr' ||
+          rawData.isExternalOrder === true
+        ) && !isPosOrder;
 
         if ((order.status === 'pending' || order.status === 'preparing') && isExternalAcceptOrder) {
+          // 1. Emit whatsapp:order:request for instant accept dialog popup on POS devices
+          try {
+            socketService.emitWhatsAppOrderRequest(businessId, {
+              order: order.toJSON ? order.toJSON() : order,
+              customerPhone: order.customerPhone || '',
+              customerName: order.customerName || 'Customer',
+              totalAmount: order.totalAmount,
+              orderType: order.orderType,
+              tableNumber: order.tableNumber || '',
+              orderSource: oSource,
+            });
+          } catch (sockReqErr) {
+            console.warn('[generatePosOrder] emitWhatsAppOrderRequest notice:', sockReqErr.message);
+          }
+
+          // 2. Broadcast high-priority push notification so device rings even when closed
           try {
             const pushNotificationService = require('./pushNotificationService');
             const bId = (businessId?._id || businessId).toString();
