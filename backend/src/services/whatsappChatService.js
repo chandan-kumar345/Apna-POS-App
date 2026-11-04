@@ -1411,6 +1411,8 @@ class WhatsAppChatService {
             try {
               let finalReplyText = '';
               let finalButtons = null;
+              let finalMediaUrl = null;
+              let finalMessageType = 'text';
               let orderToCreate = null;
 
               // Step 1: Execute Conversation State Machine
@@ -1432,6 +1434,8 @@ class WhatsAppChatService {
               if (sessionResult && sessionResult.handled) {
                 finalReplyText = sessionResult.replyText;
                 finalButtons = sessionResult.buttons;
+                finalMediaUrl = sessionResult.mediaUrl || null;
+                finalMessageType = sessionResult.messageType || (finalMediaUrl ? 'image' : 'text');
                 orderToCreate = sessionResult.orderPayload;
               } else {
                 // Step 2: Customer message is outside the active ordering flow
@@ -1603,6 +1607,8 @@ class WhatsAppChatService {
                   text: finalReplyText,
                   message: finalReplyText,
                   buttons: finalButtons,
+                  mediaUrl: finalMediaUrl || '',
+                  messageType: finalMessageType || (finalMediaUrl ? 'image' : 'text'),
                   phoneNumberId: activePhoneId,
                   accessToken: activeToken,
                 });
@@ -1613,8 +1619,9 @@ class WhatsAppChatService {
                   chatId: chat._id,
                   customerPhone: normalizedPhone,
                   direction: 'OUTGOING',
-                  messageType: finalButtons && finalButtons.length > 0 ? 'interactive' : 'text',
+                  messageType: finalButtons && finalButtons.length > 0 ? 'interactive' : (finalMediaUrl ? 'image' : 'text'),
                   text: finalReplyText,
+                  mediaUrl: finalMediaUrl || '',
                   whatsappMessageId: sendResult?.messageId || `wamid.ai.${Date.now()}`,
                   isAiGenerated: true,
                   status: 'SENT',

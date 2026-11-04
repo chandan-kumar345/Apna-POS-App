@@ -35,7 +35,11 @@ class ProductVariant {
       };
 
   factory ProductVariant.fromJson(Map<dynamic, dynamic> json) {
-    final double rawPrice = (json['price'] as num?)?.toDouble() ?? 0.0;
+    final double rawPrice = (json['price'] as num?)?.toDouble() ??
+        (json['rate'] as num?)?.toDouble() ??
+        (json['sellingPrice'] as num?)?.toDouble() ??
+        (json['amount'] as num?)?.toDouble() ??
+        0.0;
     final double rawSale = (json['salePrice'] as num?)?.toDouble() ?? 0.0;
     final double rawDisc = (json['discountPercent'] as num?)?.toDouble() ?? (json['discount'] as num?)?.toDouble() ?? 0.0;
     final bool hasDisc = json['hasDiscount'] == true || rawDisc > 0 || (rawSale > 0 && rawSale < rawPrice);
@@ -43,8 +47,10 @@ class ProductVariant {
         ? rawSale
         : (hasDisc && rawDisc > 0 && rawPrice > 0 ? (rawPrice * (1 - rawDisc / 100)) : null);
 
+    final rawName = (json['name'] ?? json['title'] ?? json['variantName'] ?? json['size'] ?? json['portion'] ?? '').toString();
+
     return ProductVariant(
-      name: (json['name'] ?? '').toString(),
+      name: rawName,
       price: rawPrice,
       hasDiscount: hasDisc,
       discountPercent: rawDisc > 0 ? rawDisc : (rawSale > 0 && rawPrice > 0 ? ((rawPrice - rawSale) / rawPrice * 100) : 0.0),

@@ -23,7 +23,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import '../storefront/screens/customer_storefront_screen.dart';
-import '../../core/services/order_alert_permission_service.dart';
 
 /// Neumorphic Color Constants & Styling
 class _NeumorphicTheme {
@@ -2576,9 +2575,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     bool isTesting = false;
     String? modalError;
     String? testSuccessMessage;
-    bool? overlayGranted;
-    bool? batteryOptIgnored;
-    bool hasCheckedPerms = false;
 
     showDialog(
       context: context,
@@ -2587,15 +2583,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
       builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            if (!hasCheckedPerms && !kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-              hasCheckedPerms = true;
-              OrderAlertPermissionService.checkPermissions().then((p) {
-                setModalState(() {
-                  overlayGranted = p['overlayGranted'];
-                  batteryOptIgnored = p['batteryOptimizationIgnored'];
-                });
-              });
-            }
             final screenWidth = MediaQuery.of(context).size.width;
             final dialogWidth = screenWidth >= 650 ? 580.0 : (screenWidth * 0.94);
 
@@ -2704,108 +2691,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           }),
                         ),
                         const SizedBox(height: 14),
-
-                        // Android Order Alert Background Permissions
-                        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: (overlayGranted == true) ? const Color(0xFFF0FDF4) : const Color(0xFFFFFBEB),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: (overlayGranted == true) ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
-                                width: 1.2,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      (overlayGranted == true && batteryOptIgnored == true) ? Icons.check_circle_rounded : Icons.notifications_active_rounded,
-                                      size: 18,
-                                      color: (overlayGranted == true && batteryOptIgnored == true) ? const Color(0xFF16A34A) : const Color(0xFFD97706),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      (overlayGranted == true && batteryOptIgnored == true) ? 'Background Order Popups Ready' : 'App Info Permissions Required',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 12.5,
-                                        color: (overlayGranted == true && batteryOptIgnored == true) ? const Color(0xFF16A34A) : const Color(0xFFB45309),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  (overlayGranted == true && batteryOptIgnored == true)
-                                      ? 'Incoming WhatsApp orders will pop up full-screen even if the app is closed or phone is locked.'
-                                      : 'To show new incoming WhatsApp orders over lock screen and when app is closed, allow "Display over other apps" and ignore battery optimizations in App Info.',
-                                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569), height: 1.3),
-                                ),
-                                if (overlayGranted != true || batteryOptIgnored != true) ...[
-                                  const SizedBox(height: 10),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: [
-                                      if (overlayGranted != true)
-                                        ElevatedButton.icon(
-                                          onPressed: () async {
-                                            await OrderAlertPermissionService.requestOverlayPermission();
-                                            final p = await OrderAlertPermissionService.checkPermissions();
-                                            setModalState(() {
-                                              overlayGranted = p['overlayGranted'];
-                                              batteryOptIgnored = p['batteryOptimizationIgnored'];
-                                            });
-                                          },
-                                          icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                                          label: const Text('Allow Display Over Apps'),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFFEA580C),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
-                                      if (batteryOptIgnored != true)
-                                        OutlinedButton.icon(
-                                          onPressed: () async {
-                                            await OrderAlertPermissionService.requestIgnoreBatteryOptimizations();
-                                            final p = await OrderAlertPermissionService.checkPermissions();
-                                            setModalState(() {
-                                              overlayGranted = p['overlayGranted'];
-                                              batteryOptIgnored = p['batteryOptimizationIgnored'];
-                                            });
-                                          },
-                                          icon: const Icon(Icons.battery_charging_full_rounded, size: 14),
-                                          label: const Text('Disable Battery Limits'),
-                                          style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            textStyle: const TextStyle(fontSize: 11),
-                                          ),
-                                        ),
-                                      OutlinedButton.icon(
-                                        onPressed: () async {
-                                          await OrderAlertPermissionService.openAppInfoSettings();
-                                        },
-                                        icon: const Icon(Icons.settings_rounded, size: 14),
-                                        label: const Text('Open App Info'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                          textStyle: const TextStyle(fontSize: 11),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                        ],
 
                         // Provider Selection
                         const Text(

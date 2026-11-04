@@ -39,6 +39,7 @@ class SocketService {
   bool _isConnecting = false;
 
   final SecureStorageService _storage = SecureStorageService();
+  final Map<String, int> _recentProcessedOrderIds = {};
   bool? _lastHandledSubscriptionState;
   DateTime? _lastHandledSubscriptionTime;
 
@@ -402,12 +403,28 @@ class SocketService {
         final bool isExternalIncomingOrder = isExplicitExternal && !isKot && !isPosOrder;
 
         if (orderModel.status == OrderStatus.pending && isExternalIncomingOrder) {
+          final dedupeOrderKey = orderId.isNotEmpty ? orderId : orderNum;
+          if (dedupeOrderKey.isNotEmpty) {
+            final now = DateTime.now().millisecondsSinceEpoch;
+            if (_recentProcessedOrderIds.containsKey(dedupeOrderKey)) {
+              final prev = _recentProcessedOrderIds[dedupeOrderKey]!;
+              if (now - prev < 20000) {
+                debugPrint('[SocketService] Suppressing duplicate order:created handling for: $dedupeOrderKey');
+                return;
+              }
+            }
+            _recentProcessedOrderIds[dedupeOrderKey] = now;
+            if (_recentProcessedOrderIds.length > 50) {
+              _recentProcessedOrderIds.removeWhere((_, time) => now - time > 30000);
+            }
+          }
           // 1. Play incoming order ringtone
           SoundService.playOrderRingtone();
 
           // 2. High priority notification in native notification bar
           LocalNotificationService().showPushNotification(
             id: orderModel.id.isNotEmpty ? orderModel.id.hashCode.abs().remainder(100000) : 0,
+            tag: 'order_${orderModel.id.isNotEmpty ? orderModel.id : orderModel.orderNumber}',
             title: '🔔 #${orderModel.orderNumber} • ₹${orderModel.totalAmount.toStringAsFixed(0)}',
             body: '${orderModel.customerName ?? "Customer"} • ${orderModel.orderType.name.toUpperCase()}',
             payload: jsonEncode({
@@ -507,6 +524,7 @@ class SocketService {
       if (type == 'daily_sales_summary' || notifData['entityType'] == 'sales_report') {
         LocalNotificationService().showPushNotification(
           id: 9991,
+          tag: 'daily_sales_summary',
           title: title,
           body: message,
           payload: jsonEncode(notifData),
@@ -668,12 +686,29 @@ class SocketService {
         return;
       }
 
+      final dedupeOrderKey = orderId.isNotEmpty ? orderId : orderNumber;
+      if (dedupeOrderKey.isNotEmpty) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (_recentProcessedOrderIds.containsKey(dedupeOrderKey)) {
+          final prev = _recentProcessedOrderIds[dedupeOrderKey]!;
+          if (now - prev < 20000) {
+            debugPrint('[SocketService] Suppressing duplicate whatsapp:order:request for: $dedupeOrderKey');
+            return;
+          }
+        }
+        _recentProcessedOrderIds[dedupeOrderKey] = now;
+        if (_recentProcessedOrderIds.length > 50) {
+          _recentProcessedOrderIds.removeWhere((_, time) => now - time > 30000);
+        }
+      }
+
       // 1. Play continuous incoming order ringtone
       SoundService.playOrderRingtone();
 
       // 2. Trigger high-priority floating push notification in native notification tray
       LocalNotificationService().showPushNotification(
         id: orderId.isNotEmpty ? orderId.hashCode.abs().remainder(100000) : 0,
+        tag: 'order_${orderId.isNotEmpty ? orderId : orderNumber}',
         title: '🔔 #$orderNumber • ₹${totalAmount.toStringAsFixed(0)}',
         body: '$customerName (${orderType.toUpperCase()})',
         payload: jsonEncode({

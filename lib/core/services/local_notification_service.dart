@@ -48,8 +48,105 @@ class LocalNotificationService with WidgetsBindingObserver {
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
-  final Map<String, int> _recentNotificationDedupe = {};
+  static final Map<String, int> _staticDedupeMemoryCache = {};
   bool _isInitialized = false;
+
+  /// Checks and suppresses duplicate notifications across FCM, Socket.IO, Polling, and background isolates.
+  /// Combines in-memory cache and SharedPreferences for true cross-isolate synchronization.
+  static Future<bool> shouldSuppressDuplicate({
+    String? tag,
+    String? orderId,
+    String? orderNumber,
+    String? entityId,
+    String? type,
+    String? title,
+    String? body,
+    int debounceSeconds = 25,
+  }) async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final int effectiveDebounceMs = debounceSeconds * 1000;
+
+    final Set<String> keys = {};
+
+    final isDailySummary = (type != null && type.toLowerCase().contains('daily_sales_summary')) ||
+        (tag != null && tag.toLowerCase().contains('daily_sales_summary'));
+
+    if (isDailySummary) {
+      keys.add('daily_sales_summary');
+    }
+
+    if (orderId != null && orderId.trim().isNotEmpty) {
+      final cleanId = orderId.trim().toLowerCase();
+      keys.add('order_$cleanId');
+      keys.add('entity_$cleanId');
+    }
+
+    if (orderNumber != null && orderNumber.trim().isNotEmpty) {
+      final cleanNum = orderNumber.trim().toLowerCase().replaceAll('#', '');
+      keys.add('ordernum_$cleanNum');
+      keys.add('order_$cleanNum');
+    }
+
+    if (entityId != null && entityId.trim().isNotEmpty) {
+      keys.add('entity_${entityId.trim().toLowerCase()}');
+    }
+
+    if (tag != null && tag.trim().isNotEmpty) {
+      keys.add('tag_${tag.trim().toLowerCase()}');
+    }
+
+    // Normalized alphanumeric content fingerprint (ignores emojis, spaces, punctuation, case)
+    if (title != null && title.trim().isNotEmpty) {
+      final cleanTitle = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final cleanBody = (body ?? '').toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      if (cleanTitle.isNotEmpty) {
+        final titlePart = cleanTitle.length > 25 ? cleanTitle.substring(0, 25) : cleanTitle;
+        final bodyPart = cleanBody.length > 35 ? cleanBody.substring(0, 35) : cleanBody;
+        keys.add('content_${titlePart}_$bodyPart');
+      }
+    }
+
+    if (keys.isEmpty) return false;
+
+    // 1. Check in-memory static cache first (instant)
+    for (final k in keys) {
+      if (_staticDedupeMemoryCache.containsKey(k)) {
+        final last = _staticDedupeMemoryCache[k]!;
+        if (nowMs - last < effectiveDebounceMs) {
+          debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate (in-memory key: $k, elapsed: ${nowMs - last}ms < ${effectiveDebounceMs}ms)');
+          return true;
+        }
+      }
+    }
+
+    // 2. Check SharedPreferences for cross-isolate deduplication (FCM background isolate vs UI isolate)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in keys) {
+        final prefKey = 'notif_dedupe_$k';
+        final last = prefs.getInt(prefKey);
+        if (last != null && (nowMs - last < effectiveDebounceMs)) {
+          _staticDedupeMemoryCache[k] = last;
+          debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate (SharedPreferences key: $k, elapsed: ${nowMs - last}ms < ${effectiveDebounceMs}ms)');
+          return true;
+        }
+      }
+
+      // 3. Not a duplicate -> Record timestamp across memory and SharedPreferences for all generated keys
+      for (final k in keys) {
+        _staticDedupeMemoryCache[k] = nowMs;
+        await prefs.setInt('notif_dedupe_$k', nowMs);
+      }
+
+      if (_staticDedupeMemoryCache.length > 80) {
+        _staticDedupeMemoryCache.removeWhere((_, time) => nowMs - time > 180000);
+      }
+    } catch (e) {
+      debugPrint('[LocalNotificationService] Error checking deduplication in SharedPreferences: $e');
+    }
+
+    return false;
+  }
 
   /// In-memory queue for incoming order payloads received while SplashScreen is animating
   static Map<String, dynamic>? _pendingIncomingOrderPayload;
@@ -534,6 +631,25 @@ class LocalNotificationService with WidgetsBindingObserver {
           data['entityType'] == 'sales_report' ||
           data['type'] == 'daily_sales_summary';
 
+      final notifTag = data['notificationTag']?.toString();
+
+      // Deduplicate before processing remote message
+      final isDuplicate = await shouldSuppressDuplicate(
+        tag: notifTag,
+        orderId: orderId.isNotEmpty ? orderId : null,
+        orderNumber: orderNum.isNotEmpty ? orderNum : null,
+        entityId: data['entityId']?.toString(),
+        type: typeStr,
+        title: rawTitle,
+        body: rawBody,
+        debounceSeconds: isDailySummary ? 120 : 25,
+      );
+
+      if (isDuplicate) {
+        debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate RemoteMessage notification: $rawTitle');
+        return;
+      }
+
       final notifId = isDailySummary
           ? 9991
           : (isWhatsAppOrder && data['orderId'] != null
@@ -544,6 +660,7 @@ class LocalNotificationService with WidgetsBindingObserver {
       await instance.init();
 
       await instance.showPushNotification(
+        tag: notifTag,
         id: notifId,
         title: finalTitle,
         body: finalBody,
@@ -581,6 +698,7 @@ class LocalNotificationService with WidgetsBindingObserver {
     required String title,
     required String body,
     String? payload,
+    String? tag,
     NotificationType type = NotificationType.system,
     String? entityType,
     String? entityId,
@@ -597,21 +715,29 @@ class LocalNotificationService with WidgetsBindingObserver {
     NotificationVisibility visibility = NotificationVisibility.public,
     AndroidNotificationCategory? category,
   }) async {
-    // 0. Deduplicate notifications across Socket & FCM using normalized title and body
     final cleanTitle = title.trim().toLowerCase();
     final cleanBody = body.trim().toLowerCase();
-    final dedupeKey = '$cleanTitle::$cleanBody';
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (_recentNotificationDedupe.containsKey(dedupeKey)) {
-      final prev = _recentNotificationDedupe[dedupeKey]!;
-      if (nowMs - prev < 20000) {
-        debugPrint('[LocalNotificationService] Suppressing duplicate push: "$title" within debounce window');
-        return;
-      }
-    }
-    _recentNotificationDedupe[dedupeKey] = nowMs;
-    if (_recentNotificationDedupe.length > 50) {
-      _recentNotificationDedupe.removeWhere((_, time) => nowMs - time > 30000);
+    final orderId = (metadata['orderId'] ?? '').toString().trim();
+    final orderNum = (metadata['orderNumber'] ?? '').toString().trim();
+    final isDailySummary = type == NotificationType.dailySalesSummary ||
+        metadata['type'] == 'daily_sales_summary' ||
+        entityType == 'sales_report';
+
+    // 0. Deduplicate notifications across Socket & FCM using unified cross-isolate debouncer
+    final isDuplicate = await shouldSuppressDuplicate(
+      tag: tag ?? metadata['notificationTag']?.toString(),
+      orderId: orderId.isNotEmpty ? orderId : null,
+      orderNumber: orderNum.isNotEmpty ? orderNum : null,
+      entityId: entityId ?? metadata['entityId']?.toString(),
+      type: type.name,
+      title: title,
+      body: body,
+      debounceSeconds: isDailySummary ? 120 : 25,
+    );
+
+    if (isDuplicate) {
+      debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate push in showPushNotification: "$title"');
+      return;
     }
 
     // 1. Play in-app audio feedback ONLY on platforms without native channel sound
@@ -732,6 +858,14 @@ class LocalNotificationService with WidgetsBindingObserver {
         );
       }
 
+      final String? effectiveTag = tag ??
+          (isDailySummary
+              ? 'daily_sales_summary'
+              : (isWhatsAppOrder
+                  ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
+                  : (metadata['notificationTag']?.toString() ??
+                      (orderId.isNotEmpty ? 'order_$orderId' : null))));
+
       final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
         effectiveChannelId,
         effectiveChannelName,
@@ -748,11 +882,7 @@ class LocalNotificationService with WidgetsBindingObserver {
         color: effectiveColor,
         fullScreenIntent: isWhatsAppOrder,
         visibility: NotificationVisibility.public,
-        tag: (type == NotificationType.dailySalesSummary ||
-                metadata['type'] == 'daily_sales_summary' ||
-                entityType == 'sales_report')
-            ? 'daily_sales_summary'
-            : null,
+        tag: effectiveTag,
         category: isWhatsAppOrder
             ? AndroidNotificationCategory.call
             : (isWhatsApp ? AndroidNotificationCategory.message : category),
@@ -782,12 +912,16 @@ class LocalNotificationService with WidgetsBindingObserver {
           });
 
       final int effectiveId;
-      if (type == NotificationType.dailySalesSummary ||
-          metadata['type'] == 'daily_sales_summary' ||
-          entityType == 'sales_report') {
+      if (isDailySummary) {
         effectiveId = 9991;
+      } else if (isWhatsAppOrder) {
+        effectiveId = orderId.isNotEmpty
+            ? orderId.hashCode.abs().remainder(100000)
+            : (orderNum.isNotEmpty ? orderNum.hashCode.abs().remainder(100000) : (id != 0 ? id : 9992));
       } else if (id != 0) {
         effectiveId = id;
+      } else if (orderId.isNotEmpty) {
+        effectiveId = orderId.hashCode.abs().remainder(100000);
       } else {
         effectiveId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
       }
@@ -968,9 +1102,17 @@ class LocalNotificationService with WidgetsBindingObserver {
   Future<void> cancelNotificationForOrder(String orderId) async {
     if (orderId.trim().isEmpty || !_isSupportedPlatform) return;
     try {
-      final id = orderId.trim().hashCode.abs().remainder(100000);
+      final cleanId = orderId.trim();
+      final id = cleanId.hashCode.abs().remainder(100000);
+      final androidPlugin = _notificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (androidPlugin != null) {
+        try {
+          await androidPlugin.cancel(id, tag: 'order_$cleanId');
+        } catch (_) {}
+      }
       await _notificationsPlugin.cancel(id);
-      debugPrint('[LocalNotificationService] Cancelled push notification for order: $orderId (ID: $id)');
+      debugPrint('[LocalNotificationService] Cancelled push notification for order: $cleanId (ID: $id)');
     } catch (e) {
       debugPrint('[LocalNotificationService] Error cancelling notification: $e');
     }

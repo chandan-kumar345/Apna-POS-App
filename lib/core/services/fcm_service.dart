@@ -70,6 +70,29 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    final hasNotificationPayload = message.notification != null;
+    final isDailySummary = typeStr == 'daily_sales_summary' ||
+        data['entityType'] == 'sales_report' ||
+        data['type'] == 'daily_sales_summary';
+
+    // 1. Cross-isolate deduplication check (synchronizes across FCM background and UI isolates)
+    final isDuplicate = await LocalNotificationService.shouldSuppressDuplicate(
+      tag: data['notificationTag']?.toString(),
+      orderId: orderId.isNotEmpty ? orderId : null,
+      orderNumber: orderNum.isNotEmpty ? orderNum : null,
+      entityId: data['entityId']?.toString(),
+      type: typeStr,
+      title: message.notification?.title ?? data['title']?.toString(),
+      body: message.notification?.body ?? data['message']?.toString(),
+      debounceSeconds: isDailySummary ? 120 : 25,
+    );
+
+    if (isDuplicate) {
+      debugPrint('[FCM Background] 🚫 Suppressed duplicate FCM notification: $typeStr / $orderNum / $orderId');
+      return;
+    }
+
+    // 2. Cache pending order for instant full-screen popup
     if (isOrder) {
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -83,6 +106,19 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         SoundService.bringAppToFront();
       } catch (_) {}
     }
+
+    // 3. Android OS already automatically posts notifications with a top-level notification block
+    // to the status bar when the app is in background/terminated.
+    // For non-order items (e.g. daily sales summary or standard alerts), calling showNotificationFromRemoteMessage
+    // would produce an exact DUPLICATE card in the notification shade!
+    // We only call showNotificationFromRemoteMessage if:
+    // - There is NO top-level notification block (data-only push), OR
+    // - It is an incoming order requiring custom fullScreenIntent, Accept/Reject actions, and ringtone.
+    if (hasNotificationPayload && !isOrder) {
+      debugPrint('[FCM Background] System tray notification already rendered by Android OS. Skipping local duplicate.');
+      return;
+    }
+
     await LocalNotificationService.showNotificationFromRemoteMessage(message);
   } catch (e) {
     debugPrint('[FCM Background] Error displaying native notification: $e');
@@ -243,6 +279,7 @@ class FcmService {
       id: notifId,
       title: title,
       body: body,
+      tag: data['notificationTag']?.toString(),
       payload: jsonEncode(data),
       type: isWhatsAppOrder
           ? NotificationType.whatsappOrderRequest

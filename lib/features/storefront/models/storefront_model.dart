@@ -100,14 +100,20 @@ class StorefrontBanner {
 class ProductSizeOption {
   final String id;
   final String name; // e.g., 'Regular', 'Medium', 'Large'
-  final String description; // e.g., '7" (1-2 servings)', '10" (2-3 servings)', '12" (3-4 servings)'
+  final String description; // e.g., '1-2 servings', '10% OFF'
   final double price;
+  final double? originalPrice;
+  final double? discountPercent;
+  final int stock;
 
   const ProductSizeOption({
     required this.id,
     required this.name,
     required this.description,
     required this.price,
+    this.originalPrice,
+    this.discountPercent,
+    this.stock = -1,
   });
 }
 

@@ -170,7 +170,28 @@ class SocketService {
   }
 
   /**
-   * Broadcast an event to all connected devices in a business tenant
+   * Helper to emit an event across a unique set of rooms with ZERO duplicate packets per socket
+   * (Socket.IO chains .to() calls to ensure each connected client socket receives the packet exactly once)
+   * @param {Set<string>|Array<string>} rooms
+   * @param {string} event
+   * @param {any} data
+   */
+  _emitToRooms(rooms, event, data) {
+    if (!this.io || !rooms) return;
+    const roomSet = rooms instanceof Set ? rooms : new Set(rooms);
+    if (roomSet.size === 0) return;
+
+    let broadcaster = this.io;
+    for (const r of roomSet) {
+      if (r && typeof r === 'string') {
+        broadcaster = broadcaster.to(r);
+      }
+    }
+    broadcaster.emit(event, data);
+  }
+
+  /**
+   * Broadcast an event to all connected devices in a business tenant without duplicate packets
    * @param {string|mongoose.Types.ObjectId} businessId
    * @param {string} event
    * @param {any} data
@@ -178,11 +199,14 @@ class SocketService {
   broadcastToBusiness(businessId, event, data) {
     if (!this.io || !businessId) return;
     const cleanId = businessId.toString();
-    this.io.to(`business_${cleanId}`).emit(event, data);
-    this.io.to(`business:${cleanId}`).emit(event, data);
-    this.io.to(`user_${cleanId}`).emit(event, data);
-    this.io.to('business_rest_001').emit(event, data);
-    this.io.to('business_default').emit(event, data);
+    const rooms = new Set([
+      `business_${cleanId}`,
+      `business:${cleanId}`,
+      `user_${cleanId}`,
+      'business_rest_001',
+      'business_default',
+    ]);
+    this._emitToRooms(rooms, event, data);
   }
 
   /**
@@ -343,17 +367,22 @@ class SocketService {
       notification,
       timestamp: new Date().toISOString(),
     };
+    const rooms = new Set();
     if (businessId) {
-      this.broadcastToBusiness(businessId, 'notification:new', payload);
+      const cleanBId = businessId.toString();
+      rooms.add(`business_${cleanBId}`);
+      rooms.add(`business:${cleanBId}`);
+      rooms.add(`user_${cleanBId}`);
     }
     if (userId) {
       const cleanUserId = userId.toString();
-      this.io.to(`user_${cleanUserId}`).emit('notification:new', payload);
-      this.io.to(`business_${cleanUserId}`).emit('notification:new', payload);
+      rooms.add(`user_${cleanUserId}`);
+      rooms.add(`business_${cleanUserId}`);
     }
-    // Also notify POS terminal default room
-    this.io.to('business_rest_001').emit('notification:new', payload);
-    this.io.to('business_default').emit('notification:new', payload);
+    rooms.add('business_rest_001');
+    rooms.add('business_default');
+
+    this._emitToRooms(rooms, 'notification:new', payload);
   }
 
   /**
@@ -369,33 +398,31 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
 
-    // 1. Broadcast to standard business room conventions
+    const rooms = new Set();
     if (businessId) {
       const cleanId = businessId.toString();
-      this.io.to(`business_${cleanId}`).emit('whatsapp:message', payload);
-      this.io.to(`business:${cleanId}`).emit('whatsapp:message', payload);
-      this.io.to(`business_${cleanId}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
-      this.io.to(`business:${cleanId}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+      rooms.add(`business_${cleanId}`);
+      rooms.add(`business:${cleanId}`);
+      rooms.add(`user_${cleanId}`);
     }
-
-    // 2. Broadcast to specific user rooms (e.g. chat assignee, target user, business owner)
-    const userIds = new Set();
-    if (chat?.userId) userIds.add(chat.userId.toString());
-    if (targetUserId) userIds.add(targetUserId.toString());
-    if (ownerId) userIds.add(ownerId.toString());
-
-    for (const uid of userIds) {
-      this.io.to(`user_${uid}`).emit('whatsapp:message', payload);
-      this.io.to(`business_${uid}`).emit('whatsapp:message', payload);
-      this.io.to(`user_${uid}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
-      this.io.to(`business_${uid}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+    if (chat?.userId) {
+      rooms.add(`user_${chat.userId}`);
+      rooms.add(`business_${chat.userId}`);
     }
+    if (targetUserId) {
+      rooms.add(`user_${targetUserId}`);
+      rooms.add(`business_${targetUserId}`);
+    }
+    if (ownerId) {
+      rooms.add(`user_${ownerId}`);
+      rooms.add(`business_${ownerId}`);
+    }
+    rooms.add('business_rest_001');
+    rooms.add('business_default');
 
-    // 3. Fallback broadcast to default POS business aliases (rest_001, default)
-    this.io.to('business_rest_001').emit('whatsapp:message', payload);
-    this.io.to('business_rest_001').emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
-    this.io.to('business_default').emit('whatsapp:message', payload);
-    this.io.to('business_default').emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+    const chatUpdatedPayload = { chat, timestamp: new Date().toISOString() };
+    this._emitToRooms(rooms, 'whatsapp:message', payload);
+    this._emitToRooms(rooms, 'whatsapp:chat_updated', chatUpdatedPayload);
   }
 
   /**
@@ -409,23 +436,29 @@ class SocketService {
       chat,
       timestamp: new Date().toISOString(),
     };
+    const rooms = new Set();
     if (businessId) {
       const cleanId = businessId.toString();
-      this.io.to(`business_${cleanId}`).emit('whatsapp:chat_updated', payload);
-      this.io.to(`business:${cleanId}`).emit('whatsapp:chat_updated', payload);
+      rooms.add(`business_${cleanId}`);
+      rooms.add(`business:${cleanId}`);
+      rooms.add(`user_${cleanId}`);
     }
-    const userIds = new Set();
-    if (chat?.userId) userIds.add(chat.userId.toString());
-    if (targetUserId) userIds.add(targetUserId.toString());
-    if (ownerId) userIds.add(ownerId.toString());
-
-    for (const uid of userIds) {
-      this.io.to(`user_${uid}`).emit('whatsapp:chat_updated', payload);
-      this.io.to(`business_${uid}`).emit('whatsapp:chat_updated', payload);
+    if (chat?.userId) {
+      rooms.add(`user_${chat.userId}`);
+      rooms.add(`business_${chat.userId}`);
     }
+    if (targetUserId) {
+      rooms.add(`user_${targetUserId}`);
+      rooms.add(`business_${targetUserId}`);
+    }
+    if (ownerId) {
+      rooms.add(`user_${ownerId}`);
+      rooms.add(`business_${ownerId}`);
+    }
+    rooms.add('business_rest_001');
+    rooms.add('business_default');
 
-    this.io.to('business_rest_001').emit('whatsapp:chat_updated', payload);
-    this.io.to('business_default').emit('whatsapp:chat_updated', payload);
+    this._emitToRooms(rooms, 'whatsapp:chat_updated', payload);
   }
 
   /**
@@ -497,40 +530,29 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
 
+    const rooms = new Set();
     if (businessId) {
       const cleanId = businessId.toString();
-      this.io.to(`business_${cleanId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`business:${cleanId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`user_${cleanId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`business_${cleanId}`).emit('order:created', orderCreatedPayload);
-      this.io.to(`business:${cleanId}`).emit('order:created', orderCreatedPayload);
-      this.io.to(`user_${cleanId}`).emit('order:created', orderCreatedPayload);
+      rooms.add(`business_${cleanId}`);
+      rooms.add(`business:${cleanId}`);
+      rooms.add(`user_${cleanId}`);
     }
-
     if (targetUserId) {
       const uId = targetUserId.toString();
-      this.io.to(`user_${uId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`user:${uId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`business_${uId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`user_${uId}`).emit('order:created', orderCreatedPayload);
-      this.io.to(`user:${uId}`).emit('order:created', orderCreatedPayload);
-      this.io.to(`business_${uId}`).emit('order:created', orderCreatedPayload);
+      rooms.add(`user_${uId}`);
+      rooms.add(`business_${uId}`);
     }
-
     if (order.businessId && businessId && order.businessId.toString() !== businessId.toString()) {
       const ordBizId = order.businessId.toString();
-      this.io.to(`business_${ordBizId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`business:${ordBizId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`user_${ordBizId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`business_${ordBizId}`).emit('order:created', orderCreatedPayload);
-      this.io.to(`business:${ordBizId}`).emit('order:created', orderCreatedPayload);
-      this.io.to(`user_${ordBizId}`).emit('order:created', orderCreatedPayload);
+      rooms.add(`business_${ordBizId}`);
+      rooms.add(`business:${ordBizId}`);
+      rooms.add(`user_${ordBizId}`);
     }
+    rooms.add('business_rest_001');
+    rooms.add('business_default');
 
-    this.io.to('business_rest_001').emit('whatsapp:order:request', payload);
-    this.io.to('business_default').emit('whatsapp:order:request', payload);
-    this.io.to('business_rest_001').emit('order:created', orderCreatedPayload);
-    this.io.to('business_default').emit('order:created', orderCreatedPayload);
+    // Deliver strictly once using chained room broadcast
+    this._emitToRooms(rooms, 'whatsapp:order:request', payload);
   }
 
   /**

@@ -34,6 +34,7 @@ class NotificationService extends ChangeNotifier {
   String _activeFilter = 'All';
 
   Timer? _pollingTimer;
+  final Set<String> _alertedNotificationIds = {};
 
   List<NotificationItem> get notifications => List.unmodifiable(_notifications);
   int get unreadCount => _unreadCount;
@@ -145,10 +146,12 @@ class NotificationService extends ChangeNotifier {
           notifsList.map((n) => NotificationItem.fromJson(n as Map<String, dynamic>)).toList();
 
       // Check for newly arrived unread notifications to trigger push & sound
-      if (!_isInitialLoad && _notifications.isNotEmpty && items.isNotEmpty) {
+      // (NEVER trigger push notifications on silent background polling, only on active user refresh)
+      if (!silent && !_isInitialLoad && _notifications.isNotEmpty && items.isNotEmpty) {
         final existingIds = _notifications.map((n) => n.id).toSet();
         for (final newItem in items) {
-          if (!existingIds.contains(newItem.id) && !newItem.isRead) {
+          if (!existingIds.contains(newItem.id) && !_alertedNotificationIds.contains(newItem.id) && !newItem.isRead) {
+            _alertedNotificationIds.add(newItem.id);
             // NEVER trigger daily sales summary on login or polling
             if (newItem.type == NotificationType.dailySalesSummary) {
               continue;
@@ -168,6 +171,7 @@ class NotificationService extends ChangeNotifier {
             }
             if (newItem.type != NotificationType.newOrder) {
               LocalNotificationService().showPushNotification(
+                tag: 'notif_${newItem.id}',
                 title: newItem.title,
                 body: newItem.message,
                 type: newItem.type,

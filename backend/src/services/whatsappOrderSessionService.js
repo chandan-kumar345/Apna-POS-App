@@ -338,7 +338,7 @@ class WhatsAppOrderSessionService {
         };
       }
 
-      return this._handleProductChosen(session, matchedItem);
+      return await this._handleProductChosen(session, matchedItem);
     }
 
     // 6. State: WAITING_FOR_VARIANT_SELECTION
@@ -516,7 +516,7 @@ class WhatsAppOrderSessionService {
       if (session.menuMapping && session.menuMapping.find((m) => m.num === directNum)) {
         session.state = 'WAITING_FOR_PRODUCT_SELECTION';
         const item = session.menuMapping.find((m) => m.num === directNum);
-        return this._handleProductChosen(session, item);
+        return await this._handleProductChosen(session, item);
       }
 
       return {
@@ -681,8 +681,35 @@ class WhatsAppOrderSessionService {
   /**
    * Helper to handle product selection and determine if variants are present
    */
-  _handleProductChosen(session, product) {
+  async _handleProductChosen(session, product) {
     session.selectedProduct = product;
+
+    let productImageUrl = (product.image && typeof product.image === 'string') ? product.image.trim() : '';
+    if (!productImageUrl && Array.isArray(product.images) && product.images.length > 0) {
+      productImageUrl = (product.images[0] && typeof product.images[0] === 'string') ? product.images[0].trim() : '';
+    }
+    // If not present in memory, look up product from database
+    if (!productImageUrl && (product.id || product._id)) {
+      try {
+        const pDoc = await Product.findById(product.id || product._id).select('image images').lean();
+        if (pDoc) {
+          productImageUrl = (pDoc.image && typeof pDoc.image === 'string') ? pDoc.image.trim() : '';
+          if (!productImageUrl && Array.isArray(pDoc.images) && pDoc.images.length > 0) {
+            productImageUrl = (pDoc.images[0] && typeof pDoc.images[0] === 'string') ? pDoc.images[0].trim() : '';
+          }
+        }
+      } catch (err) {
+        // Safe fallback
+      }
+    }
+
+    if (productImageUrl && (productImageUrl.startsWith('assets/') || productImageUrl.startsWith('asset:'))) {
+      productImageUrl = '';
+    }
+
+    if (productImageUrl) {
+      session.selectedProduct.image = productImageUrl;
+    }
 
     if (product.variants && product.variants.length > 0) {
       session.variantMapping = product.variants.map((v, idx) => ({
@@ -703,6 +730,8 @@ class WhatsAppOrderSessionService {
           id: `var_${v.num}`,
           title: `${v.name} (₹${v.price})`.slice(0, 20),
         })),
+        mediaUrl: productImageUrl || null,
+        messageType: productImageUrl ? 'image' : 'text',
         orderPayload: null,
         handled: true,
       };
@@ -712,8 +741,10 @@ class WhatsAppOrderSessionService {
     session.state = 'WAITING_FOR_QUANTITY';
 
     return {
-      replyText: `How many *${product.name}* would you like?\n\n_Enter quantity (e.g. 1, 2, 3...)_`,
+      replyText: `You selected *${product.name}*.\n\nHow many would you like?\n\n_Enter quantity (e.g. 1, 2, 3...)_`,
       buttons: null,
+      mediaUrl: productImageUrl || null,
+      messageType: productImageUrl ? 'image' : 'text',
       orderPayload: null,
       handled: true,
     };
@@ -772,6 +803,7 @@ class WhatsAppOrderSessionService {
         taxPercentage: typeof p.taxPercentage === 'number' ? p.taxPercentage : undefined,
         variants: p.variants || [],
         foodType: p.foodType || (p.isVeg === false ? 'non_veg' : 'veg'),
+        image: p.image || (Array.isArray(p.images) && p.images[0]) || '',
       });
     }
 

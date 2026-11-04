@@ -511,6 +511,7 @@ class WhatsAppService {
     const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
     const activeAccessToken = accessToken || this.accessToken;
     const activeAppSecret = appSecret || this.appSecret;
+    const isImage = (messageType === 'image' || Boolean(mediaUrl)) && Boolean(mediaUrl);
 
     if (
       process.env.NODE_ENV === 'test' ||
@@ -527,10 +528,9 @@ class WhatsAppService {
         recipient: normalizedPhone,
         isSimulated: true,
         buttonsSent: buttons,
+        mediaUrl: isImage ? mediaUrl : undefined,
       };
     }
-
-    const isImage = (messageType === 'image' || Boolean(mediaUrl)) && Boolean(mediaUrl);
 
     // Automatic chunking for messages exceeding Meta WhatsApp 4096 character limit
     if (!isImage && messageContent.toString().length > 3800) {
@@ -627,36 +627,47 @@ class WhatsAppService {
       }
     }
 
-    const isInteractive = !isImage && Array.isArray(buttons) && buttons.length > 0 && buttons.length <= 3;
+    const hasButtons = Array.isArray(buttons) && buttons.length > 0 && buttons.length <= 3;
+    const isInteractive = hasButtons;
 
     let payload;
-    if (isImage) {
+    if (isInteractive) {
+      const interactiveObj = {
+        type: 'button',
+        body: { text: messageContent.toString().slice(0, 1024) },
+        action: {
+          buttons: buttons.map((b, idx) => ({
+            type: 'reply',
+            reply: {
+              id: b.id || `btn_${idx + 1}`,
+              title: String(b.title || b.text || `Option ${idx + 1}`).trim().slice(0, 20),
+            },
+          })),
+        },
+      };
+
+      if (isImage && imagePayload) {
+        // Meta WhatsApp Cloud API allows header of type 'image' in interactive button messages
+        interactiveObj.header = {
+          type: 'image',
+          image: imagePayload.id ? { id: imagePayload.id } : { link: imagePayload.link },
+        };
+      }
+
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizedPhone,
+        type: 'interactive',
+        interactive: interactiveObj,
+      };
+    } else if (isImage) {
       payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: normalizedPhone,
         type: 'image',
         image: imagePayload,
-      };
-    } else if (isInteractive) {
-      payload = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: normalizedPhone,
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: { text: messageContent.toString() },
-          action: {
-            buttons: buttons.map((b, idx) => ({
-              type: 'reply',
-              reply: {
-                id: b.id || `btn_${idx + 1}`,
-                title: String(b.title || b.text || `Option ${idx + 1}`).trim().slice(0, 20),
-              },
-            })),
-          },
-        },
       };
     } else {
       payload = {
@@ -678,6 +689,21 @@ class WhatsAppService {
     });
 
     let data = await response.json().catch(() => ({}));
+
+    // If Meta failed on interactive button dispatch with image header, retry without image header
+    if (!response.ok && isInteractive && isImage) {
+      console.warn(`[WhatsAppService] Interactive buttons with image header notice (${data?.error?.message || response.statusText}). Retrying without image header...`);
+      return this.sendChatMessage({
+        to: normalizedPhone,
+        text: messageContent.toString(),
+        buttons,
+        messageType: 'text',
+        mediaUrl: '',
+        phoneNumberId: activePhoneNumberId,
+        accessToken: activeAccessToken,
+        appSecret: activeAppSecret,
+      });
+    }
 
     // If Meta failed on interactive button dispatch, gracefully fall back to formatted text
     if (!response.ok && isInteractive) {

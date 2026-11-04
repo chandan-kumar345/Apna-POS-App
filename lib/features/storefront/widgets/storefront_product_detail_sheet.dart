@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/menu_item_model.dart';
+import '../../../core/models/extra_model.dart';
 import '../../pos/widgets/pos_product_media_box.dart';
 import '../models/storefront_model.dart';
 
@@ -9,6 +10,7 @@ class StorefrontProductDetailSheet extends StatefulWidget {
   final Color themeColor;
   final Color? themeColorEnd;
   final bool isOnline;
+  final List<ExtraModel>? availableAddons;
 
   const StorefrontProductDetailSheet({
     super.key,
@@ -17,6 +19,7 @@ class StorefrontProductDetailSheet extends StatefulWidget {
     this.themeColor = const Color(0xFFE65100),
     this.themeColorEnd,
     this.isOnline = true,
+    this.availableAddons,
   });
 
   @override
@@ -47,77 +50,121 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
   void _initSizes() {
     if (widget.item.variants.length > 1) {
       _sizes = widget.item.variants.map((v) {
-        String desc = 'Standard serving';
+        String desc = '';
         final lower = v.name.toLowerCase();
-        if (lower.contains('reg') || lower.contains('small') || lower.contains('7')) {
-          desc = '7" (1-2 servings)';
-        } else if (lower.contains('med') || lower.contains('10')) {
-          desc = '10" (2-3 servings)';
-        } else if (lower.contains('large') || lower.contains('12')) {
-          desc = '12" (3-4 servings)';
+
+        String cleanName = v.name.trim();
+        if (cleanName.contains('(') && cleanName.contains(')')) {
+          final match = RegExp(r'^(.*?)\s*\((.*?)\)$').firstMatch(cleanName);
+          if (match != null) {
+            cleanName = match.group(1)?.trim() ?? cleanName;
+            desc = match.group(2)?.trim() ?? '';
+          }
         }
+
+        if (desc.isEmpty) {
+          if (v.hasDiscount && v.discountPercent > 0) {
+            desc = '${v.discountPercent.toInt()}% OFF';
+          } else if (v.stock > 0 && v.stock <= 10) {
+            desc = 'Only ${v.stock} left';
+          } else if (lower.contains('small') || lower.contains('reg')) {
+            desc = 'Regular portion';
+          } else if (lower.contains('medium')) {
+            desc = 'Medium portion';
+          } else if (lower.contains('large')) {
+            desc = 'Large portion';
+          } else if (lower.contains('half')) {
+            desc = 'Half serving';
+          } else if (lower.contains('full')) {
+            desc = 'Full serving';
+          }
+        }
+
+        final double effectivePrice = v.effectivePrice > 0 ? v.effectivePrice : v.price;
+        final double? origPrice = (v.hasDiscount && v.discountPercent > 0 && v.price > effectivePrice)
+            ? v.price
+            : null;
+
         return ProductSizeOption(
           id: v.name,
-          name: v.name.replaceAll(RegExp(r'\(.*\)'), '').trim(),
+          name: cleanName.isNotEmpty ? cleanName : v.name,
           description: desc,
-          price: v.effectivePrice > 0 ? v.effectivePrice : v.price,
+          price: effectivePrice,
+          originalPrice: origPrice,
+          discountPercent: v.hasDiscount ? v.discountPercent : null,
+          stock: v.stock,
         );
       }).toList();
-      _selectedSize = _sizes.length > 1 ? _sizes[1] : _sizes.first;
+
+      // Default select the first variant (base variant)
+      _selectedSize = _sizes.isNotEmpty ? _sizes.first : null;
+    } else if (widget.item.variants.length == 1) {
+      final v = widget.item.variants.first;
+      final effectivePrice = v.effectivePrice > 0 ? v.effectivePrice : v.price;
+      _sizes = [];
+      _selectedSize = ProductSizeOption(
+        id: v.name,
+        name: v.name,
+        description: '',
+        price: effectivePrice,
+        stock: v.stock,
+      );
     } else {
-      // Default 3 standard sizes matching pizza screenshot if pizza/dish
-      final basePrice = widget.item.effectivePrice > 0 ? widget.item.effectivePrice : 249.0;
-      _sizes = [
-        ProductSizeOption(
-          id: 'size_reg',
-          name: 'Regular',
-          description: '7" (1-2 servings)',
-          price: (basePrice * 0.85).roundToDouble(),
-        ),
-        ProductSizeOption(
-          id: 'size_med',
-          name: 'Medium',
-          description: '10" (2-3 servings)',
-          price: basePrice,
-        ),
-        ProductSizeOption(
-          id: 'size_lrg',
-          name: 'Large',
-          description: '12" (3-4 servings)',
-          price: (basePrice * 1.45).roundToDouble(),
-        ),
-      ];
-      _selectedSize = _sizes[1]; // default medium selected matching screenshot
+      // Product has no variants -> do not synthesize fake pizza sizes!
+      _sizes = [];
+      _selectedSize = null;
     }
   }
 
   void _initAddons() {
-    _addons = [
-      StorefrontAddonItem(
-        id: 'add_cheese',
-        name: 'Extra Cheese',
-        price: 40.0,
-        imageUrl: 'https://images.unsplash.com/photo-1552767059-ce182ead8c1b?auto=format&fit=crop&w=200&q=80',
-      ),
-      StorefrontAddonItem(
-        id: 'add_paneer',
-        name: 'Extra Paneer',
-        price: 50.0,
-        imageUrl: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=200&q=80',
-      ),
-      StorefrontAddonItem(
-        id: 'add_jalapeno',
-        name: 'Jalapeños',
-        price: 30.0,
-        imageUrl: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=200&q=80',
-      ),
-      StorefrontAddonItem(
-        id: 'add_olives',
-        name: 'Black Olives',
-        price: 35.0,
-        imageUrl: 'https://images.unsplash.com/photo-1563861826100-9cb868fdbe1c?auto=format&fit=crop&w=200&q=80',
-      ),
-    ];
+    if (widget.availableAddons != null && widget.availableAddons!.isNotEmpty) {
+      final matched = widget.availableAddons!.where((extra) {
+        if (!extra.isAvailable) return false;
+        if (extra.productId.isNotEmpty &&
+            extra.productId != widget.item.id &&
+            extra.productId != widget.item.productId) {
+          return false;
+        }
+        if (extra.categoryId.isNotEmpty &&
+            extra.categoryId.toLowerCase() != widget.item.category.toLowerCase()) {
+          return false;
+        }
+        final type = extra.type.toLowerCase();
+        return type == 'addon' || type == 'extra' || type == 'topping' || extra.price > 0;
+      }).toList();
+
+      if (matched.isNotEmpty) {
+        _addons = matched.map((e) {
+          return StorefrontAddonItem(
+            id: e.id,
+            name: e.name,
+            price: e.price > 0 ? e.price : e.value,
+            imageUrl: '',
+          );
+        }).toList();
+        return;
+      }
+    }
+    // No fake hardcoded pizza toppings if none configured
+    _addons = [];
+  }
+
+  String get _variantSectionTitle {
+    final lowerNames = _sizes.map((s) => s.name.toLowerCase()).join(' ');
+    if (lowerNames.contains('size') ||
+        lowerNames.contains('small') ||
+        lowerNames.contains('medium') ||
+        lowerNames.contains('large') ||
+        lowerNames.contains('reg')) {
+      return 'Select Size';
+    } else if (lowerNames.contains('half') || lowerNames.contains('full') || lowerNames.contains('quarter')) {
+      return 'Select Portion';
+    } else if (lowerNames.contains('ml') || lowerNames.contains('ltr') || lowerNames.contains('liter')) {
+      return 'Select Volume';
+    } else if (lowerNames.contains('gm') || lowerNames.contains('kg')) {
+      return 'Select Weight';
+    }
+    return 'Choose Option';
   }
 
   double get _unitPrice {
@@ -282,6 +329,51 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                           ],
                         ),
 
+                        const SizedBox(height: 6),
+
+                        // Active Price & Dynamic Discount Row
+                        Row(
+                          children: [
+                            Text(
+                              '₹${_unitPrice.toStringAsFixed(0)}',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: widget.themeColor,
+                              ),
+                            ),
+                            if (_selectedSize != null && _sizes.length > 1) ...[
+                              const SizedBox(width: 6),
+                              Text(
+                                '(${_selectedSize!.name})',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                            if (widget.item.hasDiscount && widget.item.discountPercent > 0) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${widget.item.discountPercent.toInt()}% OFF',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+
                         const SizedBox(height: 8),
 
                         // Rating & Bestseller row
@@ -331,261 +423,186 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
 
                   const SizedBox(height: 20),
 
-                  // 3. SELECT SIZE SECTION (3 horizontal cards)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Select Size',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: _sizes.map((size) {
-                            final isSelected = _selectedSize?.id == size.id;
-                            return Expanded(
-                              child: GestureDetector(
-                                onTap: () => setState(() => _selectedSize = size),
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? widget.themeColor.withValues(alpha: 0.08)
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: isSelected ? widget.themeColor : const Color(0xFFE2E8F0),
-                                      width: isSelected ? 2.0 : 1.2,
-                                    ),
-                                    boxShadow: [
-                                      const BoxShadow(
-                                        color: Colors.white,
-                                        offset: Offset(-2, -2),
-                                        blurRadius: 4,
-                                      ),
-                                      BoxShadow(
-                                        color: isSelected
-                                            ? widget.themeColor.withValues(alpha: 0.25)
-                                            : const Color(0xFF94A3B8).withValues(alpha: 0.15),
-                                        offset: const Offset(2, 2.5),
-                                        blurRadius: 5,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            size.name,
-                                            style: TextStyle(
-                                              fontSize: 13.5,
-                                              fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                                              color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            size.description,
-                                            style: const TextStyle(
-                                              fontSize: 10.5,
-                                              color: Color(0xFF64748B),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            '₹${size.price.toStringAsFixed(0)}',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w900,
-                                              color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-
-                                      // Selected Checkmark Badge on Top Right
-                                      if (isSelected)
-                                        Positioned(
-                                          top: -4,
-                                          right: -2,
-                                          child: Container(
-                                            width: 18,
-                                            height: 18,
-                                            decoration: BoxDecoration(
-                                              color: widget.themeColor,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: const Icon(Icons.check, size: 12, color: Colors.white),
-                                          ),
-                                        ),
-                                    ],
+                  // 3. DYNAMIC VARIANT / SIZE SELECTION SECTION (Shown only if item has multiple variants)
+                  if (_sizes.length > 1) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _variantSectionTitle,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: widget.themeColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '${_sizes.length} Options',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: widget.themeColor,
                                   ),
                                 ),
                               ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          _buildVariantOptionsList(),
+                        ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 20),
+                  ],
 
-                  const SizedBox(height: 20),
-
-                  // 4. ADD ONS (OPTIONAL) SECTION
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Add Ons (Optional)',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                  // 4. ADD ONS (OPTIONAL) SECTION (Shown only if real addons are configured)
+                  if (_addons.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Add Ons (Optional)',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                ),
                               ),
-                            ),
-                            TextButton(
-                              onPressed: () {},
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    'View All',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: widget.themeColor,
-                                    ),
-                                  ),
-                                  Icon(Icons.arrow_forward_ios_rounded, size: 10, color: widget.themeColor),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: 72,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _addons.length,
-                            separatorBuilder: (ctx, idx) => const SizedBox(width: 10),
-                            itemBuilder: (ctx, idx) {
-                              final addon = _addons[idx];
-                              return GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    addon.isSelected = !addon.isSelected;
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: addon.isSelected
-                                        ? widget.themeColor.withValues(alpha: 0.08)
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: addon.isSelected ? widget.themeColor : const Color(0xFFE2E8F0),
-                                      width: addon.isSelected ? 1.8 : 1.2,
-                                    ),
-                                    boxShadow: [
-                                      const BoxShadow(
-                                        color: Colors.white,
-                                        offset: Offset(-2, -2),
-                                        blurRadius: 4,
-                                      ),
-                                      BoxShadow(
-                                        color: const Color(0xFF94A3B8).withValues(alpha: 0.15),
-                                        offset: const Offset(2, 2.5),
-                                        blurRadius: 5,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          addon.imageUrl,
-                                          width: 44,
-                                          height: 44,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (c, e, s) => Container(
-                                            width: 44,
-                                            height: 44,
-                                            color: const Color(0xFFE2E8F0),
-                                            child: const Icon(Icons.fastfood_rounded, size: 20, color: Color(0xFF94A3B8)),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            addon.name,
-                                            style: const TextStyle(
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w800,
-                                              color: Color(0xFF0F172A),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            '+₹${addon.price.toStringAsFixed(0)}',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700,
-                                              color: widget.themeColor,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        width: 26,
-                                        height: 26,
-                                        decoration: BoxDecoration(
-                                          color: addon.isSelected ? widget.themeColor : const Color(0xFFF1F5F9),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          addon.isSelected ? Icons.check : Icons.add,
-                                          size: 16,
-                                          color: addon.isSelected ? Colors.white : widget.themeColor,
-                                        ),
-                                      ),
-                                    ],
+                              if (_addons.length > 3)
+                                Text(
+                                  '${_addons.length} Available',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: widget.themeColor,
                                   ),
                                 ),
-                              );
-                            },
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 72,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _addons.length,
+                              separatorBuilder: (ctx, idx) => const SizedBox(width: 10),
+                              itemBuilder: (ctx, idx) {
+                                final addon = _addons[idx];
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      addon.isSelected = !addon.isSelected;
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: addon.isSelected
+                                          ? widget.themeColor.withValues(alpha: 0.08)
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: addon.isSelected ? widget.themeColor : const Color(0xFFE2E8F0),
+                                        width: addon.isSelected ? 1.8 : 1.2,
+                                      ),
+                                      boxShadow: [
+                                        const BoxShadow(
+                                          color: Colors.white,
+                                          offset: Offset(-2, -2),
+                                          blurRadius: 4,
+                                        ),
+                                        BoxShadow(
+                                          color: const Color(0xFF94A3B8).withValues(alpha: 0.15),
+                                          offset: const Offset(2, 2.5),
+                                          blurRadius: 5,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        if (addon.imageUrl.isNotEmpty) ...[
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Image.network(
+                                              addon.imageUrl,
+                                              width: 44,
+                                              height: 44,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (c, e, s) => Container(
+                                                width: 44,
+                                                height: 44,
+                                                color: const Color(0xFFE2E8F0),
+                                                child: const Icon(Icons.fastfood_rounded, size: 20, color: Color(0xFF94A3B8)),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                        ],
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              addon.name,
+                                              style: const TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF0F172A),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '+₹${addon.price.toStringAsFixed(0)}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: widget.themeColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          width: 26,
+                                          height: 26,
+                                          decoration: BoxDecoration(
+                                            color: addon.isSelected ? widget.themeColor : const Color(0xFFF1F5F9),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            addon.isSelected ? Icons.check : Icons.add,
+                                            size: 16,
+                                            color: addon.isSelected ? Colors.white : widget.themeColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
+                  ],
 
                   // 5. SPECIAL INSTRUCTIONS BOX (Sunken rounded)
                   Padding(
@@ -754,6 +771,147 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVariantOptionsList() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // If more than 3 options or on narrow mobile width, use horizontal scroll view
+        final bool useHorizontalScroll = _sizes.length > 3 || constraints.maxWidth < 360;
+
+        if (useHorizontalScroll) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: _sizes.map((size) {
+                final isSelected = _selectedSize?.id == size.id;
+                return Container(
+                  width: 124,
+                  margin: const EdgeInsets.only(right: 10),
+                  child: _buildVariantCard(size, isSelected),
+                );
+              }).toList(),
+            ),
+          );
+        }
+
+        return Row(
+          children: _sizes.map((size) {
+            final isSelected = _selectedSize?.id == size.id;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _buildVariantCard(size, isSelected),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildVariantCard(ProductSizeOption size, bool isSelected) {
+    return GestureDetector(
+      onTap: () => setState(() => _selectedSize = size),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? widget.themeColor.withValues(alpha: 0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? widget.themeColor : const Color(0xFFE2E8F0),
+            width: isSelected ? 2.0 : 1.2,
+          ),
+          boxShadow: [
+            const BoxShadow(
+              color: Colors.white,
+              offset: Offset(-2, -2),
+              blurRadius: 4,
+            ),
+            BoxShadow(
+              color: isSelected
+                  ? widget.themeColor.withValues(alpha: 0.25)
+                  : const Color(0xFF94A3B8).withValues(alpha: 0.15),
+              offset: const Offset(2, 2.5),
+              blurRadius: 5,
+            ),
+          ],
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  size.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                    color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
+                  ),
+                ),
+                if (size.description.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    size.description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 7),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '₹${size.price.toStringAsFixed(0)}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    if (size.originalPrice != null && size.originalPrice! > size.price) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        '₹${size.originalPrice!.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF94A3B8),
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+            if (isSelected)
+              Positioned(
+                top: -4,
+                right: -2,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: widget.themeColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check, size: 12, color: Colors.white),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -239,7 +239,7 @@ class PushNotificationService {
       // Android notification tag to natively update/replace notifications in system shade
       let androidTag = null;
       if (data.type === 'daily_sales_summary' || data.entityType === 'sales_report') {
-        androidTag = `daily_sales_summary_${data.date || 'today'}`;
+        androidTag = 'daily_sales_summary';
       } else if (isOrderRequest) {
         androidTag = `order_${data.orderId || data.orderNumber || 'incoming'}`;
       } else if (isWhatsApp) {
@@ -254,16 +254,21 @@ class PushNotificationService {
         }
       }
       sanitizedData['click_action'] = 'FLUTTER_NOTIFICATION_CLICK';
+      if (androidTag) {
+        sanitizedData['notificationTag'] = androidTag;
+      }
 
       // FCM High-Priority Payload
       const fcmPayload = {
         to: token,
         priority: 'high',
+        collapse_key: androidTag || 'apna_pos_general',
         time_to_live: 0, // Zero TTL ensures immediate delivery without Doze delay
         content_available: true,
         android: {
           priority: 'high',
           ttl: '0s',
+          collapse_key: androidTag || 'apna_pos_general',
         },
         notification: {
           title,
@@ -306,6 +311,7 @@ class PushNotificationService {
                   priority: 'HIGH',
                   ttl: '0s',
                   direct_boot_ok: true,
+                  collapse_key: androidTag || 'apna_pos_general',
                   notification: {
                     channel_id: channelId,
                     sound: 'notification_sound',

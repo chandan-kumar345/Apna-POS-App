@@ -341,6 +341,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         themeColor: _themeColor,
         themeColorEnd: _themeColorEnd,
         isOnline: _isStoreOnline,
+        availableAddons: _data?.addOns,
         onAddToCart: (cartItem, {bool openCartImmediately = false}) {
           setState(() {
             final existingIdx = _cartItems.indexWhere(
