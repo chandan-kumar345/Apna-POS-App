@@ -448,6 +448,11 @@ class SocketService {
             }),
             type: NotificationType.whatsappOrderRequest,
             channelId: 'apna_pos_whatsapp_orders_v2',
+            metadata: {
+              'orderId': orderModel.id,
+              'orderNumber': orderModel.orderNumber,
+              'type': 'whatsapp_order_request',
+            },
             playSound: true,
           );
 
@@ -732,6 +737,11 @@ class SocketService {
         }),
         type: NotificationType.whatsappOrderRequest,
         channelId: 'apna_pos_whatsapp_orders_v2',
+        metadata: {
+          'orderId': orderId,
+          'orderNumber': orderNumber,
+          'type': 'whatsapp_order_request',
+        },
         playSound: true,
       );
 

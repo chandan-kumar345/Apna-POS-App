@@ -93,6 +93,7 @@ class NotificationService {
                   type: notification.type,
                   entityType: notification.entityType,
                   entityId: notification.entityId || '',
+                  notificationTag: notification.type === 'daily_sales_summary' ? 'daily_sales_summary' : undefined,
                   ...(typeof notification.metadata?.toObject === 'function'
                     ? notification.metadata.toObject()
                     : (notification.metadata || {})),

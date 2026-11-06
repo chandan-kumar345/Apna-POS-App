@@ -213,7 +213,7 @@ class FcmService {
     }
   }
 
-  void _handleForegroundMessage(RemoteMessage message) {
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
     final notification = message.notification;
     final data = message.data;
 
@@ -274,6 +274,23 @@ class FcmService {
         : (isWhatsAppOrder && data['orderId'] != null
             ? data['orderId'].toString().hashCode.abs().remainder(100000)
             : 0);
+
+    final isDuplicate = await LocalNotificationService.shouldSuppressDuplicate(
+      id: notifId,
+      tag: data['notificationTag']?.toString() ?? (isDailySummary ? 'daily_sales_summary' : null),
+      orderId: orderId.isNotEmpty ? orderId : null,
+      orderNumber: orderNum.isNotEmpty ? orderNum : null,
+      entityId: data['entityId']?.toString(),
+      type: typeStr,
+      title: title,
+      body: body,
+      debounceSeconds: isDailySummary ? 120 : 25,
+    );
+
+    if (isDuplicate) {
+      debugPrint('[FcmService Foreground] 🚫 Suppressed duplicate FCM notification: $typeStr / $title');
+      return;
+    }
 
     LocalNotificationService().showPushNotification(
       id: notifId,

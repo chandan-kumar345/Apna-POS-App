@@ -54,6 +54,7 @@ class LocalNotificationService with WidgetsBindingObserver {
   /// Checks and suppresses duplicate notifications across FCM, Socket.IO, Polling, and background isolates.
   /// Combines in-memory cache and SharedPreferences for true cross-isolate synchronization.
   static Future<bool> shouldSuppressDuplicate({
+    int? id,
     String? tag,
     String? orderId,
     String? orderNumber,
@@ -68,11 +69,20 @@ class LocalNotificationService with WidgetsBindingObserver {
 
     final Set<String> keys = {};
 
-    final isDailySummary = (type != null && type.toLowerCase().contains('daily_sales_summary')) ||
-        (tag != null && tag.toLowerCase().contains('daily_sales_summary'));
+    final cleanType = (type ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final cleanTag = (tag ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final isDailySummary = cleanType.contains('dailysalessummary') ||
+        cleanType.contains('salesreport') ||
+        cleanTag.contains('dailysalessummary');
 
     if (isDailySummary) {
       keys.add('daily_sales_summary');
+      final now = DateTime.now();
+      keys.add('daily_sales_summary_${now.year}_${now.month}_${now.day}');
+    }
+
+    if (id != null && id != 0) {
+      keys.add('notif_id_$id');
     }
 
     if (orderId != null && orderId.trim().isNotEmpty) {
@@ -160,7 +170,11 @@ class LocalNotificationService with WidgetsBindingObserver {
           defaultTargetPlatform == TargetPlatform.linux);
 
   /// Handle notification payload when tapped from system notification tray or fullScreenIntent
-  static void _handleNotificationPayload(String? payload, {bool autoAccept = false}) {
+  static void _handleNotificationPayload(
+    String? payload, {
+    bool autoAccept = false,
+    bool autoReject = false,
+  }) {
     if (payload == null || payload.isEmpty) return;
     try {
       final decoded = jsonDecode(payload);
@@ -239,6 +253,7 @@ class LocalNotificationService with WidgetsBindingObserver {
                 ctx,
                 decoded,
                 autoAccept: autoAccept,
+                autoReject: autoReject,
               );
             } else if (attempts >= 20) {
               timer.cancel();
@@ -450,7 +465,8 @@ class LocalNotificationService with WidgetsBindingObserver {
     final payload = response.payload;
     if (payload == null || payload.isEmpty) return;
     final isAccept = response.actionId == 'accept_order';
-    _handleNotificationPayload(payload, autoAccept: isAccept);
+    final isReject = response.actionId == 'reject_order';
+    _handleNotificationPayload(payload, autoAccept: isAccept, autoReject: isReject);
   }
 
   /// Check if a high-priority WhatsApp or online order was received while the phone was locked or app was killed
@@ -472,7 +488,11 @@ class LocalNotificationService with WidgetsBindingObserver {
           await prefs.remove('pending_notification_action');
         }
         await prefs.remove('pending_incoming_order_payload');
-        _handleNotificationPayload(jsonEncode(payload), autoAccept: pendingAction == 'accept');
+        _handleNotificationPayload(
+          jsonEncode(payload),
+          autoAccept: pendingAction == 'accept',
+          autoReject: pendingAction == 'reject',
+        );
         return;
       }
 
@@ -527,7 +547,11 @@ class LocalNotificationService with WidgetsBindingObserver {
           }
         } catch (_) {}
         debugPrint('[LocalNotificationService] Found pending background order in SharedPreferences: $pendingJson (Action: $pendingAction)');
-        _handleNotificationPayload(pendingJson, autoAccept: pendingAction == 'accept');
+        _handleNotificationPayload(
+          pendingJson,
+          autoAccept: pendingAction == 'accept',
+          autoReject: pendingAction == 'reject',
+        );
       }
     } catch (e) {
       debugPrint('[LocalNotificationService] Error checking pending incoming order: $e');
@@ -632,10 +656,10 @@ class LocalNotificationService with WidgetsBindingObserver {
 
         bigTextStyle = BigTextStyleInformation(
           itemsSummary.isNotEmpty
-              ? '$cleanName • $oType\n$itemsSummary\nTap or choose an action below'
-              : '$cleanName placed an order ($oType) • Tap to Accept',
+              ? '$cleanName • $oType\n$itemsSummary\n⚡ Tap ACCEPT to confirm or REJECT to decline'
+              : '$cleanName placed an order ($oType)\n⚡ Tap ACCEPT to confirm or REJECT to decline',
           contentTitle: finalTitle,
-          summaryText: 'Incoming Order',
+          summaryText: '🚨 Incoming Order Action Required',
           htmlFormatBigText: false,
           htmlFormatContentTitle: false,
         );
@@ -647,9 +671,16 @@ class LocalNotificationService with WidgetsBindingObserver {
 
       final notifTag = data['notificationTag']?.toString();
 
+      final notifId = isDailySummary
+          ? 9991
+          : (isWhatsAppOrder && data['orderId'] != null
+              ? data['orderId'].toString().hashCode.abs().remainder(100000)
+              : 0);
+
       // Deduplicate before processing remote message
       final isDuplicate = await shouldSuppressDuplicate(
-        tag: notifTag,
+        id: notifId,
+        tag: notifTag ?? (isDailySummary ? 'daily_sales_summary' : null),
         orderId: orderId.isNotEmpty ? orderId : null,
         orderNumber: orderNum.isNotEmpty ? orderNum : null,
         entityId: data['entityId']?.toString(),
@@ -663,12 +694,6 @@ class LocalNotificationService with WidgetsBindingObserver {
         debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate RemoteMessage notification: $rawTitle');
         return;
       }
-
-      final notifId = isDailySummary
-          ? 9991
-          : (isWhatsAppOrder && data['orderId'] != null
-              ? data['orderId'].toString().hashCode.abs().remainder(100000)
-              : 0);
 
       final instance = LocalNotificationService();
       await instance.init();
@@ -733,13 +758,38 @@ class LocalNotificationService with WidgetsBindingObserver {
     final cleanBody = body.trim().toLowerCase();
     final orderId = (metadata['orderId'] ?? '').toString().trim();
     final orderNum = (metadata['orderNumber'] ?? '').toString().trim();
+    final cleanType = type.name.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final cleanMetaType = (metadata['type'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final cleanEntityType = (entityType ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
     final isDailySummary = type == NotificationType.dailySalesSummary ||
-        metadata['type'] == 'daily_sales_summary' ||
+        cleanType.contains('dailysalessummary') ||
+        cleanMetaType.contains('dailysalessummary') ||
+        cleanEntityType.contains('salesreport') ||
         entityType == 'sales_report';
+
+    final isOrderHint = type == NotificationType.whatsappOrderRequest ||
+        metadata['type'] == 'whatsapp_order_request' ||
+        metadata['type'] == 'whatsapp_new_order' ||
+        metadata['type'] == 'whatsapp_order' ||
+        metadata['type'] == 'new_order' ||
+        metadata['type'] == 'newOrder' ||
+        metadata['type'] == 'order_created' ||
+        metadata['orderId'] != null ||
+        entityType == 'whatsapp_order' ||
+        entityType == 'order';
+
+    final String? effectiveTag = tag ??
+        (isDailySummary
+            ? 'daily_sales_summary'
+            : (isOrderHint
+                ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
+                : (metadata['notificationTag']?.toString() ??
+                    (orderId.isNotEmpty ? 'order_$orderId' : null))));
 
     // 0. Deduplicate notifications across Socket & FCM using unified cross-isolate debouncer
     final isDuplicate = await shouldSuppressDuplicate(
-      tag: tag ?? metadata['notificationTag']?.toString(),
+      id: id != 0 ? id : (isDailySummary ? 9991 : null),
+      tag: effectiveTag,
       orderId: orderId.isNotEmpty ? orderId : null,
       orderNumber: orderNum.isNotEmpty ? orderNum : null,
       entityId: entityId ?? metadata['entityId']?.toString(),
@@ -843,20 +893,17 @@ class LocalNotificationService with WidgetsBindingObserver {
           ? <AndroidNotificationAction>[
               const AndroidNotificationAction(
                 'accept_order',
-                'ACCEPT',
+                '✅ ACCEPT ORDER',
                 showsUserInterface: true,
                 cancelNotification: true,
+                contextual: true,
               ),
               const AndroidNotificationAction(
                 'reject_order',
-                'REJECT',
+                '❌ REJECT',
                 showsUserInterface: true,
                 cancelNotification: true,
-              ),
-              const AndroidNotificationAction(
-                'view_order',
-                'VIEW',
-                showsUserInterface: true,
+                contextual: true,
               ),
             ]
           : null;
@@ -864,9 +911,9 @@ class LocalNotificationService with WidgetsBindingObserver {
       StyleInformation? effectiveStyle = styleInformation;
       if (effectiveStyle == null && isWhatsAppOrder) {
         effectiveStyle = BigTextStyleInformation(
-          body,
+          '$body\n⚡ Tap ACCEPT to confirm or REJECT to decline',
           contentTitle: title,
-          summaryText: 'Incoming Order',
+          summaryText: '🚨 Incoming Order Action Required',
           htmlFormatBigText: false,
           htmlFormatContentTitle: false,
         );

@@ -30,6 +30,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
   final DateTime createdAt;
   final String source;
   final bool autoAccept;
+  final bool autoReject;
 
   const IncomingOrderAcceptScreen({
     super.key,
@@ -44,6 +45,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     required this.createdAt,
     this.source = 'whatsapp',
     this.autoAccept = false,
+    this.autoReject = false,
   });
 
   static bool _isShowing = false;
@@ -69,6 +71,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     DateTime? createdAt,
     String? source,
     bool autoAccept = false,
+    bool autoReject = false,
   }) async {
     final cleanType = (orderType ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
     final cleanSource = (source ?? '').toLowerCase().trim();
@@ -125,6 +128,8 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
       SoundService.playOrderRingtone();
     } catch (_) {}
 
+    final effectiveCreatedAt = (createdAt != null ? (createdAt.isUtc ? createdAt.toLocal() : createdAt) : DateTime.now());
+
     try {
       await Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(
@@ -140,9 +145,10 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
               orderType: orderType ?? 'takeaway',
               deliveryAddress: deliveryAddress ?? '',
               items: parsedItems,
-              createdAt: createdAt ?? DateTime.now(),
+              createdAt: effectiveCreatedAt,
               source: source ?? 'whatsapp',
               autoAccept: autoAccept,
+              autoReject: autoReject,
             );
           },
         ),
@@ -161,6 +167,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     BuildContext context,
     Map<String, dynamic> data, {
     bool autoAccept = false,
+    bool autoReject = false,
   }) async {
     final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
 
@@ -203,7 +210,19 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
         '';
     final itemsPayload = metadata['items'] ?? data['items'];
     final createdAtStr = metadata['createdAt']?.toString() ?? data['createdAt']?.toString();
-    final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr) : null;
+    DateTime? createdAt;
+    if (createdAtStr != null && createdAtStr.trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(createdAtStr);
+      if (parsed != null) {
+        if (createdAtStr.endsWith('Z') || createdAtStr.contains('+') || (createdAtStr.length > 19 && createdAtStr[19] == '-')) {
+          createdAt = parsed.toLocal();
+        } else if (createdAtStr.contains('T') && !parsed.isUtc) {
+          createdAt = DateTime.utc(parsed.year, parsed.month, parsed.day, parsed.hour, parsed.minute, parsed.second, parsed.millisecond).toLocal();
+        } else {
+          createdAt = parsed.toLocal();
+        }
+      }
+    }
 
     if (orderId.isEmpty && orderNumber.isEmpty) return;
 
@@ -220,6 +239,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
       createdAt: createdAt,
       source: source,
       autoAccept: autoAccept,
+      autoReject: autoReject,
     );
   }
 
@@ -258,8 +278,14 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     final ctx = _currentScreenContext;
     if (ctx != null && ctx.mounted) {
       try {
-        if (Navigator.of(ctx, rootNavigator: true).canPop()) {
-          Navigator.of(ctx, rootNavigator: true).pop();
+        final route = ModalRoute.of(ctx);
+        if (route != null && route.isCurrent) {
+          final nav = Navigator.of(ctx, rootNavigator: true);
+          if (nav.canPop()) {
+            nav.pop();
+          } else {
+            nav.pushReplacementNamed('/dashboard');
+          }
         }
       } catch (e) {
         debugPrint('[IncomingOrderAcceptScreen] Error popping screen context: $e');
@@ -314,6 +340,7 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
   int _selectedPrepTime = 20;
   bool _isProcessing = false;
   bool _isRingtoneMuted = false;
+  bool _hasClosed = false;
   late AnimationController _pulseController;
   Timer? _countdownTimer;
   int _secondsRemaining = 90;
@@ -369,6 +396,35 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _handleAccept();
       });
+    } else if (widget.autoReject) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleReject();
+      });
+    }
+  }
+
+  void _closeScreen() {
+    if (_hasClosed) return;
+    _hasClosed = true;
+    SoundService.stopOrderRingtone();
+    IncomingOrderAcceptScreen._isShowing = false;
+    IncomingOrderAcceptScreen._currentShowingOrderId = null;
+    IncomingOrderAcceptScreen._currentShowingOrderNumber = null;
+    IncomingOrderAcceptScreen._currentScreenContext = null;
+
+    if (!mounted) return;
+    try {
+      final route = ModalRoute.of(context);
+      if (route != null && route.isCurrent) {
+        final nav = Navigator.of(context, rootNavigator: true);
+        if (nav.canPop()) {
+          nav.pop();
+        } else {
+          nav.pushReplacementNamed('/dashboard');
+        }
+      }
+    } catch (e) {
+      debugPrint('[IncomingOrderAcceptScreen] Error closing screen: $e');
     }
   }
 
@@ -633,9 +689,11 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
         debugPrint('[IncomingOrderAcceptScreen] Auto-print KOT notice: $printErr');
       }
 
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+      _closeScreen();
+
+      final navCtx = LocalNotificationService.navigatorKey.currentContext;
+      if (navCtx != null && navCtx.mounted) {
+        ScaffoldMessenger.of(navCtx).showSnackBar(
           SnackBar(
             content: Row(
               children: [
@@ -836,9 +894,11 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       await _orderService.rejectWhatsAppOrder(widget.orderId, reason: finalReason);
       unawaited(_db.syncOrdersOnly());
 
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+      _closeScreen();
+
+      final navCtx = LocalNotificationService.navigatorKey.currentContext;
+      if (navCtx != null && navCtx.mounted) {
+        ScaffoldMessenger.of(navCtx).showSnackBar(
           SnackBar(
             content: Text('Order #${widget.orderNumber} declined: $finalReason'),
             backgroundColor: const Color(0xFF334155),
@@ -880,6 +940,16 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
 
     return PopScope(
       canPop: !_isProcessing,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _hasClosed = true;
+          SoundService.stopOrderRingtone();
+          IncomingOrderAcceptScreen._isShowing = false;
+          IncomingOrderAcceptScreen._currentShowingOrderId = null;
+          IncomingOrderAcceptScreen._currentShowingOrderNumber = null;
+          IncomingOrderAcceptScreen._currentScreenContext = null;
+        }
+      },
       child: Scaffold(
         backgroundColor: _bgCanvas,
         body: SafeArea(
@@ -943,9 +1013,8 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
           // Left: Rounded squarish Back Button
           InkWell(
             onTap: () {
-              SoundService.stopOrderRingtone();
               DatabaseService.markOrderDismissed(widget.orderId, widget.orderNumber);
-              Navigator.of(context).pop();
+              _closeScreen();
             },
             borderRadius: BorderRadius.circular(10),
             child: Container(
@@ -1234,7 +1303,7 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Received : ${DateFormat('h:mm a • d MMM, yyyy').format(widget.createdAt)}',
+                  'Received : ${DateFormat('h:mm a • d MMM, yyyy').format(widget.createdAt.toLocal())}',
                   style: const TextStyle(
                     color: _textMuted,
                     fontSize: 11,
