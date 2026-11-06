@@ -476,6 +476,31 @@ class WhatsAppChatService {
         ],
       },
       {
+        id: 'tmpl_customer_support_reopen',
+        name: 'customer_support_reopen',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        language: 'en',
+        header: 'Customer Support',
+        body: 'Hello! Thank you for connecting with us. Please reply to this message to continue our conversation with our team.',
+        footer: business?.name || 'Customer Care',
+        parameters: [],
+      },
+      {
+        id: 'tmpl_order_update_reconnect',
+        name: 'order_update_reconnect',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        language: 'en',
+        header: 'Order Update',
+        body: 'Hello {{1}}, we are reaching out regarding your inquiry or order with {{2}}. Please reply to this message if you need any assistance.',
+        footer: business?.name || 'Customer Support',
+        parameters: [
+          { key: '1', label: 'Customer Name', example: 'Valued Customer' },
+          { key: '2', label: 'Store Name', example: business?.name || 'Our Store' },
+        ],
+      },
+      {
         id: 'tmpl_ebill_receipt',
         name: 'ebill_receipt',
         status: 'APPROVED',
@@ -509,17 +534,6 @@ class WhatsAppChatService {
           { key: '3', label: 'Store Name', example: business?.name || 'Our Store' },
           { key: '4', label: 'Coupon Code', example: 'SAVE20' },
         ],
-      },
-      {
-        id: 'tmpl_hello_world',
-        name: 'hello_world',
-        status: 'APPROVED',
-        category: 'UTILITY',
-        language: 'en_US',
-        header: 'Hello World',
-        body: 'Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.',
-        footer: 'WhatsApp Business Platform sample message',
-        parameters: [],
       },
     ];
 
@@ -583,7 +597,9 @@ class WhatsAppChatService {
           };
         });
 
-        const finalTemplates = approvedList.length > 0 ? approvedList : defaultApprovedTemplates;
+        // Exclude 'hello_world' sample test template because Meta restricts it on live registered phone numbers
+        const sanitizedApprovedList = approvedList.filter(t => t.name !== 'hello_world');
+        const finalTemplates = sanitizedApprovedList.length > 0 ? sanitizedApprovedList : defaultApprovedTemplates;
         this._templatesCache = this._templatesCache || new Map();
         this._templatesCache.set(cacheKey, {
           timestamp: Date.now(),
@@ -723,7 +739,11 @@ class WhatsAppChatService {
 
     // Render human-readable message text for storage and chat UI preview
     let renderedText = `📋 Template: ${templateName}`;
-    if (templateName === 'hello_world') {
+    if (templateName === 'customer_support_reopen') {
+      renderedText = '👋 Hello! Thank you for connecting with us. Please reply to this message to continue our conversation with our team.';
+    } else if (templateName === 'order_update_reconnect' && Array.isArray(parameters) && parameters.length >= 2) {
+      renderedText = `👋 Hello ${parameters[0] || 'Valued Customer'}, we are reaching out regarding your inquiry or order with ${parameters[1] || 'Our Store'}. Please reply to this message if you need any assistance.`;
+    } else if (templateName === 'hello_world') {
       renderedText = '👋 Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.';
     } else if (templateName === 'ebill_receipt' && Array.isArray(parameters) && parameters.length >= 4) {
       renderedText = `🧾 *Digital Bill Receipt*\nHello ${parameters[0] || 'Valued Customer'},\n\nYour bill from ${parameters[1] || 'Our Store'} has been generated successfully.\n\nBill Number: ${parameters[2] || ''}\nBill Date: ${parameters[3] || ''}\nTotal Amount: ₹${parameters[4] || '0.00'}\nPayment Status: ${parameters[5] || 'Paid'}\nPayment Mode: ${parameters[6] || 'UPI'}\n\nThank you for your purchase. Please keep this message for your records.`;
@@ -1706,8 +1726,10 @@ class WhatsAppChatService {
       const rawMsg = err.message || '';
       if (code === 131047 || title === 'Re-engagement message' || rawMsg === 'Re-engagement message') {
         message.error = '24-hour customer window expired (Meta policy). Customer must reply or send template to re-engage.';
+      } else if (message.text?.includes('Welcome and congratulations') || message.text?.toLowerCase().includes('hello_world')) {
+        message.error = "Meta rejected developer test template ('hello_world') on live account. Please use an approved business template (eBill or Customer Care).";
       } else if (code === 131056 || code === 131048 || rawMsg.includes('too many messages') || rawMsg.includes('short period of time') || title.toLowerCase().includes('spam')) {
-        message.error = 'Meta Rate Limit Hit (Code 131056): Too many messages sent in a short period. Meta has temporarily throttled sending for this phone number. Please wait 15-60 mins for cooldown or verify your business in Meta Business Manager to increase messaging limits.';
+        message.error = 'Meta Pair Rate Limit (Code 131056): Too many messages sent to this specific recipient in a short window. Please wait a few minutes before retrying.';
       } else {
         message.error = err.error_data?.details || err.message || err.title || 'Delivery error';
       }

@@ -97,11 +97,21 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
       final list = await _chatService.getApprovedTemplates();
       if (!mounted) return;
 
+      // Filter out test-only templates ('hello_world') that Meta rejects on live production numbers
+      final validTemplates = list.where((t) => t.name.toLowerCase() != 'hello_world').toList();
+      final effectiveList = validTemplates.isNotEmpty ? validTemplates : list;
+
       setState(() {
-        _templates = list;
+        _templates = effectiveList;
         _isLoading = false;
-        if (list.isNotEmpty) {
-          _selectTemplate(list.first);
+        if (effectiveList.isNotEmpty) {
+          final preferred = effectiveList.firstWhere(
+            (t) => t.name == 'customer_support_reopen' ||
+                t.name == 'order_update_reconnect' ||
+                t.name == 'ebill_receipt',
+            orElse: () => effectiveList.first,
+          );
+          _selectTemplate(preferred);
         }
       });
     } catch (e) {
@@ -143,6 +153,12 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
 
       if (tmpl.name == 'apna_pos_auth_otp') {
         defaultValue = p.example.isNotEmpty ? p.example : '123456';
+      } else if (tmpl.name == 'order_update_reconnect') {
+        if (i == 0) {
+          defaultValue = effectiveCustName;
+        } else if (i == 1) {
+          defaultValue = widget.businessName.isNotEmpty ? widget.businessName : 'Our Store';
+        }
       } else if (tmpl.name == 'special_discount_offer') {
         if (i == 0) {
           defaultValue = effectiveCustName;

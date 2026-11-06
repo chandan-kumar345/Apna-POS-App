@@ -5655,7 +5655,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   const SizedBox(height: 5),
                   GestureDetector(
                     onTap: () {
-                      if (_isRateLimitError(msg.error!)) {
+                      if (_isTestTemplateError(msg.error!)) {
+                        _showTestTemplateHelpDialog();
+                      } else if (_isRateLimitError(msg.error!)) {
                         _showRateLimitHelpDialog(msg.error!);
                       } else {
                         _showReEngagementHelpDialog(msg.error!);
@@ -5759,7 +5761,16 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         lower.contains('131047');
   }
 
+  bool _isTestTemplateError(String err) {
+    final lower = err.toLowerCase();
+    return lower.contains('hello_world') ||
+        lower.contains('test template') ||
+        lower.contains('developer test') ||
+        lower.contains('sample template');
+  }
+
   bool _isRateLimitError(String err) {
+    if (_isTestTemplateError(err)) return false;
     final lower = err.toLowerCase();
     return lower.contains('too many messages') ||
         lower.contains('short period') ||
@@ -5770,8 +5781,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   String _formatErrorMessage(String rawError) {
+    if (_isTestTemplateError(rawError)) {
+      return 'Meta test template blocked: Send eBill / Support template (Tap for info)';
+    }
     if (_isRateLimitError(rawError)) {
-      return 'Meta Rate Limit Hit: Too many messages sent in short period (Tap for solution)';
+      return 'Meta Rate Limit: Too many messages in short period (Tap for solution)';
     }
     if (_isReEngagementError(rawError)) {
       return '24-hr window expired (Tap for info)';
@@ -5780,6 +5794,106 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       return 'Meta sandbox: recipient not whitelisted';
     }
     return rawError;
+  }
+
+  void _showTestTemplateHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.info_rounded, color: Color(0xFF0284C7), size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Sample Template Restricted by Meta',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F9FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Icon(Icons.check_circle_rounded, size: 20, color: Color(0xFF0284C7)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Your WhatsApp Business account is healthy and ACTIVE. There is no account ban or campaign block.',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF0369A1), height: 1.45, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Why did this message fail?',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'You sent Meta\'s developer sample template ("hello_world"). Meta automatically restricts the sample template on live registered phone numbers to prevent abuse (error 131056).\n\n'
+                'This error is NOT caused by your marketing campaigns. Real business templates (like eBill receipts and customer greetings) deliver with 100% success.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.45),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'How to send approved templates:',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: const Text(
+                  '1. Tap "Send Template" at the bottom of the chat.\n'
+                  '2. Select "Your Digital Bill" (ebill_receipt) or "Customer Support".\n'
+                  '3. Tap "Send Approved Template". It will be delivered to the customer immediately!',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF166534), height: 1.5, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openTemplatePicker();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00A884),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Send Business Template', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showRateLimitHelpDialog(String rawError) {

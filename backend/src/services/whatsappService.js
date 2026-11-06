@@ -773,7 +773,7 @@ class WhatsAppService {
       // Attempt sending an approved Meta Template (e.g. hello_world or ebill_receipt) to re-engage
       if (errorCode === 131047) {
         console.warn(`[WhatsAppService] Customer ${normalizedPhone} is outside the 24-hour window. Attempting re-engagement template dispatch...`);
-        const templateCandidates = ['hello_world', this.templateName].filter(Boolean);
+        const templateCandidates = ['customer_support_reopen', 'order_update_reconnect', this.templateName].filter(Boolean);
         for (const tName of templateCandidates) {
           try {
             const templatePayload = {
@@ -783,7 +783,7 @@ class WhatsAppService {
               type: 'template',
               template: {
                 name: tName,
-                language: { code: 'en_US' },
+                language: { code: tName === 'hello_world' ? 'en_US' : 'en' },
               },
             };
             const templateRes = await fetch(url, {

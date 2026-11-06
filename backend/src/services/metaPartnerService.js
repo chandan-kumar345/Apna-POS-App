@@ -380,15 +380,15 @@ class MetaPartnerService {
 
       const data = await res.json();
       if (!res.ok) {
-        // If text message failed due to 24-hr window, retry with official Meta test template 'hello_world'
+        // If text message failed due to 24-hr window, retry with official Meta utility template 'customer_support_reopen'
         if (data?.error?.code === 131047 || data?.error?.message?.includes('24 hour')) {
           const fallbackPayload = {
             messaging_product: 'whatsapp',
             to: cleanTo.replace('+', ''),
             type: 'template',
             template: {
-              name: 'hello_world',
-              language: { code: 'en_US' },
+              name: 'customer_support_reopen',
+              language: { code: 'en' },
             },
           };
           const fallbackRes = await fetch(url, {
