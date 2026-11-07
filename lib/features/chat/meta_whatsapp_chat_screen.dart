@@ -1906,7 +1906,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         Navigator.of(context).pop();
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: true,
+        resizeToAvoidBottomInset: false,
         backgroundColor: const Color(0xFF031024), // Deep Midnight Navy (matching POS screen)
         body: Container(
           decoration: const BoxDecoration(
@@ -1921,7 +1921,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             ),
           ),
           child: SafeArea(
-            bottom: true,
+            top: true,
+            bottom: false,
             child: Column(
               children: [
                 // 1. TOP HEADER BAR (Identical to POS Screen)
@@ -2613,8 +2614,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
 
-        // 5. WhatsApp Bottom Navigation Bar (Chats, Updates, Communities, Calls) - Hidden on Web/Windows
-        if (!isEmbedded && !_isWebOrDesktop) _buildWhatsAppBottomNavBar(unreadTotal),
+        // 5. WhatsApp Bottom Navigation Bar (Chats, Updates, Communities, Calls) - Hidden on Web/Windows or when keyboard is open
+        if (!isEmbedded && !_isWebOrDesktop && MediaQuery.of(context).viewInsets.bottom == 0)
+          _buildWhatsAppBottomNavBar(unreadTotal),
       ],
     );
   }
@@ -2903,8 +2905,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   /// WhatsApp 4-Tab Bottom Navigation Bar (Elevated curved container matching reference UI)
   Widget _buildWhatsAppBottomNavBar(int unreadCount) {
+    final bottomNavPad = MediaQuery.of(context).padding.bottom > 6.0
+        ? MediaQuery.of(context).padding.bottom
+        : 6.0;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      margin: EdgeInsets.fromLTRB(12, 0, 12, bottomNavPad),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -3040,8 +3045,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       return _buildEmptyChatList();
     }
 
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 4, bottom: 80),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.only(top: 4, bottom: bottomInset > 0 ? (bottomInset + 16) : 80),
       itemCount: filtered.length,
       itemBuilder: (context, index) {
         final chat = filtered[index];
@@ -4092,6 +4099,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                             )
                           : ListView.builder(
                               controller: _scrollController,
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               addAutomaticKeepAlives: false,
                               addRepaintBoundaries: true,
                               padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 28, vertical: 12),
@@ -4133,6 +4141,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
           // 3. Bottom Input Bar: Authentic WhatsApp Web input bar on desktop, responsive input on mobile
           _buildConversationInputBar(isMobile: isMobile),
+
+          // 4. Keyboard Spacer: Smoothly moves input bar up with keyboard while keeping the white screen stationary
+          if (bottomInset > 0)
+            SizedBox(height: bottomInset),
         ],
       ),
     );
@@ -4728,7 +4740,17 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       );
     }
 
-    return Row(
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = bottomInset > 0
+        ? 6.0
+        : (MediaQuery.of(context).padding.bottom > 8.0
+            ? MediaQuery.of(context).padding.bottom
+            : 8.0);
+
+    return Container(
+      color: const Color(0xFFEFEAE2), // Authentic WhatsApp Wallpaper background color
+      padding: EdgeInsets.fromLTRB(10, 6, 10, safeBottom),
+      child: Row(
       children: [
         // Plus (+) Attachment Button
         GestureDetector(
@@ -4873,8 +4895,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
 
   void _showAttachmentSheet() {
     if (_selectedChat == null) return;
