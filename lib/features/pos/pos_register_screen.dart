@@ -421,7 +421,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         (tokenChanged ||
          widget.initialTable != oldWidget.initialTable ||
          _selectedTable != widget.initialTable)) {
-      _switchTable(widget.initialTable!);
+      _loadCartForTable(widget.initialTable!, openCartModal: false);
     } else if (widget.initialOrderType != null &&
         (tokenChanged ||
          widget.initialOrderType != oldWidget.initialOrderType ||
@@ -4697,22 +4697,26 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     setState(() {});
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('Table shifted from $oldTable to $newTableName with all items & discounts'),
-              ),
-            ],
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Table shifted from $oldTable to $newTableName with all items & discounts'),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF00A86B),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
           ),
-          backgroundColor: const Color(0xFF00A86B),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+        );
+      });
     }
   }
 
@@ -4736,22 +4740,26 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     setState(() {});
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('Switched to Table $newTableName'),
-              ),
-            ],
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Switched to Table $newTableName'),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF051C48),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
           ),
-          backgroundColor: const Color(0xFF051C48),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+        );
+      });
     }
   }
 
