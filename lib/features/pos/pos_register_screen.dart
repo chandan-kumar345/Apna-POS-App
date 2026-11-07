@@ -258,7 +258,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     _chotuService.addActionListener(_onChotuCommandReceived);
     _initLoyaltyStatus();
     if (widget.initialTable != null) {
-      _loadCartForTable(widget.initialTable!, openCartModal: true);
+      _loadCartForTable(widget.initialTable!, openCartModal: false);
     } else if (widget.initialOrderType != null && widget.initialOrderType != OrderType.dineIn) {
       _switchOrderType(widget.initialOrderType!);
     }
@@ -421,7 +421,20 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         (tokenChanged ||
          widget.initialTable != oldWidget.initialTable ||
          _selectedTable != widget.initialTable)) {
-      _loadCartForTable(widget.initialTable!, openCartModal: true);
+      final currentTable = _selectedTable ?? '';
+      final newTable = widget.initialTable!;
+      final bool hasItemsOrOrdersToShift = _cartItems.isNotEmpty ||
+          (currentTable.isNotEmpty && db.getLiveCartTotal(currentTable) > 0) ||
+          (currentTable.isNotEmpty && db.orders.any((o) =>
+              isSameTable(o.tableNumber, currentTable) &&
+              o.status != OrderStatus.completed &&
+              o.status != OrderStatus.cancelled));
+
+      if (hasItemsOrOrdersToShift && currentTable.isNotEmpty && !isSameTable(currentTable, newTable)) {
+        _shiftTable(newTable);
+      } else {
+        _loadCartForTable(newTable, openCartModal: false);
+      }
     } else if (widget.initialOrderType != null &&
         (tokenChanged ||
          widget.initialOrderType != oldWidget.initialOrderType ||
@@ -506,7 +519,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     _checkCustomerLoyalty();
 
-    if (openCartModal) {
+    if (openCartModal && _cartItems.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _openCartScreenModal();
@@ -4767,7 +4780,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       if (dialogCtx.mounted) {
         Navigator.pop(dialogCtx);
       }
-      _loadCartForTable(targetTable.name, openCartModal: true);
+      _loadCartForTable(targetTable.name, openCartModal: false);
       return;
     }
 
@@ -4775,13 +4788,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       Navigator.pop(dialogCtx);
     }
 
-    // If target table is occupied or has running KOT/orders, switch to view that table
-    // Only perform table shift if target table is completely free
-    final targetIsFree = targetTable.status == TableStatus.free &&
-        db.getLiveCartTotal(targetTable.name) <= 0 &&
-        !db.orders.any((o) => isSameTable(o.tableNumber, targetTable.name) && o.status != OrderStatus.completed && o.status != OrderStatus.cancelled);
+    // If current table has active cart or running KOT orders, always shift/transfer products to the new table!
+    final bool hasItemsOrOrdersToShift = hasActiveOrderOrCart ||
+        _cartItems.isNotEmpty ||
+        (currentTable.isNotEmpty && db.getLiveCartTotal(currentTable) > 0) ||
+        (currentTable.isNotEmpty && db.orders.any((o) =>
+            isSameTable(o.tableNumber, currentTable) &&
+            o.status != OrderStatus.completed &&
+            o.status != OrderStatus.cancelled));
 
-    if (isShiftMode && hasActiveOrderOrCart && currentTable.isNotEmpty && targetIsFree) {
+    if (hasItemsOrOrdersToShift && currentTable.isNotEmpty) {
       await _shiftTable(targetTable.name, setStateCart);
     } else {
       _switchTable(targetTable.name, setStateCart);
@@ -5056,7 +5072,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       _handleTableSelection(
                                         dialogCtx: modalCtx,
                                         targetTable: table,
-                                        isShiftMode: false,
+                                        isShiftMode: true,
                                         hasActiveOrderOrCart: hasActiveOrderOrCart,
                                         currentTable: currentTable,
                                         setStateCart: setStateModal,
@@ -9489,8 +9505,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: TableManagementScreen(
-                      onTakeOrder: (tableName) {
-                        _loadCartForTable(tableName, openCartModal: true);
+                      onTakeOrder: (tableName) async {
+                        if (dialogCtx.mounted) {
+                          Navigator.pop(dialogCtx);
+                        }
+                        final currentTable = _selectedTable ?? '';
+                        final bool hasItemsOrOrdersToShift = _cartItems.isNotEmpty ||
+                            (currentTable.isNotEmpty && db.getLiveCartTotal(currentTable) > 0) ||
+                            (currentTable.isNotEmpty && db.orders.any((o) =>
+                                isSameTable(o.tableNumber, currentTable) &&
+                                o.status != OrderStatus.completed &&
+                                o.status != OrderStatus.cancelled));
+
+                        if (hasItemsOrOrdersToShift && currentTable.isNotEmpty && !isSameTable(currentTable, tableName)) {
+                          await _shiftTable(tableName, setStateCart);
+                        } else {
+                          _loadCartForTable(tableName, openCartModal: false);
+                        }
                         setState(() {
                           _selectedTable = tableName;
                           _selectedOrderType = OrderType.dineIn;
@@ -9501,7 +9532,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             _selectedOrderType = OrderType.dineIn;
                           });
                         }
-                        Navigator.pop(dialogCtx);
                       },
                       onTakeOrderForType: (orderType) {
                         _switchOrderType(orderType, setStateCart);

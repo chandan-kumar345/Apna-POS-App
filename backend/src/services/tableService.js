@@ -524,7 +524,18 @@ class TableService {
           items: sourceCart.items,
         });
       } else {
-        targetCart.items = sourceCart.items;
+        const mergedItems = [...(targetCart.items || [])];
+        for (const srcItem of (sourceCart.items || [])) {
+          const existingIdx = mergedItems.findIndex(
+            (m) => (m.itemId?.toString() === srcItem.itemId?.toString() || m._id?.toString() === srcItem._id?.toString()) && (m.notes || '') === (srcItem.notes || '')
+          );
+          if (existingIdx !== -1) {
+            mergedItems[existingIdx].quantity = (mergedItems[existingIdx].quantity || 1) + (srcItem.quantity || 1);
+          } else {
+            mergedItems.push(srcItem);
+          }
+        }
+        targetCart.items = mergedItems;
       }
       targetCart.recalculateTotals();
       await targetCart.save();
