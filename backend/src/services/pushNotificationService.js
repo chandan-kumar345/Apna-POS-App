@@ -270,26 +270,32 @@ class PushNotificationService {
           ttl: '0s',
           collapse_key: androidTag || 'apna_pos_general',
         },
-        notification: {
-          title,
-          body: message,
-          sound: 'notification_sound',
-          android_channel_id: channelId,
-          click_action: 'FLUTTER_NOTIFICATION_CLICK',
-          ...(androidTag ? { tag: androidTag } : {}),
-        },
+        ...(!isOrderRequest
+          ? {
+              notification: {
+                title,
+                body: message,
+                sound: 'notification_sound',
+                android_channel_id: channelId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                ...(androidTag ? { tag: androidTag } : {}),
+              },
+            }
+          : {}),
         data: sanitizedData,
       };
 
-      fcmPayload.android.notification = {
-        channel_id: channelId,
-        sound: 'notification_sound',
-        priority: 'max',
-        visibility: 'public',
-        default_vibrate_timings: true,
-        default_light_settings: true,
-        ...(androidTag ? { tag: androidTag } : {}),
-      };
+      if (!isOrderRequest) {
+        fcmPayload.android.notification = {
+          channel_id: channelId,
+          sound: 'notification_sound',
+          priority: 'max',
+          visibility: 'public',
+          default_vibrate_timings: true,
+          default_light_settings: true,
+          ...(androidTag ? { tag: androidTag } : {}),
+        };
+      }
 
       // 1. Try FCM HTTP v1 using Service Account JSON (recommended by Firebase)
       const serviceAccount = this._getServiceAccount();
@@ -303,25 +309,33 @@ class PushNotificationService {
             const v1Payload = {
               message: {
                 token: token,
-                notification: {
-                  title,
-                  body: message,
-                },
+                ...(!isOrderRequest
+                  ? {
+                      notification: {
+                        title,
+                        body: message,
+                      },
+                    }
+                  : {}),
                 android: {
                   priority: 'HIGH',
                   ttl: '0s',
                   direct_boot_ok: true,
                   collapse_key: androidTag || 'apna_pos_general',
-                  notification: {
-                    channel_id: channelId,
-                    sound: 'notification_sound',
-                    notification_priority: 'PRIORITY_MAX',
-                    visibility: 'PUBLIC',
-                    default_vibrate_timings: true,
-                    default_light_settings: true,
-                    click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                    ...(androidTag ? { tag: androidTag } : {}),
-                  },
+                  ...(!isOrderRequest
+                    ? {
+                        notification: {
+                          channel_id: channelId,
+                          sound: 'notification_sound',
+                          notification_priority: 'PRIORITY_MAX',
+                          visibility: 'PUBLIC',
+                          default_vibrate_timings: true,
+                          default_light_settings: true,
+                          click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                          ...(androidTag ? { tag: androidTag } : {}),
+                        },
+                      }
+                    : {}),
                 },
                 apns: {
                   headers: {
@@ -332,6 +346,7 @@ class PushNotificationService {
                     aps: {
                       'content-available': 1,
                       sound: 'notification_sound.mp3',
+                      ...(isOrderRequest ? { alert: { title, body: message } } : {}),
                     },
                   },
                 },

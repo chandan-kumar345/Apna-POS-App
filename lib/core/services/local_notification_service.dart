@@ -237,6 +237,7 @@ class LocalNotificationService with WidgetsBindingObserver {
             return;
           }
 
+          _pendingIncomingOrderPayload = decoded;
           _retryShowOrderTimer?.cancel();
           int attempts = 0;
           _retryShowOrderTimer = Timer.periodic(const Duration(milliseconds: 150), (timer) {
@@ -249,14 +250,17 @@ class LocalNotificationService with WidgetsBindingObserver {
             final ctx = navigatorKey.currentContext;
             if (ctx != null && ctx.mounted) {
               timer.cancel();
+              _pendingIncomingOrderPayload = null;
               IncomingOrderAcceptScreen.openFromPayload(
                 ctx,
                 decoded,
                 autoAccept: autoAccept,
                 autoReject: autoReject,
               );
-            } else if (attempts >= 20) {
+            } else if (attempts >= 40) {
+              // Phone might be locked or unmounted. Keep payload stored so unlock triggers it!
               timer.cancel();
+              _pendingIncomingOrderPayload = decoded;
             }
           });
           return;
@@ -290,9 +294,15 @@ class LocalNotificationService with WidgetsBindingObserver {
   /// Directly handle payload map from FCM or Socket background handlers
   static void handlePayloadDirectly(Map<String, dynamic> data, {bool autoAccept = false}) {
     try {
+      final jsonStr = jsonEncode(data);
+      _pendingIncomingOrderPayload = data;
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('pending_incoming_order_payload', jsonStr);
+      }).catchError((_) {});
+
       SoundService.boostHardwareVolume();
-      SoundService.bringAppToFront(payload: jsonEncode(data), isUrgent: true);
-      _handleNotificationPayload(jsonEncode(data), autoAccept: autoAccept);
+      SoundService.bringAppToFront(payload: jsonStr, isUrgent: true);
+      _handleNotificationPayload(jsonStr, autoAccept: autoAccept);
     } catch (e) {
       debugPrint('[LocalNotificationService] Error in handlePayloadDirectly: $e');
     }
@@ -446,12 +456,12 @@ class LocalNotificationService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - _lastResumeCheckTime < 5000) {
+      if (now - _lastResumeCheckTime < 800) {
         return;
       }
       _lastResumeCheckTime = now;
 
-      // 1. Check local queue from FCM background isolate
+      // 1. Check local queue from FCM background isolate or device unlock
       checkAndShowPendingIncomingOrder();
       // 2. Proactively verify and register device push token with backend
       try {
@@ -474,6 +484,9 @@ class LocalNotificationService with WidgetsBindingObserver {
     try {
       if (SplashScreen.isSplashActive) {
         debugPrint('[LocalNotificationService] checkAndShowPendingIncomingOrder deferred (splash active)');
+        return;
+      }
+      if (IncomingOrderAcceptScreen.isShowing) {
         return;
       }
 
@@ -538,7 +551,7 @@ class LocalNotificationService with WidgetsBindingObserver {
               final parsed = DateTime.tryParse(createdAtStr);
               if (parsed != null) {
                 final ageSec = DateTime.now().difference(parsed).inSeconds.abs();
-                if (ageSec > 300) {
+                if (ageSec > 900) {
                   debugPrint('[LocalNotificationService] Discarding stale order payload from prefs (age: ${ageSec}s)');
                   return;
                 }
@@ -552,6 +565,20 @@ class LocalNotificationService with WidgetsBindingObserver {
           autoAccept: pendingAction == 'accept',
           autoReject: pendingAction == 'reject',
         );
+        return;
+      }
+
+      // Check database for any unhandled pending external order placed within last 15 mins
+      if (!IncomingOrderAcceptScreen.isShowing) {
+        final pendingDbOrder = await DatabaseService().findPendingExternalOrderForPrompt();
+        if (pendingDbOrder != null && !IncomingOrderAcceptScreen.isShowing) {
+          final ctx = navigatorKey.currentContext;
+          if (ctx != null && ctx.mounted) {
+            IncomingOrderAcceptScreen.openFromPayload(ctx, pendingDbOrder);
+          } else {
+            _pendingIncomingOrderPayload = pendingDbOrder;
+          }
+        }
       }
     } catch (e) {
       debugPrint('[LocalNotificationService] Error checking pending incoming order: $e');
@@ -893,17 +920,17 @@ class LocalNotificationService with WidgetsBindingObserver {
           ? <AndroidNotificationAction>[
               const AndroidNotificationAction(
                 'accept_order',
-                '✅ ACCEPT ORDER',
+                '✅ ACCEPT',
                 showsUserInterface: true,
                 cancelNotification: true,
-                contextual: true,
+                contextual: false,
               ),
               const AndroidNotificationAction(
                 'reject_order',
                 '❌ REJECT',
                 showsUserInterface: true,
                 cancelNotification: true,
-                contextual: true,
+                contextual: false,
               ),
             ]
           : null;
@@ -945,7 +972,7 @@ class LocalNotificationService with WidgetsBindingObserver {
         visibility: NotificationVisibility.public,
         tag: effectiveTag,
         category: isWhatsAppOrder
-            ? AndroidNotificationCategory.call
+            ? AndroidNotificationCategory.event
             : (isWhatsApp ? AndroidNotificationCategory.message : category),
         ticker: isWhatsAppOrder
             ? 'New Incoming Order!'

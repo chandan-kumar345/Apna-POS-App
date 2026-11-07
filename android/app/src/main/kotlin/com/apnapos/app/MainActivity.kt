@@ -2,8 +2,10 @@ package com.apnapos.app
 
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -26,14 +28,62 @@ class MainActivity : FlutterActivity() {
         private var activeWakeLock: PowerManager.WakeLock? = null
     }
 
+    private var userPresentReceiver: BroadcastReceiver? = null
+
     // Default RenderMode.surface (SurfaceView) is used for maximum performance
     // and zero MessageQueue stalls on Android 11+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activeInstance = this
+        registerUserPresentReceiver()
         wakeAndShowOverLockScreen()
         handleIncomingOrderIntent(intent)
+    }
+
+    private fun registerUserPresentReceiver() {
+        if (userPresentReceiver != null) return
+        userPresentReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_USER_PRESENT) {
+                    try {
+                        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                        var pendingPayload = prefs.getString("flutter.pending_incoming_order_payload", null)
+                        if (pendingPayload.isNullOrEmpty()) {
+                            pendingPayload = prefs.getString("pending_incoming_order_payload", null)
+                        }
+                        if (!pendingPayload.isNullOrEmpty()) {
+                            bringAppToForeground(pendingPayload)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_USER_PRESENT)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(userPresentReceiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(userPresentReceiver, filter)
+            }
+        } catch (_: Exception) {
+            try {
+                registerReceiver(userPresentReceiver, filter)
+            } catch (err: Exception) {
+                err.printStackTrace()
+            }
+        }
+    }
+
+    private fun unregisterUserPresentReceiver() {
+        try {
+            if (userPresentReceiver != null) {
+                unregisterReceiver(userPresentReceiver)
+                userPresentReceiver = null
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onResume() {
@@ -54,6 +104,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        unregisterUserPresentReceiver()
         if (activeInstance == this) {
             activeInstance = null
         }
@@ -71,6 +122,53 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         wakeAndShowOverLockScreen()
         handleIncomingOrderIntent(intent)
+    }
+
+    fun bringAppToForeground(payload: String? = null) {
+        wakeAndShowOverLockScreen()
+
+        val launchIntent = (packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this@MainActivity, MainActivity::class.java)).apply {
+            action = "FLUTTER_NOTIFICATION_CLICK"
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+            if (!payload.isNullOrEmpty()) {
+                putExtra("pending_incoming_order_payload", payload)
+                putExtra("direct_open", true)
+            }
+        }
+
+        val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ActivityOptions.makeBasic().apply {
+                setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+            }
+        } else {
+            ActivityOptions.makeBasic()
+        }
+
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+
+        try {
+            val pi = PendingIntent.getActivity(
+                applicationContext,
+                (System.currentTimeMillis() % 100000).toInt(),
+                launchIntent,
+                pendingIntentFlags,
+                options.toBundle()
+            )
+            pi.send()
+        } catch (_: Exception) {
+            try {
+                startActivity(launchIntent, options.toBundle())
+            } catch (_: Exception) {}
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -97,57 +195,14 @@ class MainActivity : FlutterActivity() {
                             prefs.edit().putString("flutter.pending_incoming_order_payload", payload).apply()
                         }
 
-                        // If app is already in the foreground, do not relaunch or churn message queue
+                        // If app is already in the foreground, wake lock screen & return
                         if (isAppInForeground && !isFinishing && !isDestroyed) {
                             wakeAndShowOverLockScreen()
                             result.success(true)
                             return@setMethodCallHandler
                         }
 
-                        wakeAndShowOverLockScreen()
-
-                        val launchIntent = (packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this@MainActivity, MainActivity::class.java)).apply {
-                            action = "FLUTTER_NOTIFICATION_CLICK"
-                            addFlags(
-                                Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                            )
-                            if (!payload.isNullOrEmpty()) {
-                                putExtra("pending_incoming_order_payload", payload)
-                                putExtra("direct_open", true)
-                            }
-                        }
-
-                        val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            ActivityOptions.makeBasic().apply {
-                                setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
-                            }
-                        } else {
-                            ActivityOptions.makeBasic()
-                        }
-
-                        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                        } else {
-                            PendingIntent.FLAG_UPDATE_CURRENT
-                        }
-
-                        try {
-                            val pi = PendingIntent.getActivity(
-                                applicationContext,
-                                (System.currentTimeMillis() % 100000).toInt(),
-                                launchIntent,
-                                pendingIntentFlags,
-                                options.toBundle()
-                            )
-                            pi.send()
-                        } catch (_: Exception) {
-                            try {
-                                startActivity(launchIntent, options.toBundle())
-                            } catch (_: Exception) {}
-                        }
+                        bringAppToForeground(payload)
                         result.success(true)
                     } catch (e: Exception) {
                         result.success(false)
@@ -294,7 +349,12 @@ class MainActivity : FlutterActivity() {
                 }
                 val payloadString = payloadObj.toString()
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                prefs.edit().putString("flutter.pending_incoming_order_payload", payloadString).apply()
+                val editor = prefs.edit().putString("flutter.pending_incoming_order_payload", payloadString)
+                val action = extras.getString("pending_notification_action")
+                if (!action.isNullOrEmpty()) {
+                    editor.putString("flutter.pending_notification_action", action)
+                }
+                editor.apply()
             } catch (e: Exception) {
                 e.printStackTrace()
             }

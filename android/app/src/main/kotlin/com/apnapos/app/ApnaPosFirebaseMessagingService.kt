@@ -216,14 +216,14 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                     .setContentTitle(notifTitle)
                     .setContentText(notifBody)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
-                    .setCategory(NotificationCompat.CATEGORY_CALL)
+                    .setCategory(NotificationCompat.CATEGORY_EVENT)
                     .setSound(soundUri)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                     .setFullScreenIntent(fullScreenPendingIntent, true)
                     .setContentIntent(fullScreenPendingIntent)
                     .setAutoCancel(true)
-                    .addAction(0, "ACCEPT", acceptPendingIntent)
-                    .addAction(0, "REJECT", rejectPendingIntent)
+                    .addAction(0, "✅ ACCEPT", acceptPendingIntent)
+                    .addAction(0, "❌ REJECT", rejectPendingIntent)
 
                 notificationManager.notify(notifId, notifBuilder.build())
 
