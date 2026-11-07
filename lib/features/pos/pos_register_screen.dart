@@ -421,20 +421,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         (tokenChanged ||
          widget.initialTable != oldWidget.initialTable ||
          _selectedTable != widget.initialTable)) {
-      final currentTable = _selectedTable ?? '';
-      final newTable = widget.initialTable!;
-      final bool hasItemsOrOrdersToShift = _cartItems.isNotEmpty ||
-          (currentTable.isNotEmpty && db.getLiveCartTotal(currentTable) > 0) ||
-          (currentTable.isNotEmpty && db.orders.any((o) =>
-              isSameTable(o.tableNumber, currentTable) &&
-              o.status != OrderStatus.completed &&
-              o.status != OrderStatus.cancelled));
-
-      if (hasItemsOrOrdersToShift && currentTable.isNotEmpty && !isSameTable(currentTable, newTable)) {
-        _shiftTable(newTable);
-      } else {
-        _loadCartForTable(newTable, openCartModal: false);
-      }
+      _switchTable(widget.initialTable!);
     } else if (widget.initialOrderType != null &&
         (tokenChanged ||
          widget.initialOrderType != oldWidget.initialOrderType ||
@@ -4788,16 +4775,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       Navigator.pop(dialogCtx);
     }
 
-    // If current table has active cart or running KOT orders, always shift/transfer products to the new table!
-    final bool hasItemsOrOrdersToShift = hasActiveOrderOrCart ||
-        _cartItems.isNotEmpty ||
-        (currentTable.isNotEmpty && db.getLiveCartTotal(currentTable) > 0) ||
-        (currentTable.isNotEmpty && db.orders.any((o) =>
-            isSameTable(o.tableNumber, currentTable) &&
-            o.status != OrderStatus.completed &&
-            o.status != OrderStatus.cancelled));
+    // If target table is occupied or has running KOT/orders, switch to view that table
+    // Only perform table shift if target table is completely free AND isShiftMode is explicitly true
+    final targetIsFree = targetTable.status == TableStatus.free &&
+        db.getLiveCartTotal(targetTable.name) <= 0 &&
+        !db.orders.any((o) => isSameTable(o.tableNumber, targetTable.name) && o.status != OrderStatus.completed && o.status != OrderStatus.cancelled);
 
-    if (hasItemsOrOrdersToShift && currentTable.isNotEmpty) {
+    if (isShiftMode && hasActiveOrderOrCart && currentTable.isNotEmpty && targetIsFree) {
       await _shiftTable(targetTable.name, setStateCart);
     } else {
       _switchTable(targetTable.name, setStateCart);
@@ -4812,6 +4796,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       barrierColor: Colors.black.withValues(alpha: 0.35),
       builder: (modalCtx) {
         String activeFloorTab = 'All';
+        bool isShiftMode = false;
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
@@ -4917,6 +4902,103 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       ),
                     ),
                     const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
+
+                    // Mode Toggle: Switch Table (default) vs Shift Table
+                    StatefulBuilder(
+                      builder: (ctx, setToggleState) {
+                        final curTable = _selectedTable ?? '';
+                        final hasOrder = _cartItems.isNotEmpty ||
+                            _activeRunningOrderId != null ||
+                            (curTable.isNotEmpty && _isTableRunningKot(curTable)) ||
+                            (curTable.isNotEmpty && db.getLiveTableCart(curTable).isNotEmpty) ||
+                            (curTable.isNotEmpty && db.orders.any((o) => isSameTable(o.tableNumber, curTable) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)));
+
+                        if (!hasOrder || curTable.isEmpty) return const SizedBox.shrink();
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setFloorState(() => isShiftMode = false);
+                                    setToggleState(() {});
+                                  },
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: !isShiftMode ? const Color(0xFF051C48) : Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: !isShiftMode ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
+                                        width: !isShiftMode ? 1.5 : 1.0,
+                                      ),
+                                      boxShadow: !isShiftMode
+                                          ? [
+                                              BoxShadow(
+                                                color: const Color(0xFF051C48).withValues(alpha: 0.2),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.swap_horiz_rounded, size: 16, color: !isShiftMode ? Colors.white : const Color(0xFF051C48)),
+                                        const SizedBox(width: 6),
+                                        Text('Switch Table', style: TextStyle(color: !isShiftMode ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setFloorState(() => isShiftMode = true);
+                                    setToggleState(() {});
+                                  },
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: isShiftMode ? const Color(0xFF00A86B) : Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: isShiftMode ? const Color(0xFF00A86B) : const Color(0xFFCBD5E1),
+                                        width: isShiftMode ? 1.5 : 1.0,
+                                      ),
+                                      boxShadow: isShiftMode
+                                          ? [
+                                              BoxShadow(
+                                                color: const Color(0xFF00A86B).withValues(alpha: 0.25),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.drive_file_move_rounded, size: 16, color: isShiftMode ? Colors.white : const Color(0xFF00A86B)),
+                                        const SizedBox(width: 6),
+                                        Text('Shift Table', style: TextStyle(color: isShiftMode ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
 
                     // Wrapped Floor Filter Tabs & Status Legend Bar
                     Padding(
@@ -5072,7 +5154,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       _handleTableSelection(
                                         dialogCtx: modalCtx,
                                         targetTable: table,
-                                        isShiftMode: true,
+                                        isShiftMode: isShiftMode,
                                         hasActiveOrderOrCart: hasActiveOrderOrCart,
                                         currentTable: currentTable,
                                         setStateCart: setStateModal,
@@ -9505,23 +9587,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: TableManagementScreen(
-                      onTakeOrder: (tableName) async {
-                        if (dialogCtx.mounted) {
-                          Navigator.pop(dialogCtx);
-                        }
-                        final currentTable = _selectedTable ?? '';
-                        final bool hasItemsOrOrdersToShift = _cartItems.isNotEmpty ||
-                            (currentTable.isNotEmpty && db.getLiveCartTotal(currentTable) > 0) ||
-                            (currentTable.isNotEmpty && db.orders.any((o) =>
-                                isSameTable(o.tableNumber, currentTable) &&
-                                o.status != OrderStatus.completed &&
-                                o.status != OrderStatus.cancelled));
-
-                        if (hasItemsOrOrdersToShift && currentTable.isNotEmpty && !isSameTable(currentTable, tableName)) {
-                          await _shiftTable(tableName, setStateCart);
-                        } else {
-                          _loadCartForTable(tableName, openCartModal: false);
-                        }
+                      onTakeOrder: (tableName) {
+                        _switchTable(tableName, setStateCart);
                         setState(() {
                           _selectedTable = tableName;
                           _selectedOrderType = OrderType.dineIn;
@@ -9531,6 +9598,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             _selectedTable = tableName;
                             _selectedOrderType = OrderType.dineIn;
                           });
+                        }
+                        if (dialogCtx.mounted) {
+                          Navigator.pop(dialogCtx);
                         }
                       },
                       onTakeOrderForType: (orderType) {
