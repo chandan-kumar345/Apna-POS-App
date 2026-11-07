@@ -7,6 +7,7 @@ import '../models/menu_item_model.dart';
 import '../models/table_model.dart';
 import 'product_service.dart';
 import 'speech_recognition_service.dart';
+import 'chotu_gemini_client.dart';
 
 class ChotuCommandItem {
   final String? productId;
@@ -301,7 +302,7 @@ class ChotuService extends ChangeNotifier {
     }
   }
 
-  /// Phase 2 & 3: Parse Spoken Natural Language into Structured POS Command
+  /// Phase 2 & 3: Parse Spoken Natural Language into Structured POS Command (Hybrid Edge + Cloud)
   Future<ChotuParsedCommand> parseCommand({
     required String speechText,
     String? tableNumber,
@@ -310,15 +311,28 @@ class ChotuService extends ChangeNotifier {
     _isProcessing = true;
     notifyListeners();
 
+    // Instant local parsing as resilient baseline
+    ChotuParsedCommand? localParsed;
+    try {
+      localParsed = _localParseCommand(speechText, effectiveTable);
+    } catch (e) {
+      debugPrint('[ChotuService] Local parse pre-eval error: $e');
+    }
+
+    final geminiKey = DatabaseService().chotuGeminiApiKey.trim();
+
+    // 1. Try Backend parsing with Gemini API key passed if configured
     try {
       final response = await _apiClient.post(
         ApiEndpoints.chotuParse,
+        headers: geminiKey.isNotEmpty ? {'x-gemini-api-key': geminiKey} : null,
         data: {
           'text': speechText.trim(),
           'sessionId': activeSessionId,
           'currentTableContext': effectiveTable,
+          if (geminiKey.isNotEmpty) 'geminiApiKey': geminiKey,
         },
-      );
+      ).timeout(const Duration(milliseconds: 2500));
 
       if (response != null && response['data'] != null && response['data']['command'] != null) {
         final cmdMap = Map<String, dynamic>.from(response['data']['command'] as Map);
@@ -337,21 +351,48 @@ class ChotuService extends ChangeNotifier {
         notifyListeners();
         return parsed;
       }
-
-      // Offline client-side parsing fallback
-      final localParsed = _localParseCommand(speechText, effectiveTable);
-      _lastParsedCommand = localParsed;
-      _isProcessing = false;
-      notifyListeners();
-      return localParsed;
     } catch (e) {
-      debugPrint('[ChotuService] Backend parse error, using local fallback: $e');
-      final localParsed = _localParseCommand(speechText, effectiveTable);
-      _lastParsedCommand = localParsed;
-      _isProcessing = false;
-      notifyListeners();
-      return localParsed;
+      debugPrint('[ChotuService] Backend parse unavailable/fallback ($e)');
     }
+
+    // 2. Direct Gemini Call from device if Gemini API key is configured
+    if (geminiKey.isNotEmpty) {
+      try {
+        final geminiParsed = await ChotuGeminiClient().parseWithGemini(
+          speechText: speechText,
+          tableNumber: effectiveTable,
+          apiKey: geminiKey,
+        );
+        if (geminiParsed != null) {
+          if (geminiParsed.tableNumber != null && geminiParsed.tableNumber!.isNotEmpty) {
+            _currentTableContext = geminiParsed.tableNumber;
+          }
+          _lastParsedCommand = geminiParsed;
+          _isProcessing = false;
+          notifyListeners();
+          return geminiParsed;
+        }
+      } catch (geminiErr) {
+        debugPrint('[ChotuService] Direct device Gemini error ($geminiErr)');
+      }
+    }
+
+    // High-speed resilient local fallback
+    final finalParsed = localParsed ?? ChotuParsedCommand(
+      intent: 'ADD_ITEM',
+      tableNumber: effectiveTable,
+      confidence: 0.5,
+      chotuResponse: 'Command samajh nahi aaya sir.',
+    );
+
+    if (finalParsed.tableNumber != null && finalParsed.tableNumber!.isNotEmpty) {
+      _currentTableContext = finalParsed.tableNumber;
+    }
+
+    _lastParsedCommand = finalParsed;
+    _isProcessing = false;
+    notifyListeners();
+    return finalParsed;
   }
 
   final List<void Function(ChotuParsedCommand command)> _actionListeners = [];
@@ -376,13 +417,29 @@ class ChotuService extends ChangeNotifier {
     }
   }
 
-  /// Phase 3: Execute Validated POS Command via POS Services & Cart Sync
+  /// Phase 3: Execute Validated POS Command via POS Services & Cart Sync (Instant Local Mutation)
   Future<Map<String, dynamic>> executeCommand(ChotuParsedCommand command) async {
     _isProcessing = true;
     notifyListeners();
 
+    if (command.intent == 'CHAT') {
+      _isProcessing = false;
+      notifyListeners();
+      return {
+        'success': true,
+        'message': command.chotuResponse,
+        'chotuMessage': command.chotuResponse,
+        'isChat': true,
+      };
+    }
+
+    // 1. Immediately apply to local in-memory DatabaseService & trigger POS UI update
+    _syncLocalCartAfterExecution(command);
+    dispatchAction(command);
+
     final commandId = 'cmd_${activeSessionId}_${DateTime.now().millisecondsSinceEpoch}';
 
+    // 2. Asynchronously notify backend if online without blocking user flow
     try {
       final response = await _apiClient.post(
         ApiEndpoints.chotuExecute,
@@ -391,42 +448,25 @@ class ChotuService extends ChangeNotifier {
           'sessionId': activeSessionId,
           'command': command.toMap(),
         },
-      );
+      ).timeout(const Duration(milliseconds: 2000));
+
+      _isProcessing = false;
+      notifyListeners();
 
       if (response != null && response['data'] != null) {
-        final data = Map<String, dynamic>.from(response['data'] as Map);
-
-        // Synchronize local DatabaseService cart in-memory
-        _syncLocalCartAfterExecution(command);
-        dispatchAction(command);
-
-        _isProcessing = false;
-        notifyListeners();
-        return data;
+        return Map<String, dynamic>.from(response['data'] as Map);
       }
-
-      // Local execution fallback if offline
-      _syncLocalCartAfterExecution(command);
-      dispatchAction(command);
-      _isProcessing = false;
-      notifyListeners();
-      return {
-        'success': true,
-        'message': command.chotuResponse,
-        'isOffline': true,
-      };
     } catch (e) {
-      debugPrint('[ChotuService] Backend execute error, falling back locally: $e');
-      _syncLocalCartAfterExecution(command);
-      dispatchAction(command);
-      _isProcessing = false;
-      notifyListeners();
-      return {
-        'success': true,
-        'message': command.chotuResponse,
-        'isOffline': true,
-      };
+      debugPrint('[ChotuService] Backend execute async sync ($e) - completed locally');
     }
+
+    _isProcessing = false;
+    notifyListeners();
+    return {
+      'success': true,
+      'message': command.chotuResponse,
+      'isOffline': true,
+    };
   }
 
   /// Synchronize in-memory DatabaseService state for all order intents
@@ -863,6 +903,33 @@ class ChotuService extends ChangeNotifier {
     }
 
     // 2. Classify Intent
+
+    // Conversational Chat / Hospitality Chit-Chat
+    if (lower.contains('namaste') ||
+        lower.contains('kaise ho') ||
+        lower.contains('kya hal') ||
+        lower.contains('hello chotu') ||
+        lower.contains('hi chotu') ||
+        lower.contains('kya kar sakte') ||
+        lower.contains('thank you') ||
+        lower.contains('shukriya') ||
+        lower.contains('special kya hai') ||
+        lower.contains('kya special')) {
+      String reply = 'Namaste sir! Main badhiya hoon. Boliye aaj kya order lena hai?';
+      if (lower.contains('special')) {
+        reply = 'Sir hamare chef special items bohot pasand kiye jate hain! Kya aapke liye menu se kuch add kar du?';
+      } else if (lower.contains('kya kar sakte')) {
+        reply = 'Sir main table orders add kar sakta hoon, bill generate kar sakta hoon aur KOT bhej sakta hoon.';
+      } else if (lower.contains('thank') || lower.contains('shukriya')) {
+        reply = "You're welcome sir! Khana enjoy kijiye!";
+      }
+      return ChotuParsedCommand(
+        intent: 'CHAT',
+        tableNumber: resolvedTable,
+        confidence: 0.95,
+        chotuResponse: reply,
+      );
+    }
 
     // A. Send KOT / Print KOT
     if ((RegExp(r'\b(kot|kitchen|kitchin)\b', caseSensitive: false).hasMatch(lower) &&

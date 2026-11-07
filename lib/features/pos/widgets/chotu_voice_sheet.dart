@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../../core/database/database_service.dart';
 import '../../../../core/services/chotu_service.dart';
 import '../../../../core/services/chotu_tts_service.dart';
 import '../../../../core/services/speech_recognition_service.dart';
@@ -12,6 +15,22 @@ enum ChotuSheetState {
   processing,
   executed,
   unmatchedItem,
+}
+
+class ChotuChatMessage {
+  final String sender; // 'user' or 'chotu'
+  final String text;
+  final String? intent;
+  final List<String> itemsSummary;
+  final DateTime timestamp;
+
+  ChotuChatMessage({
+    required this.sender,
+    required this.text,
+    this.intent,
+    this.itemsSummary = const [],
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
 }
 
 class ChotuVoiceSheet extends StatefulWidget {
@@ -32,6 +51,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   final ChotuService _chotuService = ChotuService();
   final SpeechRecognitionService _speechService = SpeechRecognitionService();
   final ChotuTtsService _ttsService = ChotuTtsService();
+  final ScrollController _chatScrollController = ScrollController();
 
   late AnimationController _growController;
   late Animation<double> _growScale;
@@ -43,6 +63,9 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   ChotuSheetState _sheetState = ChotuSheetState.idle;
   ChotuCommandItem? _unmatchedItem;
   String? _statusFeedback;
+  Timer? _autoCloseTimer;
+
+  final List<ChotuChatMessage> _messages = [];
 
   @override
   void initState() {
@@ -73,20 +96,49 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
       duration: const Duration(milliseconds: 1400),
     )..repeat();
 
+    // Initial greeting chat message
+    _messages.add(
+      ChotuChatMessage(
+        sender: 'chotu',
+        text: 'Namaste sir! Main Chotu hoon. Boliye aaj kya order lagana hai ya baat karni hai?',
+      ),
+    );
+
     _speechService.addListener(_onSpeechStateChanged);
     _chotuService.addListener(_onChotuStateChanged);
+
+    // Automatically initiate greeting & start listening
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _startGreetingFlow();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _autoCloseTimer?.cancel();
     _growController.dispose();
     _floatController.dispose();
     _pulseController.dispose();
+    _chatScrollController.dispose();
     _speechService.removeListener(_onSpeechStateChanged);
     _chotuService.removeListener(_onChotuStateChanged);
     _speechService.stopListening();
     _ttsService.stop();
     super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_chatScrollController.hasClients) {
+        _chatScrollController.animateTo(
+          _chatScrollController.position.maxScrollExtent + 80,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   void _onSpeechStateChanged() {
@@ -124,6 +176,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
 
   void _startListening() {
     if (!mounted) return;
+    _autoCloseTimer?.cancel();
     setState(() {
       _sheetState = ChotuSheetState.listening;
       _unmatchedItem = null;
@@ -136,8 +189,17 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     _speechService.stopListening();
   }
 
+  void _resetAutoCloseTimer([int seconds = 12]) {
+    _autoCloseTimer?.cancel();
+    _autoCloseTimer = Timer(Duration(seconds: seconds), () {
+      if (mounted && (_sheetState == ChotuSheetState.executed || _sheetState == ChotuSheetState.idle)) {
+        _closeOverlay();
+      }
+    });
+  }
+
   Future<void> _sendToChotu(String text) async {
-    // Strip conversation end triggers (understand, samjhe, etc.)
+    // Strip accidental trigger/filler words if present
     final clean = text
         .replaceAll(RegExp(r'\b(understand|understood|samjhe|samajh\s*gaye|samjh\s*gaye|samjha|samjh)\b', caseSensitive: false), '')
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -146,19 +208,32 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     if (clean.isEmpty) return;
 
     setState(() {
+      _messages.add(ChotuChatMessage(sender: 'user', text: clean));
       _sheetState = ChotuSheetState.processing;
     });
+    _scrollToBottom();
 
-    await _chotuService.transcribe(
-      speechText: clean,
-      language: 'hinglish',
-      tableNumber: widget.tableNumber,
-    );
-
+    // Hybrid Edge + Cloud parsing (Gemini AI direct/backend, with instant local fallback)
     final parsed = await _chotuService.parseCommand(
       speechText: clean,
       tableNumber: widget.tableNumber,
     );
+
+    // If item could not be understood at all, prompt user and re-listen
+    if (parsed.intent == 'ADD_ITEM' && parsed.items.isEmpty) {
+      const prompt = 'Item samajh nahi aaya sir. Kripya dobara boliye.';
+      if (mounted) {
+        setState(() {
+          _sheetState = ChotuSheetState.listening;
+          _statusFeedback = prompt;
+          _messages.add(ChotuChatMessage(sender: 'chotu', text: prompt));
+        });
+        _scrollToBottom();
+      }
+      _ttsService.speak(prompt).catchError((_) {});
+      _speechService.startListening();
+      return;
+    }
 
     // Check if any requested item is missing or out of stock (for ADD_ITEM)
     final missing = _chotuService.checkUnmatchedOrOutOfStockItem(parsed);
@@ -176,36 +251,38 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
       return;
     }
 
-    // When Chotu understands the command, speak "Ok" first, then execute
-    if (mounted) {
-      setState(() {
-        _statusFeedback = 'Ok sir... Order execute ho raha hai';
-      });
-    }
-    await _ttsService.speak('Ok');
-
-    // Execute the command in POS
+    // Execute the command in POS immediately (instant mutation or conversation chat)
     final result = await _chotuService.executeCommand(parsed);
     final replyMsg = result['chotuMessage']?.toString() ??
         (result['message']?.toString()) ??
         parsed.chotuResponse;
 
+    final List<String> summary = [];
+    if (parsed.intent == 'ADD_ITEM' && parsed.items.isNotEmpty) {
+      for (final item in parsed.items) {
+        summary.add('${item.quantity}x ${item.productName}');
+      }
+    }
+
     if (mounted) {
       setState(() {
         _sheetState = ChotuSheetState.executed;
         _statusFeedback = replyMsg;
+        _messages.add(ChotuChatMessage(
+          sender: 'chotu',
+          text: replyMsg,
+          intent: parsed.intent,
+          itemsSummary: summary,
+        ));
       });
+      _scrollToBottom();
     }
 
-    await _ttsService.speak(replyMsg);
+    _ttsService.speak(replyMsg).catchError((_) {});
     widget.onTranscriptionUpdated?.call();
 
-    // Auto close overlay after confirmation
-    Future.delayed(const Duration(milliseconds: 2200), () {
-      if (mounted && _sheetState == ChotuSheetState.executed) {
-        _closeOverlay();
-      }
-    });
+    // Keep Chotu available for conversational follow-ups & next orders!
+    _resetAutoCloseTimer(14);
   }
 
   Future<void> _resolveMissingItem({required bool permanently}) async {
@@ -224,7 +301,11 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         price: item.price,
       );
       final msg = '${item.productName} permanently POS mein add kar diya gaya hai sir.';
-      setState(() => _statusFeedback = msg);
+      setState(() {
+        _statusFeedback = msg;
+        _messages.add(ChotuChatMessage(sender: 'chotu', text: msg));
+      });
+      _scrollToBottom();
       await _ttsService.speak(msg);
     } else {
       await _chotuService.addMissingProductTemporarily(
@@ -234,18 +315,20 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         price: item.price,
       );
       final msg = '${item.productName} temporary is order ke liye add kar diya sir.';
-      setState(() => _statusFeedback = msg);
+      setState(() {
+        _statusFeedback = msg;
+        _messages.add(ChotuChatMessage(sender: 'chotu', text: msg));
+      });
+      _scrollToBottom();
       await _ttsService.speak(msg);
     }
 
     widget.onTranscriptionUpdated?.call();
-
-    Future.delayed(const Duration(milliseconds: 2000), () {
-      if (mounted) _closeOverlay();
-    });
+    _resetAutoCloseTimer(10);
   }
 
   void _closeOverlay() {
+    _autoCloseTimer?.cancel();
     _stopListening();
     _ttsService.stop();
     if (Navigator.of(context).canPop()) {
@@ -253,10 +336,193 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     }
   }
 
+  /// Opens dialog to view or update Google Gemini API key directly from Chotu
+  void _showGeminiKeyDialog() {
+    final db = DatabaseService();
+    final ctrl = TextEditingController(text: db.chotuGeminiApiKey);
+    bool obscure = true;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDlgState) {
+            final hasKey = ctrl.text.trim().isNotEmpty;
+            return Dialog(
+              backgroundColor: const Color(0xFF1E1E2E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Container(
+                width: 440,
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.auto_awesome, color: Color(0xFFA5B4FC), size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Chotu Gemini AI Setup',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Google AI for smart orders & conversation',
+                                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white60, size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Enter your Google Gemini API Key. Chotu will use it to understand natural voice orders, answer customer questions, and converse naturally in Hindi/English.',
+                      style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12, height: 1.4),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: ctrl,
+                      obscureText: obscure,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'AIzaSy...',
+                        hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                        filled: true,
+                        fillColor: const Color(0xFF11111B),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF334155)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF334155)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
+                        ),
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                obscure ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                size: 18,
+                                color: Colors.white54,
+                              ),
+                              onPressed: () => setDlgState(() => obscure = !obscure),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.paste_rounded, size: 18, color: Color(0xFFA5B4FC)),
+                              tooltip: 'Paste',
+                              onPressed: () async {
+                                final data = await Clipboard.getData('text/plain');
+                                if (data?.text != null && data!.text!.isNotEmpty) {
+                                  ctrl.text = data.text!.trim();
+                                  setDlgState(() {});
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 13, color: Color(0xFF94A3B8)),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Free key at aistudio.google.com or in backend/.env',
+                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        if (hasKey)
+                          TextButton(
+                            onPressed: () async {
+                              await db.saveChotuGeminiApiKey('');
+                              if (mounted) setState(() {});
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            },
+                            child: const Text('Clear Key', style: TextStyle(color: Colors.redAccent, fontSize: 12.5)),
+                          ),
+                        const Spacer(),
+                        ElevatedButton(
+                          onPressed: () async {
+                            final newKey = ctrl.text.trim();
+                            await db.saveChotuGeminiApiKey(newKey);
+                            if (mounted) setState(() {});
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    newKey.isNotEmpty
+                                        ? '✨ Gemini API Key activated for Chotu AI!'
+                                        : 'Gemini API Key removed. Using offline fallback.',
+                                  ),
+                                  backgroundColor: newKey.isNotEmpty ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Save & Activate', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isListening = _sheetState == ChotuSheetState.listening || _sheetState == ChotuSheetState.greeting;
     final isExecuted = _sheetState == ChotuSheetState.executed;
+    final hasGeminiKey = DatabaseService().chotuGeminiApiKey.isNotEmpty;
 
     return Material(
       color: Colors.transparent,
@@ -270,46 +536,85 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
-                color: Colors.black.withValues(alpha: 0.65),
+                color: Colors.black.withValues(alpha: 0.70),
               ),
             ),
           ),
 
-          // 2. Top-Right Close Button
+          // 2. Top Bar (Gemini Key Badge on Left, Close on Right)
           Positioned(
-            top: 24,
-            right: 24,
+            top: 16,
+            left: 16,
+            right: 16,
             child: SafeArea(
-              child: IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 28),
-                onPressed: _closeOverlay,
-                tooltip: 'Close Chotu',
+              child: Row(
+                children: [
+                  // Gemini Key Status Badge
+                  InkWell(
+                    onTap: _showGeminiKeyDialog,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: hasGeminiKey
+                            ? const Color(0xFF10B981).withValues(alpha: 0.18)
+                            : const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: hasGeminiKey ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            hasGeminiKey ? Icons.auto_awesome : Icons.key_rounded,
+                            size: 14,
+                            color: hasGeminiKey ? const Color(0xFF34D399) : const Color(0xFFFBBF24),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            hasGeminiKey ? 'Gemini AI Active' : 'Set Gemini Key',
+                            style: TextStyle(
+                              color: hasGeminiKey ? const Color(0xFF34D399) : const Color(0xFFFBBF24),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  // Close Button
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 28),
+                    onPressed: _closeOverlay,
+                    tooltip: 'Close Chotu',
+                  ),
+                ],
               ),
             ),
           ),
 
-          // 3. Chotu Robot in Big Frame + Speech Bubble + Interactive Section below
+          // 3. Main Center Content: Robot + Live Conversation History + Controls
           Center(
             child: FadeTransition(
               opacity: _growFade,
               child: ScaleTransition(
                 scale: _growScale,
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 500),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Conversational Speech Bubble above Robot
-                      _buildSpeechBubble(),
-
-                      const SizedBox(height: 10),
-
-                      // Floating Big Robot Character
+                      // Floating Robot Avatar
                       GestureDetector(
                         onTap: () {
-                          if (_sheetState == ChotuSheetState.idle) {
-                            _startGreetingFlow();
+                          if (_sheetState == ChotuSheetState.idle || _sheetState == ChotuSheetState.executed) {
+                            _startListening();
                           } else if (isListening) {
                             _stopListening();
                           }
@@ -317,13 +622,13 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                         child: AnimatedBuilder(
                           animation: Listenable.merge([_floatController, _pulseController]),
                           builder: (context, child) {
-                            final floatY = math.sin(_floatController.value * 2 * math.pi) * 8.0;
+                            final floatY = math.sin(_floatController.value * 2 * math.pi) * 6.0;
 
                             return Transform.translate(
                               offset: Offset(0, floatY),
                               child: SizedBox(
-                                width: 270,
-                                height: 280,
+                                width: 170,
+                                height: 180,
                                 child: Stack(
                                   alignment: Alignment.center,
                                   children: [
@@ -334,16 +639,16 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                                         isListening: isListening,
                                         isExecuted: isExecuted,
                                       ),
-                                      size: const Size(270, 270),
+                                      size: const Size(170, 170),
                                     ),
 
-                                    // Ultra-clear HD Big Robot Character
+                                    // Chotu Robot Character
                                     Hero(
                                       tag: 'chotu_robot_hero',
                                       child: Image.asset(
                                         'assets/images/chotu_robot.png',
-                                        width: 220,
-                                        height: 260,
+                                        width: 140,
+                                        height: 160,
                                         fit: BoxFit.contain,
                                         filterQuality: FilterQuality.high,
                                       ),
@@ -356,93 +661,129 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                         ),
                       ),
 
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 12),
 
-                      // Main Action Section directly below the robot (Start Button / Voice Status)
+                      // Multi-Turn Chat Conversation Window (Talk with User & Order Items)
+                      Container(
+                        height: 140,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF13131F).withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF2E2E48)),
+                        ),
+                        child: ListView.builder(
+                          controller: _chatScrollController,
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, idx) {
+                            final msg = _messages[idx];
+                            final isUser = msg.sender == 'user';
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (!isUser) ...[
+                                    Container(
+                                      width: 22,
+                                      height: 22,
+                                      margin: const EdgeInsets.only(right: 6, top: 2),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF6366F1),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Center(
+                                        child: Icon(Icons.smart_toy_rounded, color: Colors.white, size: 13),
+                                      ),
+                                    ),
+                                  ],
+                                  Flexible(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: isUser
+                                            ? const Color(0xFF4F46E5).withValues(alpha: 0.9)
+                                            : const Color(0xFF1E1E2E),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: isUser
+                                              ? const Color(0xFF6366F1)
+                                              : const Color(0xFF3B3B54),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            msg.text,
+                                            style: TextStyle(
+                                              color: isUser ? Colors.white : const Color(0xFFE2E8F0),
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          if (msg.itemsSummary.isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Wrap(
+                                              spacing: 4,
+                                              runSpacing: 4,
+                                              children: msg.itemsSummary.map((it) {
+                                                return Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: const Color(0xFF10B981), width: 0.8),
+                                                  ),
+                                                  child: Text(
+                                                    '✓ $it',
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF6EE7B7),
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  if (isUser) ...[
+                                    Container(
+                                      width: 22,
+                                      height: 22,
+                                      margin: const EdgeInsets.only(left: 6, top: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.2),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Center(
+                                        child: Icon(Icons.person, color: Colors.white, size: 14),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // Main Action Status & Controls
                       _buildBottomActionSection(),
                     ],
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Interactive Speech Bubble above Chotu
-  Widget _buildSpeechBubble() {
-    String text = 'Start dabayein Chotu se baat karne ke liye';
-    Color bubbleColor = const Color(0xFF6366F1);
-    IconData icon = Icons.chat_bubble_outline_rounded;
-
-    switch (_sheetState) {
-      case ChotuSheetState.idle:
-        text = 'Start dabayein Chotu se baat karne ke liye';
-        bubbleColor = const Color(0xFF6366F1);
-        icon = Icons.mic_rounded;
-        break;
-      case ChotuSheetState.greeting:
-        text = 'क्या हुआ सर? (Kya hua sir?)';
-        bubbleColor = const Color(0xFF00A86B);
-        icon = Icons.record_voice_over_rounded;
-        break;
-      case ChotuSheetState.listening:
-        text = _speechService.liveTranscription.isNotEmpty
-            ? _speechService.liveTranscription
-            : 'Listening... Command bolne ke baad boliye "Understand"';
-        bubbleColor = const Color(0xFF4285F4);
-        icon = Icons.mic_rounded;
-        break;
-      case ChotuSheetState.processing:
-        text = 'Command samajh raha hoon...';
-        bubbleColor = const Color(0xFF3B82F6);
-        icon = Icons.sync_rounded;
-        break;
-      case ChotuSheetState.unmatchedItem:
-        text = '${_unmatchedItem?.productName ?? "Item"} menu mein nahi mila sir';
-        bubbleColor = const Color(0xFFF59E0B);
-        icon = Icons.warning_amber_rounded;
-        break;
-      case ChotuSheetState.executed:
-        text = _statusFeedback ?? 'Command successfully executed!';
-        bubbleColor = const Color(0xFF10B981);
-        icon = Icons.check_circle_outline_rounded;
-        break;
-    }
-
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 420),
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E2E).withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: bubbleColor.withValues(alpha: 0.6), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: bubbleColor.withValues(alpha: 0.3),
-            blurRadius: 18,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: bubbleColor, size: 20),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-              ),
-              textAlign: TextAlign.center,
             ),
           ),
         ],
@@ -468,7 +809,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         return _buildUnmatchedResolutionCard();
 
       case ChotuSheetState.executed:
-        return _buildSuccessPill();
+        return _buildExecutedControls();
     }
   }
 
@@ -487,13 +828,13 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         ],
       ),
       child: ElevatedButton.icon(
-        onPressed: _startGreetingFlow,
+        onPressed: _startListening,
         icon: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
         label: const Text(
-          'Start',
+          'Speak to Chotu',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 17,
+            fontSize: 15.5,
             fontWeight: FontWeight.w800,
             letterSpacing: 0.5,
           ),
@@ -501,7 +842,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6366F1),
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 42, vertical: 15),
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 13),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
           elevation: 0,
         ),
@@ -512,7 +853,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   /// Greeting Speaking Pill
   Widget _buildGreetingPill() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFF00A86B).withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(26),
@@ -528,13 +869,13 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.record_voice_over_rounded, color: Color(0xFF5EEAD4), size: 20),
+          Icon(Icons.record_voice_over_rounded, color: Color(0xFF5EEAD4), size: 19),
           SizedBox(width: 8),
           Text(
             'Chotu: "क्या हुआ सर?"',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 15,
+              fontSize: 14.5,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.5,
             ),
@@ -544,40 +885,58 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     );
   }
 
-  /// Active listening indicator with Google Voice Search style wave dots
+  /// Active listening indicator with Google Voice Search style wave dots + dynamic live text
   Widget _buildListeningPill() {
-    return GestureDetector(
-      onTap: _stopListening,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E2E).withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: const Color(0xFF4285F4).withValues(alpha: 0.8), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF4285F4).withValues(alpha: 0.35),
-              blurRadius: 18,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildGoogleVoiceWaveDots(),
-            const SizedBox(width: 10),
-            const Text(
-              'Listening... Boliye sir',
-              style: TextStyle(
+    final displayText = _speechService.liveTranscription.trim().isNotEmpty
+        ? _speechService.liveTranscription.trim()
+        : 'Listening... Boliye sir';
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E2E).withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFF4285F4).withValues(alpha: 0.8), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4285F4).withValues(alpha: 0.35),
+            blurRadius: 18,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildGoogleVoiceWaveDots(),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              displayText,
+              style: const TextStyle(
                 color: Colors.white,
-                fontSize: 14.5,
+                fontSize: 13.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
+                letterSpacing: 0.4,
               ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _stopListening,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF334155),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text('Done', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -634,7 +993,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
           ),
           SizedBox(width: 10),
           Text(
-            'Understanding command...',
+            'Chotu soch raha hai...',
             style: TextStyle(color: Color(0xFFA5B4FC), fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ],
@@ -668,51 +1027,57 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         children: [
           // Warning title
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.info_outline_rounded, color: Colors.orangeAccent, size: 20),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  '$itemName is not added in POS / Out of stock',
-                  style: const TextStyle(
-                    color: Colors.orangeAccent,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.help_outline_rounded, color: Color(0xFFF59E0B), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '"$itemName" menu mein nahi hai',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Kaise add karna chahte hain?',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
 
-          // Question
-          const Text(
-            'Should I add the product in POS permanently or for temporary?',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
           const SizedBox(height: 16),
 
-          // Action Buttons: Permanent vs. Temporary
+          // Two Action Buttons: Permanent vs Temporary
           Row(
             children: [
               // Permanent Button
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () => _resolveMissingItem(permanently: true),
-                  icon: const Icon(Icons.save_rounded, size: 16),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 16),
                   label: const Text(
-                    'Permanently',
+                    'Permanent',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: const Color(0xFF00A86B),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -747,41 +1112,85 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     );
   }
 
-  /// Execution success feedback
-  Widget _buildSuccessPill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF10B981).withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF10B981).withValues(alpha: 0.3),
-            blurRadius: 16,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 18),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              _statusFeedback ?? 'Order updated successfully!',
-              style: const TextStyle(
-                color: Colors.greenAccent,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
+  /// Execution feedback + Interactive Talk/Continue controls
+  Widget _buildExecutedControls() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Feedback pill
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10B981).withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.6)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                blurRadius: 16,
+                spreadRadius: 2,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
           ),
-        ],
-      ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.greenAccent, size: 17),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  _statusFeedback ?? 'Done!',
+                  style: const TextStyle(
+                    color: Colors.greenAccent,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Interactive "Continue Talking" or "Finish" buttons
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _startListening,
+              icon: const Icon(Icons.mic_rounded, color: Colors.white, size: 18),
+              label: const Text(
+                'Aur Boliye',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                elevation: 4,
+              ),
+            ),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: _closeOverlay,
+              icon: const Icon(Icons.check_rounded, color: Colors.white70, size: 18),
+              label: const Text(
+                'Done',
+                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF475569)),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -803,47 +1212,42 @@ class _ChotuPulseAuraPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final maxRadius = size.width / 2;
 
-    if (isListening || isExecuted) {
-      final ringColor = isExecuted ? Colors.greenAccent : const Color(0xFF6366F1);
-      for (int i = 0; i < 2; i++) {
-        final ringProgress = (pulseValue + (i * 0.5)) % 1.0;
-        final ringRadius = 75.0 + (ringProgress * (maxRadius - 75.0));
-        final opacity = (1.0 - ringProgress).clamp(0.0, 1.0) * 0.45;
-
-        final paint = Paint()
-          ..color = ringColor.withValues(alpha: opacity)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5;
-
-        canvas.drawCircle(center, ringRadius, paint);
-      }
+    Color auraColor;
+    if (isExecuted) {
+      auraColor = const Color(0xFF10B981); // Emerald
+    } else if (isListening) {
+      auraColor = const Color(0xFF4285F4); // Google Blue
+    } else {
+      auraColor = const Color(0xFF6366F1); // Indigo
     }
 
-    // Soft ambient radial glow
-    final glowColors = isExecuted
-        ? [Colors.greenAccent.withValues(alpha: 0.35), Colors.transparent]
-        : isListening
-            ? [
-                const Color(0xFF06B6D4).withValues(alpha: 0.30),
-                const Color(0xFF6366F1).withValues(alpha: 0.18),
-                Colors.transparent,
-              ]
-            : [
-                const Color(0xFF6366F1).withValues(alpha: 0.22),
-                Colors.transparent,
-              ];
+    // Outer soft ambient glow
+    final auraPaint = Paint()
+      ..color = auraColor.withValues(alpha: isListening ? 0.35 : 0.15)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28);
+    canvas.drawCircle(center, maxRadius * 0.65, auraPaint);
 
-    final glowPaint = Paint()
-      ..shader = RadialGradient(
-        colors: glowColors,
-      ).createShader(Rect.fromCircle(center: center, radius: maxRadius));
+    // Dynamic concentric pulse rings when active
+    if (isListening) {
+      for (int i = 0; i < 3; i++) {
+        final ringProgress = (pulseValue + (i * 0.33)) % 1.0;
+        final ringRadius = (maxRadius * 0.45) + (maxRadius * 0.55 * ringProgress);
+        final ringAlpha = (1.0 - ringProgress).clamp(0.0, 1.0) * 0.45;
 
-    canvas.drawCircle(center, maxRadius, glowPaint);
+        final ringPaint = Paint()
+          ..color = auraColor.withValues(alpha: ringAlpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0;
+
+        canvas.drawCircle(center, ringRadius, ringPaint);
+      }
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _ChotuPulseAuraPainter oldDelegate) =>
-      oldDelegate.pulseValue != pulseValue ||
-      oldDelegate.isListening != isListening ||
-      oldDelegate.isExecuted != isExecuted;
+  bool shouldRepaint(covariant _ChotuPulseAuraPainter oldDelegate) {
+    return oldDelegate.pulseValue != pulseValue ||
+        oldDelegate.isListening != isListening ||
+        oldDelegate.isExecuted != isExecuted;
+  }
 }

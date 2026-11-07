@@ -23,11 +23,13 @@ class ChotuController {
    */
   async parse(req, res, next) {
     try {
+      const apiKey = req.headers['x-gemini-api-key'] || req.body.geminiApiKey || req.body.apiKey;
       const result = await chotuService.parseVoiceCommand(req.businessId, {
         text: req.body.text || req.body.audio,
         sessionId: req.body.sessionId,
         currentTableContext: req.body.currentTableContext || req.body.tableNumber,
         userId: req.user?._id,
+        apiKey,
       });
       return ApiResponse.success(res, result, 'Voice command parsed successfully', 200);
     } catch (error) {

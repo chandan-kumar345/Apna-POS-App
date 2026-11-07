@@ -95,6 +95,7 @@ class ChotuService {
     sessionId = '',
     currentTableContext = null,
     userId = null,
+    apiKey = null,
   }) {
     if (!text || typeof text !== 'string') {
       throw ApiError.badRequest('Spoken text command is required');
@@ -116,7 +117,8 @@ class ChotuService {
     let parsed = null;
     let engineUsed = 'regex_engine';
 
-    if (GeminiCommandEngine.isConfigured()) {
+    const effectiveApiKey = apiKey || (businessId ? (await require('../../models/Business').findById(businessId).lean())?.aiChatAgentSettings?.apiKey : null);
+    if (apiKey || effectiveApiKey || GeminiCommandEngine.isConfigured()) {
       try {
         parsed = await GeminiCommandEngine.parseCommandWithGemini({
           text,
@@ -124,6 +126,7 @@ class ChotuService {
           availableTables: tables,
           currentTableContext,
           sessionContext: existingSession,
+          apiKey: apiKey || effectiveApiKey,
         });
         if (parsed) {
           engineUsed = 'gemini_flash';

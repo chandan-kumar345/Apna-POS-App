@@ -5026,7 +5026,62 @@ class DatabaseService extends ChangeNotifier {
 
   static int _lastOrderPromptTime = 0;
 
-  /// Actively checks for any unaccepted pending orders placed within the last 45 minutes
+  /// Find unaccepted pending external order (WhatsApp, Storefront, QR, Online) created within last 15 mins
+  Future<Map<String, dynamic>?> findPendingExternalOrderForPrompt() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (!isAuth) return null;
+
+      final pendingOrders = await _orderService.fetchOrders(status: 'pending', limit: 5);
+      if (pendingOrders.isEmpty) return null;
+
+      for (final r in pendingOrders) {
+        final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
+            r.status == OrderStatus.preparing;
+
+        final bool isExplicitExternal = r.isWhatsAppOrder ||
+            r.isProfileOrder ||
+            r.isExternalOnlineOrder ||
+            r.orderSource == 'whatsapp' ||
+            r.orderSource == 'online' ||
+            r.orderSource == 'storefront' ||
+            r.orderSource == 'profile' ||
+            r.orderSource == 'qr';
+        final bool isPosOrder = !isExplicitExternal && (
+            r.orderSource == 'pos' || r.orderSource == 'counter' || r.orderSource == 'local' ||
+            DatabaseService.isKnownPosOrder(r.id) ||
+            DatabaseService.isKnownPosOrder(r.orderNumber)
+        );
+        final bool isExternalOrder = isExplicitExternal && !isKot && !isPosOrder;
+
+        if (isOrderDismissed(r.id, r.orderNumber)) continue;
+
+        if (r.status == OrderStatus.pending && isExternalOrder) {
+          final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
+          // Prompt unhandled orders placed within last 15 minutes (900 seconds)
+          if (diffSec < 900) {
+            return {
+              'type': 'whatsapp_order_request',
+              'orderId': r.id,
+              'orderNumber': r.orderNumber,
+              'customerPhone': r.customerPhone,
+              'customerName': r.customerName,
+              'totalAmount': r.totalAmount.toString(),
+              'orderType': r.orderType.name,
+              'deliveryAddress': r.deliveryAddress,
+              'items': r.items.map((i) => i.toJson()).toList(),
+              'createdAt': r.createdDateTime.toIso8601String(),
+            };
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error finding pending external order: $e');
+    }
+    return null;
+  }
+
+  /// Actively checks for any unaccepted pending orders placed within the last 15 minutes
   /// and pops up the Order Accept dialog if not already shown.
   Future<void> checkAndPromptPendingWhatsAppOrders() async {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -5071,8 +5126,8 @@ class DatabaseService extends ChangeNotifier {
 
         if (r.status == OrderStatus.pending && isExternalOrder) {
           final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
-          // Strictly only prompt live unhandled orders created in the last 90 seconds while actively listening
-          if (diffSec < 90) {
+          // Prompt unhandled orders placed within last 15 minutes (900 seconds)
+          if (diffSec < 900) {
             markOrderDismissed(r.id, r.orderNumber);
             LocalNotificationService.handlePayloadDirectly({
               'type': 'whatsapp_order_request',
@@ -7358,6 +7413,22 @@ class DatabaseService extends ChangeNotifier {
       _prefs?.getString(_businessKey('ai_agent_api_key')) ??
       _prefs?.getString('apna_pos_ai_agent_api_key') ??
       '';
+
+  String get chotuGeminiApiKey {
+    final key = _prefs?.getString(_businessKey('chotu_gemini_api_key')) ??
+        _prefs?.getString('apna_pos_chotu_gemini_api_key');
+    if (key != null && key.trim().isNotEmpty) return key.trim();
+    return aiChatAgentApiKey;
+  }
+
+  Future<void> saveChotuGeminiApiKey(String key) async {
+    final clean = key.trim();
+    await _prefs?.setString(_businessKey('chotu_gemini_api_key'), clean);
+    await _prefs?.setString('apna_pos_chotu_gemini_api_key', clean);
+    await _prefs?.setString(_businessKey('ai_agent_api_key'), clean);
+    await _prefs?.setString('apna_pos_ai_agent_api_key', clean);
+    notifyListeners();
+  }
 
   Future<void> saveAiChatAgentSettings({
     required bool enabled,

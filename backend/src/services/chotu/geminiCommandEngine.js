@@ -38,15 +38,16 @@ class GeminiCommandEngine {
     availableTables = [],
     currentTableContext = null,
     sessionContext = null,
+    apiKey = null,
   }) {
-    const apiKey = this.getApiKey();
-    if (!apiKey) return null;
+    const activeApiKey = (apiKey || this.getApiKey() || '').trim();
+    if (!activeApiKey) return null;
 
     if (!text || typeof text !== 'string' || !text.trim()) {
       return null;
     }
 
-    const aiClient = new GoogleGenAI({ apiKey });
+    const aiClient = new GoogleGenAI({ apiKey: activeApiKey });
 
     // 1. Build compact live menu representation
     const compactMenu = availableProducts.map((p) => {
@@ -174,7 +175,7 @@ Only output valid JSON. Do not wrap in markdown or backticks.
 `;
 
     // 5. Execute Gemini call with fast timeout race
-    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
     for (const model of candidateModels) {
       try {
