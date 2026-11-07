@@ -4783,14 +4783,25 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       Navigator.pop(dialogCtx);
     }
 
-    // If target table is occupied or has running KOT/orders, switch to view that table
-    // Only perform table shift if target table is completely free AND isShiftMode is explicitly true
-    final targetIsFree = targetTable.status == TableStatus.free &&
-        db.getLiveCartTotal(targetTable.name) <= 0 &&
-        !db.orders.any((o) => isSameTable(o.tableNumber, targetTable.name) && o.status != OrderStatus.completed && o.status != OrderStatus.cancelled);
+    final targetIsFree = _getEffectiveTableStatus(targetTable) == TableStatus.free;
 
-    if (isShiftMode && hasActiveOrderOrCart && currentTable.isNotEmpty && targetIsFree) {
-      await _shiftTable(targetTable.name, setStateCart);
+    if (isShiftMode && hasActiveOrderOrCart && currentTable.isNotEmpty) {
+      if (targetIsFree) {
+        await _shiftTable(targetTable.name, setStateCart);
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cannot shift to Table ${targetTable.name}: Table is already occupied'),
+              backgroundColor: const Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        });
+      }
     } else {
       _switchTable(targetTable.name, setStateCart);
     }
@@ -4804,7 +4815,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       barrierColor: Colors.black.withValues(alpha: 0.35),
       builder: (modalCtx) {
         String activeFloorTab = 'All';
-        bool isShiftMode = false;
+        bool isShiftMode = true;
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
@@ -4911,9 +4922,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ),
                     const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
 
-                    // Mode Toggle: Switch Table (default) vs Shift Table
-                    StatefulBuilder(
-                      builder: (ctx, setToggleState) {
+                    // Active Mode: Shift Table (selected by default)
+                    Builder(
+                      builder: (ctx) {
                         final curTable = _selectedTable ?? '';
                         final hasOrder = _cartItems.isNotEmpty ||
                             _activeRunningOrderId != null ||
@@ -4925,84 +4936,35 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: InkWell(
-                                  onTap: () {
-                                    setFloorState(() => isShiftMode = false);
-                                    setToggleState(() {});
-                                  },
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                    decoration: BoxDecoration(
-                                      color: !isShiftMode ? const Color(0xFF051C48) : Colors.white,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: !isShiftMode ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
-                                        width: !isShiftMode ? 1.5 : 1.0,
-                                      ),
-                                      boxShadow: !isShiftMode
-                                          ? [
-                                              BoxShadow(
-                                                color: const Color(0xFF051C48).withValues(alpha: 0.2),
-                                                blurRadius: 4,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ]
-                                          : null,
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.swap_horiz_rounded, size: 16, color: !isShiftMode ? Colors.white : const Color(0xFF051C48)),
-                                        const SizedBox(width: 6),
-                                        Text('Switch Table', style: TextStyle(color: !isShiftMode ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 12)),
-                                      ],
-                                    ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00A86B),
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF00A86B).withValues(alpha: 0.25),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.drive_file_move_rounded, size: 16, color: Colors.white),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Shift Table',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12.5,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: InkWell(
-                                  onTap: () {
-                                    setFloorState(() => isShiftMode = true);
-                                    setToggleState(() {});
-                                  },
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                    decoration: BoxDecoration(
-                                      color: isShiftMode ? const Color(0xFF00A86B) : Colors.white,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: isShiftMode ? const Color(0xFF00A86B) : const Color(0xFFCBD5E1),
-                                        width: isShiftMode ? 1.5 : 1.0,
-                                      ),
-                                      boxShadow: isShiftMode
-                                          ? [
-                                              BoxShadow(
-                                                color: const Color(0xFF00A86B).withValues(alpha: 0.25),
-                                                blurRadius: 4,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ]
-                                          : null,
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.drive_file_move_rounded, size: 16, color: isShiftMode ? Colors.white : const Color(0xFF00A86B)),
-                                        const SizedBox(width: 6),
-                                        Text('Shift Table', style: TextStyle(color: isShiftMode ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 12)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -5316,7 +5278,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       builder: (dialogCtx) {
         String activeFloorTab = 'All';
         String searchQuery = '';
-        bool isShiftMode = false;
+        bool isShiftMode = true;
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
@@ -5436,7 +5398,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       ),
                     ),
 
-                    // 2. Action Mode Selector (When active items or active orders exist)
+                    // 2. Action Mode Selector (Shift Order active by default)
                     if (hasActiveOrderOrCart && currentTable.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -5444,100 +5406,39 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           color: Color(0xFFEFF6FF),
                           border: Border(bottom: BorderSide(color: Color(0xFFDBEAFE))),
                         ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: InkWell(
-                                onTap: () => setModalState(() => isShiftMode = true),
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: isShiftMode ? const Color(0xFF00A86B) : Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: isShiftMode ? const Color(0xFF00A86B) : const Color(0xFFCBD5E1),
-                                      width: isShiftMode ? 1.5 : 1.0,
-                                    ),
-                                    boxShadow: isShiftMode
-                                        ? [
-                                            BoxShadow(
-                                              color: const Color(0xFF00A86B).withValues(alpha: 0.25),
-                                              blurRadius: 4,
-                                              offset: const Offset(0, 2),
-                                            )
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.drive_file_move_rounded,
-                                        size: 17,
-                                        color: isShiftMode ? Colors.white : const Color(0xFF00A86B),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Shift Order',
-                                        style: TextStyle(
-                                          color: isShiftMode ? Colors.white : const Color(0xFF0F172A),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00A86B),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF00A86B).withValues(alpha: 0.25),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.drive_file_move_rounded,
+                                size: 17,
+                                color: Colors.white,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Shift Order',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: InkWell(
-                                onTap: () => setModalState(() => isShiftMode = false),
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: !isShiftMode ? const Color(0xFF051C48) : Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: !isShiftMode ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
-                                      width: !isShiftMode ? 1.5 : 1.0,
-                                    ),
-                                    boxShadow: !isShiftMode
-                                        ? [
-                                            BoxShadow(
-                                              color: const Color(0xFF051C48).withValues(alpha: 0.25),
-                                              blurRadius: 4,
-                                              offset: const Offset(0, 2),
-                                            )
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.swap_horiz_rounded,
-                                        size: 17,
-                                        color: !isShiftMode ? Colors.white : const Color(0xFF051C48),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Switch Table',
-                                        style: TextStyle(
-                                          color: !isShiftMode ? Colors.white : const Color(0xFF0F172A),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
 
