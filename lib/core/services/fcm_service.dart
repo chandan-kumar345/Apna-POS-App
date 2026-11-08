@@ -22,7 +22,32 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     final data = message.data;
     final typeStr = data['type']?.toString();
-    final isOrder = typeStr == 'whatsapp_order_request' ||
+    final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
+    final rawType = (data['orderType'] ?? '').toString().toLowerCase();
+    final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
+    final bool isChatMessage = typeStr == 'whatsapp_message' ||
+        typeStr == 'chat_message' ||
+        data['entityType'] == 'whatsapp_chat' ||
+        data['entityType'] == 'whatsapp_message';
+
+    final orderId = (data['orderId'] ?? '').toString().trim();
+    final orderNum = (data['orderNumber'] ?? '').toString().trim();
+    final bool hasOrderIdentifiers = orderId.isNotEmpty || orderNum.isNotEmpty;
+
+    final bool isExplicitExternal = !isChatMessage && (
+        rawSource == 'whatsapp' ||
+        rawSource == 'profile' ||
+        rawSource == 'storefront' ||
+        rawSource == 'online' ||
+        rawSource == 'qr' ||
+        cleanType == 'whatsapporder' ||
+        cleanType == 'profileorder' ||
+        cleanType == 'storefrontorder' ||
+        typeStr == 'whatsapp_order_request'
+    );
+
+    final isOrder = !isChatMessage && (
+        typeStr == 'whatsapp_order_request' ||
         typeStr == 'whatsapp_new_order' ||
         typeStr == 'whatsapp_order' ||
         typeStr == 'new_order' ||
@@ -31,13 +56,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         typeStr == 'order' ||
         data['entityType'] == 'whatsapp_order' ||
         data['entityType'] == 'order' ||
-        data['orderId'] != null;
+        (hasOrderIdentifiers && isExplicitExternal)
+    );
 
-    final orderId = (data['orderId'] ?? '').toString().trim();
-    final orderNum = (data['orderNumber'] ?? '').toString().trim();
-    final rawType = (data['orderType'] ?? '').toString().toLowerCase();
-    final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-    final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
     final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
     final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
 
@@ -47,15 +68,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         recentPosList.contains(orderNum) ||
         DatabaseService.isKnownPosOrder(orderId) ||
         DatabaseService.isKnownPosOrder(orderNum);
-
-    final bool isExplicitExternal = rawSource == 'whatsapp' ||
-        rawSource == 'profile' ||
-        rawSource == 'storefront' ||
-        rawSource == 'online' ||
-        rawSource == 'qr' ||
-        cleanType.contains('whatsapp') ||
-        cleanType.contains('profile') ||
-        typeStr == 'whatsapp_order_request';
 
     final bool isDineInOrLocalPos = isKot ||
         (!isExplicitExternal && (
@@ -75,12 +87,31 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         data['entityType'] == 'sales_report' ||
         data['type'] == 'daily_sales_summary';
 
+    final resolvedEntityId = (data['entityId'] ?? data['chatId'] ?? data['orderId'] ?? '').toString().trim();
+    final effectiveTag = data['notificationTag']?.toString() ??
+        (isDailySummary
+            ? 'daily_sales_summary'
+            : (isChatMessage && resolvedEntityId.isNotEmpty
+                ? 'chat_$resolvedEntityId'
+                : (isOrder && (orderId.isNotEmpty || orderNum.isNotEmpty)
+                    ? 'order_${orderId.isNotEmpty ? orderId : orderNum}'
+                    : null)));
+
+    final int notifId = isDailySummary
+        ? 9991
+        : (isOrder && orderId.isNotEmpty
+            ? orderId.hashCode.abs().remainder(100000)
+            : (isChatMessage && resolvedEntityId.isNotEmpty
+                ? resolvedEntityId.hashCode.abs().remainder(100000)
+                : 0));
+
     // 1. Cross-isolate deduplication check (synchronizes across FCM background and UI isolates)
     final isDuplicate = await LocalNotificationService.shouldSuppressDuplicate(
-      tag: data['notificationTag']?.toString(),
+      id: notifId != 0 ? notifId : null,
+      tag: effectiveTag,
       orderId: orderId.isNotEmpty ? orderId : null,
       orderNumber: orderNum.isNotEmpty ? orderNum : null,
-      entityId: data['entityId']?.toString(),
+      entityId: resolvedEntityId.isNotEmpty ? resolvedEntityId : null,
       type: typeStr,
       title: message.notification?.title ?? data['title']?.toString(),
       body: message.notification?.body ?? data['message']?.toString(),
@@ -229,14 +260,24 @@ class FcmService {
     final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
     final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
 
-    final bool isExplicitExternal = rawSource == 'whatsapp' ||
+    final bool isChatMessage = typeStr == 'whatsapp_message' ||
+        typeStr == 'chat_message' ||
+        data['entityType'] == 'whatsapp_chat' ||
+        data['entityType'] == 'whatsapp_message';
+
+    final bool hasOrderIdentifiers = orderId.isNotEmpty || orderNum.isNotEmpty;
+
+    final bool isExplicitExternal = !isChatMessage && (
+        rawSource == 'whatsapp' ||
         rawSource == 'profile' ||
         rawSource == 'storefront' ||
         rawSource == 'online' ||
         rawSource == 'qr' ||
-        cleanType.contains('whatsapp') ||
-        cleanType.contains('profile') ||
-        typeStr == 'whatsapp_order_request';
+        cleanType == 'whatsapporder' ||
+        cleanType == 'profileorder' ||
+        cleanType == 'storefrontorder' ||
+        typeStr == 'whatsapp_order_request'
+    );
 
     final bool isDineInOrLocalPos = isKot ||
         (!isExplicitExternal && (
@@ -252,35 +293,62 @@ class FcmService {
       return;
     }
 
-    final isWhatsAppOrder = (typeStr == 'whatsapp_order_request' ||
+    final isExplicitExternalOrder = isExplicitExternal && !isDineInOrLocalPos;
+
+    final isWhatsAppOrder = !isChatMessage && (
+        typeStr == 'whatsapp_order_request' ||
         typeStr == 'whatsapp_order' ||
         typeStr == 'whatsapp_new_order' ||
-        data['entityType'] == 'whatsapp_order') && !isDineInOrLocalPos;
+        data['entityType'] == 'whatsapp_order' ||
+        (hasOrderIdentifiers && isExplicitExternalOrder)
+    ) && !isDineInOrLocalPos;
 
-    final isOrder = (isWhatsAppOrder ||
+    final isOrder = !isChatMessage && (
+        isWhatsAppOrder ||
+        isExplicitExternalOrder ||
         typeStr == 'new_order' ||
         typeStr == 'newOrder' ||
         typeStr == 'order_created' ||
         typeStr == 'order' ||
         data['entityType'] == 'order' ||
-        data['orderId'] != null) && !isDineInOrLocalPos;
+        (hasOrderIdentifiers && !isDineInOrLocalPos)
+    ) && !isDineInOrLocalPos;
 
     final isDailySummary = typeStr == 'daily_sales_summary' ||
         data['entityType'] == 'sales_report' ||
         data['type'] == 'daily_sales_summary';
 
-    final notifId = isDailySummary
-        ? 9991
-        : (isWhatsAppOrder && data['orderId'] != null
-            ? data['orderId'].toString().hashCode.abs().remainder(100000)
-            : 0);
+    final resolvedEntityId = (data['entityId'] ?? data['chatId'] ?? data['orderId'] ?? '').toString().trim();
+    final effectiveTag = data['notificationTag']?.toString() ??
+        (isDailySummary
+            ? 'daily_sales_summary'
+            : (isChatMessage && resolvedEntityId.isNotEmpty
+                ? 'chat_$resolvedEntityId'
+                : (isWhatsAppOrder && (orderId.isNotEmpty || orderNum.isNotEmpty)
+                    ? 'order_${orderId.isNotEmpty ? orderId : orderNum}'
+                    : (resolvedEntityId.isNotEmpty ? 'notif_$resolvedEntityId' : null))));
+
+    final int notifId;
+    if (isDailySummary) {
+      notifId = 9991;
+    } else if (isWhatsAppOrder && (orderId.isNotEmpty || orderNum.isNotEmpty)) {
+      notifId = orderId.isNotEmpty
+          ? orderId.hashCode.abs().remainder(100000)
+          : orderNum.hashCode.abs().remainder(100000);
+    } else if (isChatMessage && resolvedEntityId.isNotEmpty) {
+      notifId = resolvedEntityId.hashCode.abs().remainder(100000);
+    } else if (effectiveTag != null && effectiveTag.isNotEmpty) {
+      notifId = effectiveTag.hashCode.abs().remainder(100000);
+    } else {
+      notifId = 0;
+    }
 
     final isDuplicate = await LocalNotificationService.shouldSuppressDuplicate(
-      id: notifId,
-      tag: data['notificationTag']?.toString() ?? (isDailySummary ? 'daily_sales_summary' : null),
+      id: notifId != 0 ? notifId : null,
+      tag: effectiveTag,
       orderId: orderId.isNotEmpty ? orderId : null,
       orderNumber: orderNum.isNotEmpty ? orderNum : null,
-      entityId: data['entityId']?.toString(),
+      entityId: resolvedEntityId.isNotEmpty ? resolvedEntityId : null,
       type: typeStr,
       title: title,
       body: body,
@@ -296,23 +364,28 @@ class FcmService {
       id: notifId,
       title: title,
       body: body,
-      tag: data['notificationTag']?.toString(),
+      tag: effectiveTag,
       payload: jsonEncode(data),
       type: isWhatsAppOrder
           ? NotificationType.whatsappOrderRequest
           : (isDailySummary
               ? NotificationType.dailySalesSummary
               : LocalNotificationService().resolveNotificationType(typeStr)),
-      entityType: data['entityType']?.toString(),
-      entityId: data['entityId']?.toString(),
+      entityType: data['entityType']?.toString() ?? (isChatMessage ? 'whatsapp_chat' : null),
+      entityId: resolvedEntityId.isNotEmpty ? resolvedEntityId : null,
       metadata: data,
       playSound: true,
+      skipDedupe: false,
       channelId: isDailySummary
           ? 'apna_pos_sales_v2'
-          : (isWhatsAppOrder ? 'apna_pos_whatsapp_orders_v2' : 'apna_pos_general_v2'),
+          : (isWhatsAppOrder
+              ? 'apna_pos_whatsapp_orders_v2'
+              : (isChatMessage ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2')),
       channelName: isDailySummary
           ? 'Sales & Business Reports'
-          : (isWhatsAppOrder ? 'WhatsApp Orders & Alerts' : 'General Alerts & Orders'),
+          : (isWhatsAppOrder
+              ? 'WhatsApp Orders & Alerts'
+              : (isChatMessage ? 'WhatsApp Messages' : 'General Alerts & Orders')),
       channelDescription: isDailySummary
           ? 'Extended high-priority daily sales summaries and business metrics'
           : 'Real-time notifications for orders, leads, and daily summaries',

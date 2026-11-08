@@ -1283,16 +1283,24 @@ class WhatsAppChatService {
 
     let chat = await WhatsAppChat.findOne(chatFilter);
 
-    let customerName = incomingMsg.customerName || '';
+    // Prioritize authoritative POS Customer name over raw WhatsApp profile display name
     let customerAvatar = '';
     const customerRecord = await Customer.findOne({
       businessId: bId,
       phone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
     }).lean();
-    if (customerRecord) {
-      if (!customerName && customerRecord.name) {
-        customerName = customerRecord.name;
-      }
+
+    let customerName = '';
+    if (customerRecord && customerRecord.name && customerRecord.name.trim()) {
+      customerName = customerRecord.name.trim();
+      customerAvatar = customerRecord.avatarUrl || customerRecord.profileImage || '';
+    } else if (chat && chat.customerName && !chat.customerName.startsWith('Customer ')) {
+      customerName = chat.customerName.trim();
+    } else if (incomingMsg.customerName && incomingMsg.customerName.trim()) {
+      customerName = incomingMsg.customerName.trim();
+    }
+
+    if (customerRecord && !customerAvatar) {
       customerAvatar = customerRecord.avatarUrl || customerRecord.profileImage || '';
     }
 
@@ -1322,7 +1330,7 @@ class WhatsAppChatService {
       if (targetUserId && !chat.userId) {
         chat.userId = targetUserId;
       }
-      if (customerName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
+      if (customerName && (!chat.customerName || chat.customerName.startsWith('Customer ') || chat.customerName !== customerName)) {
         chat.customerName = customerName;
       }
       if (customerAvatar && !chat.avatarUrl) {
@@ -1350,7 +1358,13 @@ class WhatsAppChatService {
       timestamp: incomingMsg.timestamp || new Date(),
     });
 
-    console.log(`[WhatsAppChatService] 📩 [INSTANT] Incoming WhatsApp message from ${normalizedPhone} (${customerName || 'Customer'}): "${lastMsgDisplay}"`);
+    const senderDisplay = customerName && !customerName.startsWith('Customer ')
+      ? customerName
+      : (normalizedPhone.startsWith('91') && normalizedPhone.length === 12
+          ? `+91 ${normalizedPhone.substring(2, 7)} ${normalizedPhone.substring(7)}`
+          : normalizedPhone);
+
+    console.log(`[WhatsAppChatService] 📩 [INSTANT] Incoming WhatsApp message from ${normalizedPhone} (${senderDisplay}): "${lastMsgDisplay}"`);
 
     // 1. Instantaneous WebSocket broadcast to connected business terminals (<20ms)
     try {
@@ -1365,12 +1379,6 @@ class WhatsAppChatService {
 
     // 2. Immediate push notification dispatch for OS Notification Tray (<10ms)
     try {
-      const senderDisplay = customerName && !customerName.startsWith('Customer ')
-        ? customerName
-        : (normalizedPhone.startsWith('91') && normalizedPhone.length === 12
-            ? `+91 ${normalizedPhone.substring(2, 7)} ${normalizedPhone.substring(7)}`
-            : normalizedPhone);
-
       const notifBody = isImage
         ? (incomingMsg.body && incomingMsg.body !== '[Photo]' ? `📷 ${incomingMsg.body}` : '📷 Photo')
         : (incomingMsg.body || 'New message');
@@ -1383,8 +1391,10 @@ class WhatsAppChatService {
         data: {
           type: 'whatsapp_message',
           chatId: chat._id.toString(),
+          entityId: chat._id.toString(),
+          notificationTag: `chat_${chat._id.toString()}`,
           customerPhone: normalizedPhone,
-          customerName: customerName || '',
+          customerName: senderDisplay,
           mediaUrl: mediaUrl || '',
           messageType: isImage ? 'image' : (incomingMsg.type || 'text'),
         },
@@ -1401,8 +1411,10 @@ class WhatsAppChatService {
         entityId: chat._id.toString(),
         metadata: {
           chatId: chat._id.toString(),
+          entityId: chat._id.toString(),
+          notificationTag: `chat_${chat._id.toString()}`,
           customerPhone: normalizedPhone,
-          customerName: customerName || '',
+          customerName: senderDisplay,
           mediaUrl: mediaUrl || '',
           messageType: isImage ? 'image' : (incomingMsg.type || 'text'),
         },
@@ -1583,6 +1595,7 @@ class WhatsAppChatService {
                           deliveryFee: String(createdOrder.deliveryFee || 0),
                           totalAmount: String(createdOrder.totalAmount),
                           orderType: createdOrder.orderType,
+                          orderSource: 'whatsapp',
                           deliveryAddress: createdOrder.deliveryAddress || '',
                           items: JSON.stringify(createdOrder.items || []),
                           createdAt: (createdOrder.createdAt || new Date()).toISOString(),

@@ -774,6 +774,8 @@ class OrderService {
               data: {
                 type: 'whatsapp_order_request',
                 orderId: order._id.toString(),
+                entityId: order._id.toString(),
+                notificationTag: `order_${order._id ? order._id.toString() : order.orderNumber}`,
                 orderNumber: order.orderNumber,
                 customerPhone: order.customerPhone || '',
                 customerName: order.customerName || 'Customer',

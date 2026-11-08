@@ -116,6 +116,23 @@ class LocalNotificationService with WidgetsBindingObserver {
       }
     }
 
+    // Body + Entity/Tag matching: prevents duplicate notification when body is identical for the same chat/order/tag
+    if (body != null && body.trim().isNotEmpty) {
+      final cleanBody = body.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      if (cleanBody.isNotEmpty) {
+        final bodyPart = cleanBody.length > 30 ? cleanBody.substring(0, 30) : cleanBody;
+        if (entityId != null && entityId.trim().isNotEmpty) {
+          keys.add('body_${entityId.trim().toLowerCase()}_$bodyPart');
+        }
+        if (tag != null && tag.trim().isNotEmpty) {
+          keys.add('body_${tag.trim().toLowerCase()}_$bodyPart');
+        }
+        if (orderId != null && orderId.trim().isNotEmpty) {
+          keys.add('body_${orderId.trim().toLowerCase()}_$bodyPart');
+        }
+      }
+    }
+
     if (keys.isEmpty) return false;
 
     // 1. Check in-memory static cache first (instant)
@@ -240,7 +257,7 @@ class LocalNotificationService with WidgetsBindingObserver {
           _pendingIncomingOrderPayload = decoded;
           _retryShowOrderTimer?.cancel();
           int attempts = 0;
-          _retryShowOrderTimer = Timer.periodic(const Duration(milliseconds: 150), (timer) {
+          _retryShowOrderTimer = Timer.periodic(const Duration(milliseconds: 350), (timer) {
             attempts++;
             if (SplashScreen.isSplashActive) {
               _pendingIncomingOrderPayload = decoded;
@@ -257,7 +274,7 @@ class LocalNotificationService with WidgetsBindingObserver {
                 autoAccept: autoAccept,
                 autoReject: autoReject,
               );
-            } else if (attempts >= 40) {
+            } else if (attempts >= 15) {
               // Phone might be locked or unmounted. Keep payload stored so unlock triggers it!
               timer.cancel();
               _pendingIncomingOrderPayload = decoded;
@@ -704,24 +721,6 @@ class LocalNotificationService with WidgetsBindingObserver {
               ? data['orderId'].toString().hashCode.abs().remainder(100000)
               : 0);
 
-      // Deduplicate before processing remote message
-      final isDuplicate = await shouldSuppressDuplicate(
-        id: notifId,
-        tag: notifTag ?? (isDailySummary ? 'daily_sales_summary' : null),
-        orderId: orderId.isNotEmpty ? orderId : null,
-        orderNumber: orderNum.isNotEmpty ? orderNum : null,
-        entityId: data['entityId']?.toString(),
-        type: typeStr,
-        title: rawTitle,
-        body: rawBody,
-        debounceSeconds: isDailySummary ? 120 : 25,
-      );
-
-      if (isDuplicate) {
-        debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate RemoteMessage notification: $rawTitle');
-        return;
-      }
-
       final instance = LocalNotificationService();
       await instance.init();
 
@@ -732,6 +731,7 @@ class LocalNotificationService with WidgetsBindingObserver {
         body: finalBody,
         payload: jsonEncode(data),
         styleInformation: bigTextStyle,
+        skipDedupe: true,
         type: isWhatsAppOrder
             ? NotificationType.whatsappOrderRequest
             : (isDailySummary
@@ -770,6 +770,7 @@ class LocalNotificationService with WidgetsBindingObserver {
     String? entityId,
     Map<String, dynamic> metadata = const {},
     bool playSound = true,
+    bool skipDedupe = false,
     StyleInformation? styleInformation,
     String channelId = 'apna_pos_general_v2',
     String channelName = 'General Alerts & Orders',
@@ -781,66 +782,102 @@ class LocalNotificationService with WidgetsBindingObserver {
     NotificationVisibility visibility = NotificationVisibility.public,
     AndroidNotificationCategory? category,
   }) async {
+    final Map<String, dynamic> effectiveMeta = Map<String, dynamic>.from(metadata);
+    if (payload != null && payload.trim().startsWith('{')) {
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            final k = entry.key.toString();
+            if (!effectiveMeta.containsKey(k) || effectiveMeta[k] == null || effectiveMeta[k].toString().isEmpty) {
+              effectiveMeta[k] = entry.value;
+            }
+          }
+          if (decoded['metadata'] is Map) {
+            final innerMeta = decoded['metadata'] as Map;
+            for (final entry in innerMeta.entries) {
+              final k = entry.key.toString();
+              if (!effectiveMeta.containsKey(k) || effectiveMeta[k] == null || effectiveMeta[k].toString().isEmpty) {
+                effectiveMeta[k] = entry.value;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     final cleanTitle = title.trim().toLowerCase();
     final cleanBody = body.trim().toLowerCase();
-    final orderId = (metadata['orderId'] ?? '').toString().trim();
-    final orderNum = (metadata['orderNumber'] ?? '').toString().trim();
+    final orderId = (effectiveMeta['orderId'] ?? '').toString().trim();
+    final orderNum = (effectiveMeta['orderNumber'] ?? '').toString().trim();
     final cleanType = type.name.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final cleanMetaType = (metadata['type'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final cleanEntityType = (entityType ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final cleanMetaType = (effectiveMeta['type'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    final cleanEntityType = (entityType ?? effectiveMeta['entityType'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
     final isDailySummary = type == NotificationType.dailySalesSummary ||
         cleanType.contains('dailysalessummary') ||
         cleanMetaType.contains('dailysalessummary') ||
         cleanEntityType.contains('salesreport') ||
         entityType == 'sales_report';
 
-    final isOrderHint = type == NotificationType.whatsappOrderRequest ||
-        metadata['type'] == 'whatsapp_order_request' ||
-        metadata['type'] == 'whatsapp_new_order' ||
-        metadata['type'] == 'whatsapp_order' ||
-        metadata['type'] == 'new_order' ||
-        metadata['type'] == 'newOrder' ||
-        metadata['type'] == 'order_created' ||
-        metadata['orderId'] != null ||
-        entityType == 'whatsapp_order' ||
-        entityType == 'order';
+    final bool isExplicitChatMessage = type == NotificationType.whatsappMessage ||
+        cleanEntityType == 'whatsappchat' ||
+        cleanEntityType == 'chatmessage' ||
+        effectiveMeta['type'] == 'whatsapp_message' ||
+        effectiveMeta['type'] == 'chat_message' ||
+        effectiveMeta['entityType'] == 'whatsapp_chat';
+
+    final bool hasOrderIdentifiers = orderId.isNotEmpty || orderNum.isNotEmpty;
+
+    final isOrderHint = !isExplicitChatMessage && (
+        type == NotificationType.whatsappOrderRequest ||
+        effectiveMeta['type'] == 'whatsapp_order_request' ||
+        effectiveMeta['type'] == 'whatsapp_new_order' ||
+        effectiveMeta['type'] == 'whatsapp_order' ||
+        effectiveMeta['type'] == 'new_order' ||
+        effectiveMeta['type'] == 'newOrder' ||
+        effectiveMeta['type'] == 'order_created' ||
+        (hasOrderIdentifiers && effectiveMeta['orderId'] != null)
+    );
 
     final String? effectiveTag = tag ??
         (isDailySummary
             ? 'daily_sales_summary'
-            : (isOrderHint
-                ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
-                : (metadata['notificationTag']?.toString() ??
-                    (orderId.isNotEmpty ? 'order_$orderId' : null))));
+            : (isExplicitChatMessage
+                ? 'chat_${effectiveMeta['chatId'] ?? entityId ?? "whatsapp"}'
+                : (isOrderHint
+                    ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
+                    : (effectiveMeta['notificationTag']?.toString() ??
+                        (orderId.isNotEmpty ? 'order_$orderId' : null)))));
 
     // 0. Deduplicate notifications across Socket & FCM using unified cross-isolate debouncer
-    final isDuplicate = await shouldSuppressDuplicate(
-      id: id != 0 ? id : (isDailySummary ? 9991 : null),
-      tag: effectiveTag,
-      orderId: orderId.isNotEmpty ? orderId : null,
-      orderNumber: orderNum.isNotEmpty ? orderNum : null,
-      entityId: entityId ?? metadata['entityId']?.toString(),
-      type: type.name,
-      title: title,
-      body: body,
-      debounceSeconds: isDailySummary ? 120 : 25,
-    );
+    if (!skipDedupe) {
+      final isDuplicate = await shouldSuppressDuplicate(
+        id: id != 0 ? id : (isDailySummary ? 9991 : null),
+        tag: effectiveTag,
+        orderId: orderId.isNotEmpty ? orderId : null,
+        orderNumber: orderNum.isNotEmpty ? orderNum : null,
+        entityId: entityId ?? effectiveMeta['entityId']?.toString(),
+        type: type.name,
+        title: title,
+        body: body,
+        debounceSeconds: isDailySummary ? 120 : 25,
+      );
 
-    if (isDuplicate) {
-      debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate push in showPushNotification: "$title"');
-      return;
+      if (isDuplicate) {
+        debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate push in showPushNotification: "$title"');
+        return;
+      }
     }
 
-    // 1. Play in-app audio feedback ONLY on platforms without native channel sound
-    // (Android/iOS channels already play notification_sound natively via system NotificationManager)
-    if (playSound && (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) {
+    final bool isAppForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
+    // 1. Play in-app audio feedback whenever sound is enabled
+    // When the app is in foreground, native Android NotificationManager doesn't reliably play custom sounds on all OEM skins
+    if (playSound) {
       SoundService.playNotificationSound();
     }
 
     if (!_isSupportedPlatform) {
-      if (playSound) {
-        SoundService.playNotificationSound();
-      }
       debugPrint('[LocalNotificationService] Push notification delivered (in-app): "$title"');
       return;
     }
@@ -848,60 +885,69 @@ class LocalNotificationService with WidgetsBindingObserver {
     if (!_isInitialized) await init();
 
     try {
-      final orderId = (metadata['orderId'] ?? '').toString().trim();
-      final orderNum = (metadata['orderNumber'] ?? '').toString().trim();
-      final oSource = (metadata['orderSource'] ?? '').toString().toLowerCase().trim();
-      final rawType = (metadata['orderType'] ?? '').toString().toLowerCase().trim();
+      final orderId = (effectiveMeta['orderId'] ?? '').toString().trim();
+      final orderNum = (effectiveMeta['orderNumber'] ?? '').toString().trim();
+      final oSource = (effectiveMeta['orderSource'] ?? effectiveMeta['source'] ?? '').toString().toLowerCase().trim();
+      final rawType = (effectiveMeta['orderType'] ?? effectiveMeta['type'] ?? '').toString().toLowerCase().trim();
       final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-      final pm = (metadata['paymentMethod'] ?? '').toString().toLowerCase();
+      final pm = (effectiveMeta['paymentMethod'] ?? '').toString().toLowerCase();
       final isKot = pm.contains('kot') ||
-          metadata['isKot'] == true ||
-          metadata['isKot'] == 'true' ||
-          (metadata['status'] ?? '').toString().toLowerCase() == 'preparing';
+          effectiveMeta['isKot'] == true ||
+          effectiveMeta['isKot'] == 'true' ||
+          (effectiveMeta['status'] ?? '').toString().toLowerCase() == 'preparing';
 
-      final bool isExplicitExternal = oSource == 'whatsapp' ||
-          oSource == 'profile' ||
-          oSource == 'storefront' ||
-          oSource == 'online' ||
-          oSource == 'qr' ||
-          cleanType.contains('whatsapp') ||
-          cleanType.contains('profile') ||
-          type == NotificationType.whatsappOrderRequest;
+      final bool isExplicitChatMessage = type == NotificationType.whatsappMessage ||
+          cleanEntityType == 'whatsappchat' ||
+          cleanEntityType == 'chatmessage' ||
+          effectiveMeta['type'] == 'whatsapp_message' ||
+          effectiveMeta['type'] == 'chat_message' ||
+          effectiveMeta['entityType'] == 'whatsapp_chat';
 
-      final bool isPosOrder = isKot ||
-          (!isExplicitExternal && (
-            oSource == 'pos' ||
-            oSource == 'counter' ||
-            oSource == 'local' ||
-            DatabaseService.isKnownPosOrder(orderId) ||
-            DatabaseService.isKnownPosOrder(orderNum)
-          ));
+      final bool hasOrderIdentifiers = orderId.isNotEmpty || orderNum.isNotEmpty;
+
+      final bool isOrderType = type == NotificationType.whatsappOrderRequest ||
+          channelId == 'apna_pos_whatsapp_orders_v2' ||
+          channelId == 'apna_pos_whatsapp_orders_v1' ||
+          effectiveMeta['type'] == 'whatsapp_order_request' ||
+          effectiveMeta['type'] == 'whatsapp_new_order' ||
+          effectiveMeta['type'] == 'whatsapp_order' ||
+          effectiveMeta['type'] == 'new_order' ||
+          effectiveMeta['type'] == 'newOrder' ||
+          effectiveMeta['type'] == 'order_created';
+
+      final bool isExplicitExternalOrder = !isExplicitChatMessage && (
+          isOrderType ||
+          (hasOrderIdentifiers && (
+              oSource == 'whatsapp' ||
+              oSource == 'profile' ||
+              oSource == 'storefront' ||
+              oSource == 'online' ||
+              oSource == 'qr' ||
+              cleanType == 'whatsapporder' ||
+              cleanType == 'profileorder' ||
+              cleanType == 'storefrontorder'
+          ))
+      );
+
+      final bool isPosOrder = !isExplicitExternalOrder && (
+          isKot ||
+          oSource == 'pos' ||
+          oSource == 'counter' ||
+          oSource == 'local' ||
+          DatabaseService.isKnownPosOrder(orderId) ||
+          DatabaseService.isKnownPosOrder(orderNum)
+      );
 
       final bool matchesKnownOrderInTitle = (orderNum.isNotEmpty && DatabaseService.isKnownPosOrder(orderNum)) ||
           (orderId.isNotEmpty && DatabaseService.isKnownPosOrder(orderId));
       final bool titleOrBodyContainsDineIn = cleanTitle.contains('dinein') || cleanBody.contains('dinein');
 
-            if (isPosOrder || (!isExplicitExternal && (matchesKnownOrderInTitle || titleOrBodyContainsDineIn))) {
+      if (!isExplicitChatMessage && (isPosOrder || (!isExplicitExternalOrder && (matchesKnownOrderInTitle || titleOrBodyContainsDineIn)))) {
         debugPrint('[LocalNotificationService] Suppressing push notification for POS order: $orderNum / $orderId');
         return;
       }
 
-            final isWhatsAppOrder = type == NotificationType.whatsappOrderRequest ||
-          channelId == 'apna_pos_whatsapp_orders_v2' ||
-          channelId == 'apna_pos_whatsapp_orders_v1' ||
-          metadata['type'] == 'whatsapp_order_request' ||
-          metadata['type'] == 'whatsapp_new_order' ||
-          metadata['type'] == 'whatsapp_order' ||
-          metadata['type'] == 'new_order' ||
-          metadata['type'] == 'newOrder' ||
-          metadata['type'] == 'order_created' ||
-          metadata['orderId'] != null ||
-          metadata['orderSource'] == 'whatsapp' ||
-          metadata['orderSource'] == 'profile' ||
-          metadata['orderSource'] == 'storefront' ||
-          metadata['orderSource'] == 'online' ||
-          entityType == 'whatsapp_order' ||
-          entityType == 'order';
+      final isWhatsAppOrder = !isExplicitChatMessage && (isExplicitExternalOrder || isOrderType);
       final isWhatsApp = isWhatsAppOrder || type == NotificationType.whatsappMessage;
       final effectiveChannelId = isWhatsAppOrder
           ? 'apna_pos_whatsapp_orders_v2'
@@ -944,15 +990,25 @@ class LocalNotificationService with WidgetsBindingObserver {
           htmlFormatBigText: false,
           htmlFormatContentTitle: false,
         );
+      } else if (effectiveStyle == null && isWhatsApp) {
+        effectiveStyle = BigTextStyleInformation(
+          body,
+          contentTitle: title,
+          summaryText: 'WhatsApp Chat',
+          htmlFormatBigText: false,
+          htmlFormatContentTitle: false,
+        );
       }
 
       final String? effectiveTag = tag ??
           (isDailySummary
               ? 'daily_sales_summary'
-              : (isWhatsAppOrder
-                  ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
-                  : (metadata['notificationTag']?.toString() ??
-                      (orderId.isNotEmpty ? 'order_$orderId' : null))));
+              : (isExplicitChatMessage
+                  ? 'chat_${effectiveMeta['chatId'] ?? entityId ?? "whatsapp"}'
+                  : (isWhatsAppOrder
+                      ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
+                      : (effectiveMeta['notificationTag']?.toString() ??
+                          (orderId.isNotEmpty ? 'order_$orderId' : null)))));
 
       final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
         effectiveChannelId,
@@ -968,11 +1024,11 @@ class LocalNotificationService with WidgetsBindingObserver {
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         actions: actions ?? defaultActions,
         color: effectiveColor,
-        fullScreenIntent: isWhatsAppOrder,
+        fullScreenIntent: !isAppForeground && isWhatsAppOrder,
         visibility: NotificationVisibility.public,
         tag: effectiveTag,
         category: isWhatsAppOrder
-            ? AndroidNotificationCategory.event
+            ? AndroidNotificationCategory.call
             : (isWhatsApp ? AndroidNotificationCategory.message : category),
         ticker: isWhatsAppOrder
             ? 'New Incoming Order!'
@@ -1010,6 +1066,13 @@ class LocalNotificationService with WidgetsBindingObserver {
         effectiveId = id;
       } else if (orderId.isNotEmpty) {
         effectiveId = orderId.hashCode.abs().remainder(100000);
+      } else if (isExplicitChatMessage) {
+        final cId = (entityId ?? effectiveMeta['chatId'] ?? effectiveMeta['customerPhone'])?.toString().trim();
+        effectiveId = (cId != null && cId.isNotEmpty)
+            ? cId.hashCode.abs().remainder(100000)
+            : (effectiveTag != null ? effectiveTag.hashCode.abs().remainder(100000) : 9993);
+      } else if (effectiveTag != null && effectiveTag.isNotEmpty) {
+        effectiveId = effectiveTag.hashCode.abs().remainder(100000);
       } else {
         effectiveId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
       }

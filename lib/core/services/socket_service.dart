@@ -13,7 +13,6 @@ import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import '../../features/notifications/models/notification_model.dart';
 import '../../features/orders/whatsapp_order_action_dialog.dart';
 import '../../features/orders/incoming_order_accept_screen.dart';
-import '../../features/pos/pos_register_screen.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -404,8 +403,8 @@ class SocketService {
 
         final bool isExternalIncomingOrder = isExplicitExternal && !isKot && !isPosOrder;
 
-        if (PosRegisterScreen.isPosScreenActive || isPosOrder || isKot || !isExternalIncomingOrder) {
-          debugPrint('[SocketService] Suppressing incoming alert for POS / KOT order or active POS screen: #${orderModel.orderNumber}');
+        if (isPosOrder || isKot || !isExternalIncomingOrder) {
+          debugPrint('[SocketService] Suppressing incoming alert for local POS / KOT order: #${orderModel.orderNumber}');
           return;
         }
 
@@ -452,8 +451,14 @@ class SocketService {
               'orderId': orderModel.id,
               'orderNumber': orderModel.orderNumber,
               'type': 'whatsapp_order_request',
+              'orderSource': oSource.isNotEmpty ? oSource : 'whatsapp',
+              'orderType': orderModel.orderType.name,
+              'customerName': orderModel.customerName,
+              'customerPhone': orderModel.customerPhone,
+              'totalAmount': orderModel.totalAmount.toString(),
             },
             playSound: true,
+            skipDedupe: true,
           );
 
           // 3. Trigger interactive Accept / Reject screen modal
@@ -534,6 +539,12 @@ class SocketService {
 
       debugPrint('[SocketService] 🔔 Instant notification received via socket: "$title"');
 
+      // WhatsApp messages are already handled by _handleWhatsAppMessage with 0ms dedicated logic
+      if (type == 'whatsapp_message' || notifData['entityType'] == 'whatsapp_chat') {
+        debugPrint('[SocketService] Skipping notification:new for whatsapp_message to prevent duplicate banner');
+        return;
+      }
+
       if (type == 'daily_sales_summary' || notifData['entityType'] == 'sales_report') {
         LocalNotificationService().showPushNotification(
           id: 9991,
@@ -553,13 +564,19 @@ class SocketService {
         return;
       }
 
+      final entityId = notifData['entityId']?.toString() ?? '';
+      final notifId = entityId.isNotEmpty ? entityId.hashCode.abs().remainder(100000) : 0;
+      final effectiveTag = entityId.isNotEmpty ? '${notifData['entityType'] ?? type}_$entityId' : null;
+
       LocalNotificationService().showPushNotification(
+        id: notifId,
+        tag: effectiveTag,
         title: title,
         body: message,
         payload: jsonEncode(notifData),
         type: LocalNotificationService().resolveNotificationType(type),
         entityType: notifData['entityType']?.toString(),
-        entityId: notifData['entityId']?.toString(),
+        entityId: entityId.isNotEmpty ? entityId : null,
         metadata: metadata,
         playSound: true,
       );
@@ -606,18 +623,24 @@ class SocketService {
           // Play in-chat audio chime without blocking screen
           SoundService.playNotificationSound();
         } else {
+          final deterministicId = chatId.isNotEmpty ? chatId.hashCode.abs().remainder(100000) : 0;
+          final deterministicTag = chatId.isNotEmpty ? 'chat_$chatId' : null;
+
           // Trigger instant floating push notification banner with sound and vibration
           LocalNotificationService().showPushNotification(
+            id: deterministicId,
+            tag: deterministicTag,
             title: 'WhatsApp: $senderDisplay',
             body: body,
             payload: jsonEncode({
               'type': 'whatsapp_message',
               'entityType': 'whatsapp_chat',
               'entityId': chatId,
+              'notificationTag': deterministicTag,
               'metadata': {
                 'chatId': chatId,
                 'customerPhone': customerPhone,
-                'customerName': customerName,
+                'customerName': senderDisplay,
                 'messageType': messageType,
               },
             }),
@@ -626,10 +649,13 @@ class SocketService {
             entityId: chatId,
             metadata: {
               'chatId': chatId,
+              'notificationTag': deterministicTag,
               'customerPhone': customerPhone,
-              'customerName': customerName,
+              'customerName': senderDisplay,
             },
             playSound: true,
+            channelId: 'apna_pos_whatsapp_messages_v1',
+            channelName: 'WhatsApp Messages',
           );
         }
       }
@@ -667,8 +693,16 @@ class SocketService {
       debugPrint('[SocketService] 🔔 Urgent WhatsApp order request received via socket');
 
       final orderData = rawMap['order'] is Map ? Map<String, dynamic>.from(rawMap['order'] as Map) : rawMap;
-      final orderId = orderData['_id']?.toString() ?? orderData['id']?.toString() ?? '';
-      final orderNumber = orderData['orderNumber']?.toString() ?? '';
+      final orderId = orderData['_id']?.toString() ??
+          orderData['id']?.toString() ??
+          orderData['orderId']?.toString() ??
+          rawMap['orderId']?.toString() ??
+          rawMap['_id']?.toString() ??
+          rawMap['id']?.toString() ??
+          '';
+      final orderNumber = orderData['orderNumber']?.toString() ??
+          rawMap['orderNumber']?.toString() ??
+          '';
       final customerPhone = rawMap['customerPhone']?.toString() ?? orderData['customerPhone']?.toString() ?? '';
       final customerName = rawMap['customerName']?.toString() ?? orderData['customerName']?.toString() ?? 'Customer';
       final totalAmount = double.tryParse(orderData['totalAmount']?.toString() ?? '0') ?? 0.0;
@@ -677,7 +711,7 @@ class SocketService {
       final items = orderData['items'];
 
       final cleanType = orderType.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-      final oSource = (orderData['orderSource'] ?? rawMap['orderSource'] ?? rawMap['source'] ?? '').toString().toLowerCase();
+      final oSource = (orderData['orderSource'] ?? rawMap['orderSource'] ?? rawMap['source'] ?? data['orderSource'] ?? 'whatsapp').toString().toLowerCase();
       final bool isExplicitExternal = oSource == 'whatsapp' ||
           oSource == 'profile' ||
           oSource == 'storefront' ||
@@ -741,8 +775,14 @@ class SocketService {
           'orderId': orderId,
           'orderNumber': orderNumber,
           'type': 'whatsapp_order_request',
+          'orderSource': oSource,
+          'orderType': orderType,
+          'customerName': customerName,
+          'customerPhone': customerPhone,
+          'totalAmount': totalAmount.toString(),
         },
         playSound: true,
+        skipDedupe: true,
       );
 
       // 3. Resiliently trigger the incoming WhatsApp order action dialog & full-screen accept
