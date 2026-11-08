@@ -85,7 +85,7 @@ class ChotuController {
         orderFlowAutomationEnabled: true,
         posMutationsEnabled: true,
         geminiConfigured: chotuService.isGeminiConfigured(),
-        geminiModel: 'gemini-2.0-flash',
+        geminiModel: 'gemini-3.5-flash-lite',
       }, 'Chotu AI Voice Assistant is online');
     } catch (error) {
       next(error);

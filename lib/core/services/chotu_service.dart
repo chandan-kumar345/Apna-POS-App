@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart' show Options;
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import '../database/database_service.dart';
@@ -224,6 +225,22 @@ class ChotuService extends ChangeNotifier {
   String? _activeSessionId;
   String get activeSessionId => _activeSessionId ??= 'chotu_sess_${DateTime.now().millisecondsSinceEpoch}';
 
+  bool _backendGeminiConfigured = false;
+  bool get isBackendGeminiConfigured => _backendGeminiConfigured;
+  bool get isGeminiActive => DatabaseService().chotuGeminiApiKey.isNotEmpty || _backendGeminiConfigured;
+
+  Future<bool> checkBackendHealth() async {
+    try {
+      final res = await _apiClient.get(ApiEndpoints.chotuHealth);
+      if (res != null && res['data'] != null) {
+        _backendGeminiConfigured = res['data']['geminiConfigured'] == true;
+        notifyListeners();
+        return _backendGeminiConfigured;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   void setTableContext(String? table) {
     _currentTableContext = table;
     notifyListeners();
@@ -325,14 +342,14 @@ class ChotuService extends ChangeNotifier {
     try {
       final response = await _apiClient.post(
         ApiEndpoints.chotuParse,
-        headers: geminiKey.isNotEmpty ? {'x-gemini-api-key': geminiKey} : null,
+        options: geminiKey.isNotEmpty ? Options(headers: {'x-gemini-api-key': geminiKey}) : null,
         data: {
           'text': speechText.trim(),
           'sessionId': activeSessionId,
           'currentTableContext': effectiveTable,
           if (geminiKey.isNotEmpty) 'geminiApiKey': geminiKey,
         },
-      ).timeout(const Duration(milliseconds: 2500));
+      ).timeout(const Duration(milliseconds: 15000));
 
       if (response != null && response['data'] != null && response['data']['command'] != null) {
         final cmdMap = Map<String, dynamic>.from(response['data']['command'] as Map);

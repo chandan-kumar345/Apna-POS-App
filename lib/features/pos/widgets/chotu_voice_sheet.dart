@@ -80,6 +80,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
 
     _speechService.addListener(_onSpeechStateChanged);
     _chotuService.addListener(_onChotuStateChanged);
+    _chotuService.checkBackendHealth();
 
     // Automatically initiate greeting & start listening
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -462,7 +463,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   Widget build(BuildContext context) {
     final isListening = _sheetState == ChotuSheetState.listening || _sheetState == ChotuSheetState.greeting;
     final isExecuted = _sheetState == ChotuSheetState.executed;
-    final hasGeminiKey = DatabaseService().chotuGeminiApiKey.isNotEmpty;
+    final hasGeminiKey = DatabaseService().chotuGeminiApiKey.isNotEmpty || _chotuService.isGeminiActive;
 
     return Material(
       color: Colors.transparent,

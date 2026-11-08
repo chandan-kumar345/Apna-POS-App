@@ -13,11 +13,8 @@ class ChotuGeminiClient {
 
   /// Candidate Gemini models in priority order (Current fast flash models)
   static const List<String> _candidateModels = [
-    'gemini-3.8-flash',
     'gemini-3.5-flash-lite',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
+    'gemini-3.8-flash',
   ];
 
   /// Checks if Gemini API key is configured
@@ -43,7 +40,7 @@ class ChotuGeminiClient {
     if (cleanText.isEmpty) return null;
 
     final db = DatabaseService();
-    final activeTable = tableNumber ?? db.selectedTable ?? '1';
+    final activeTable = tableNumber ?? (db.tables.isNotEmpty ? db.tables.first.tableNumber.toString() : '1');
 
     // 1. Build compact live menu representation
     final compactMenu = db.menuItems.map((p) {
@@ -62,7 +59,7 @@ class ChotuGeminiClient {
     final compactTables = db.tables.map((t) {
       return {
         'name': t.name,
-        'number': t.tableNumber,
+        'number': t.tableNumber.toString(),
         'status': t.status.name,
       };
     }).toList();
@@ -189,7 +186,7 @@ Output pure JSON only. Do not add markdown codeblocks.
           url,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(requestPayload),
-        ).timeout(const Duration(milliseconds: 4000));
+        ).timeout(const Duration(milliseconds: 15000));
 
         if (response.statusCode != 200) {
           debugPrint('[ChotuGeminiClient] Model $model returned status ${response.statusCode}: ${response.body}');

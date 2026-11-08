@@ -467,6 +467,16 @@ class ChotuService {
         break;
       }
 
+      case 'CHAT': {
+        executionResult = {
+          success: true,
+          intent: 'CHAT',
+          chotuMessage: command.chotu_response || command.chotuResponse || 'Namaste sir! Main Chotu hoon. Boliye aaj kya order lagana hai?',
+          isChat: true,
+        };
+        break;
+      }
+
       default:
         throw ApiError.badRequest(`Unsupported execution intent: ${command.intent}`);
     }

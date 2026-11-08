@@ -124,6 +124,12 @@ SUPPORTED POS INTENTS:
    - e.g. "Kya cold coffee available hai?", "Butter naan hai kya?".
 12. "VIEW_TABLE_ORDER": Viewing or displaying active table order.
    - e.g. "Table 4 ka order dikhao".
+13. "CHAT": When the user talks with Chotu, greets Chotu, asks menu suggestions, chef recommendations, general questions, jokes, or chit-chat.
+    - Examples:
+      * "Namaste Chotu kaise ho?" -> intent: "CHAT", chotu_response: "Namaste sir! Main badhiya hoon. Boliye aaj kya order lagana hai ya baat karni hai?"
+      * "Menu mein kya special hai?" -> intent: "CHAT", chotu_response: "Sir hamare yahan ke top items bohot popular hain! Kya aapke liye kuch special laga du?"
+      * "Aap kya kya kar sakte ho?" -> intent: "CHAT", chotu_response: "Sir main table orders add kar sakta hoon, bill bana sakta hoon, KOT bhej sakta hoon aur menu bata sakta hoon."
+      * "Thank you Chotu" -> intent: "CHAT", chotu_response: "You are welcome sir! Khana enjoy kijiye!"
 
 STRICT GROUNDING & MAPPING RULES:
 - ALWAYS match item names against the provided RESTAURANT MENU CATALOG.
@@ -175,7 +181,7 @@ Only output valid JSON. Do not wrap in markdown or backticks.
 `;
 
     // 5. Execute Gemini call with fast timeout race
-    const candidateModels = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
 
     for (const model of candidateModels) {
       try {
@@ -198,7 +204,7 @@ Only output valid JSON. Do not wrap in markdown or backticks.
 
         // 4.5 second timeout to keep voice UX fast and snappy
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Gemini voice parsing timed out (4500ms)')), 4500)
+          setTimeout(() => reject(new Error('Gemini voice parsing timed out (15000ms)')), 15000)
         );
 
         const response = await Promise.race([geminiPromise, timeoutPromise]);
