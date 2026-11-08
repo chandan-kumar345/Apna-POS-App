@@ -14,6 +14,7 @@ class ChotuGeminiClient {
   /// Candidate Gemini models in priority order (Current fast flash models)
   static const List<String> _candidateModels = [
     'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
     'gemini-3.8-flash',
   ];
 

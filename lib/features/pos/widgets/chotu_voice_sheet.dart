@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/database/database_service.dart';
 import '../../../../core/services/chotu_service.dart';
 import '../../../../core/services/chotu_tts_service.dart';
@@ -48,6 +49,8 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   String _lastUserQuery = '';
   String? _statusFeedback;
   Timer? _autoCloseTimer;
+  final TextEditingController _textInputCtrl = TextEditingController();
+  bool _isTextMode = false;
 
   @override
   void initState() {
@@ -96,6 +99,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     _growController.dispose();
     _floatController.dispose();
     _pulseController.dispose();
+    _textInputCtrl.dispose();
     _speechService.removeListener(_onSpeechStateChanged);
     _chotuService.removeListener(_onChotuStateChanged);
     _speechService.stopListening();
@@ -119,21 +123,20 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     if (mounted) setState(() {});
   }
 
-  /// Initial Hindi Greeting Flow: Chotu speaks "Kya hua sir?" then starts listening
+  /// Initial Hindi Greeting Flow: Chotu speaks "Kya hua sir?" and immediately starts listening
   Future<void> _startGreetingFlow() async {
     if (!mounted) return;
     setState(() {
-      _sheetState = ChotuSheetState.greeting;
+      _sheetState = ChotuSheetState.listening;
       _unmatchedItem = null;
       _statusFeedback = null;
     });
 
-    // Speak Hindi greeting aloud
-    await _ttsService.speakGreeting('Kya hua sir?');
+    // Speak Hindi greeting aloud in background (non-blocking)
+    _ttsService.speakGreeting('Kya hua sir?').catchError((_) {});
 
-    if (mounted && _sheetState == ChotuSheetState.greeting) {
-      _startListening();
-    }
+    // Start listening immediately
+    _speechService.startListening();
   }
 
   void _startListening() {
@@ -554,10 +557,13 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                       // Floating Robot Avatar
                       GestureDetector(
                         onTap: () {
-                          if (_sheetState == ChotuSheetState.idle || _sheetState == ChotuSheetState.executed) {
-                            _startListening();
-                          } else if (isListening) {
+                          if (_speechService.isListening) {
                             _stopListening();
+                            if (_speechService.liveTranscription.trim().isNotEmpty) {
+                              _sendToChotu(_speechService.liveTranscription.trim());
+                            }
+                          } else {
+                            _startListening();
                           }
                         },
                         child: AnimatedBuilder(
@@ -660,6 +666,62 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
 
   /// Content inside the live speech card based on current state
   Widget _buildSpeechDisplayContent(bool isListening, bool hasSpokenWords) {
+    if (_speechService.status == SpeechStatus.error) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.mic_off_rounded, color: Color(0xFFEF4444), size: 26),
+          const SizedBox(height: 6),
+          Text(
+            _speechService.errorMessage.isNotEmpty
+                ? _speechService.errorMessage
+                : 'Microphone permission or speech recognition issue',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFFFCA5A5),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final granted = await _speechService.requestMicrophonePermission();
+                  if (granted) {
+                    _startListening();
+                  } else {
+                    await openAppSettings();
+                  }
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 15),
+                label: const Text('Allow Mic / Retry', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () => setState(() => _isTextMode = true),
+                icon: const Icon(Icons.keyboard_rounded, size: 15, color: Colors.white70),
+                label: const Text('Type Order', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF475569)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
     switch (_sheetState) {
       case ChotuSheetState.greeting:
         return const Row(
@@ -890,12 +952,44 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   }
 
   Widget _buildBottomActionSection() {
+    if (_isTextMode) {
+      return _buildTextActionSection();
+    }
+
+    if (_speechService.status == SpeechStatus.error) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ElevatedButton.icon(
+            onPressed: _startListening,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Retry Voice', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton.icon(
+            onPressed: () => setState(() => _isTextMode = true),
+            icon: const Icon(Icons.keyboard_rounded, size: 18, color: Colors.white70),
+            label: const Text('Type Order', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFF475569)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            ),
+          ),
+        ],
+      );
+    }
+
     switch (_sheetState) {
       case ChotuSheetState.idle:
-        return _buildStartButton();
-
       case ChotuSheetState.greeting:
-        return const SizedBox(height: 48);
+        return _buildStartButton();
 
       case ChotuSheetState.listening:
         return _buildListeningPill();
@@ -948,10 +1042,10 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     );
   }
 
-  /// Active listening indicator with Google Voice equalizer dots and Done button
+  /// Active listening indicator with Google Voice equalizer dots, Done button, and keyboard toggle
   Widget _buildListeningPill() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E2E).withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(26),
@@ -968,7 +1062,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildGoogleVoiceWaveDots(),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           const Text(
             'Listening...',
             style: TextStyle(
@@ -978,7 +1072,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
               letterSpacing: 0.4,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           InkWell(
             onTap: () {
               _stopListening();
@@ -986,14 +1080,90 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                 _sendToChotu(_speechService.liveTranscription.trim());
               }
             },
+            borderRadius: BorderRadius.circular(10),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: const Color(0xFF334155),
+                color: const Color(0xFF6366F1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Text('Done', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
             ),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            icon: const Icon(Icons.keyboard_alt_outlined, color: Colors.white70, size: 20),
+            tooltip: 'Type order instead',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () {
+              _stopListening();
+              setState(() => _isTextMode = true);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Text-based manual order input fallback for loud environments or direct testing
+  Widget _buildTextActionSection() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E2E),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF6366F1), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 16,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.mic_rounded, color: Color(0xFF6366F1), size: 22),
+            tooltip: 'Switch back to voice',
+            onPressed: () {
+              setState(() => _isTextMode = false);
+              _startListening();
+            },
+          ),
+          Expanded(
+            child: TextField(
+              controller: _textInputCtrl,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 13.5),
+              decoration: const InputDecoration(
+                hintText: 'Order likhein (e.g. 2 Burger 1 Coffee)...',
+                hintStyle: TextStyle(color: Colors.white38, fontSize: 12.5),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              ),
+              onSubmitted: (value) {
+                final txt = value.trim();
+                if (txt.isNotEmpty) {
+                  _textInputCtrl.clear();
+                  setState(() => _isTextMode = false);
+                  _sendToChotu(txt);
+                }
+              },
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.send_rounded, color: Color(0xFF34D399), size: 20),
+            onPressed: () {
+              final txt = _textInputCtrl.text.trim();
+              if (txt.isNotEmpty) {
+                _textInputCtrl.clear();
+                setState(() => _isTextMode = false);
+                _sendToChotu(txt);
+              }
+            },
           ),
         ],
       ),

@@ -110,7 +110,7 @@ class SpeechRecognitionService extends ChangeNotifier {
     }
   }
 
-  /// Starts native Android/iOS Speech-to-Text with Hindi locale and trigger detection
+  /// Starts native Android/iOS Speech-to-Text with intelligent locale discovery & natural VAD
   Future<void> _startMobileSpeechRecognition() async {
     try {
       if (!_isSttInitialized) {
@@ -121,60 +121,74 @@ class SpeechRecognitionService extends ChangeNotifier {
               if (_liveTranscription.trim().isNotEmpty) {
                 _onSpeechCompleted();
               } else if (_status == SpeechStatus.listening) {
-                _status = SpeechStatus.idle;
+                _audioLevel = 0.0;
                 notifyListeners();
               }
             }
           },
           onError: (err) {
             debugPrint('[SpeechRecognitionService:Mobile] Error: ${err.errorMsg}');
+            if (err.errorMsg != 'error_no_match' && err.errorMsg != 'error_speech_timeout') {
+              setError('Voice recognition notice: ${err.errorMsg}');
+            }
           },
         );
+
+        if (!_isSttInitialized) {
+          setError('Speech recognition service not ready on this device. Please check microphone permission.');
+          return;
+        }
       }
 
       if (_isSttInitialized) {
+        String? targetLocaleId;
+        try {
+          final locales = await _speechToText.locales();
+          if (_currentLocale == 'hi_IN' || _currentLocale == 'hinglish') {
+            final hiLocale = locales.where((l) => l.localeId.toLowerCase().startsWith('hi')).firstOrNull;
+            if (hiLocale != null) {
+              targetLocaleId = hiLocale.localeId;
+            } else {
+              final enInLocale = locales.where((l) => l.localeId.toLowerCase() == 'en_in').firstOrNull;
+              targetLocaleId = enInLocale?.localeId;
+            }
+          } else if (_currentLocale == 'en_IN') {
+            final enInLocale = locales.where((l) => l.localeId.toLowerCase() == 'en_in').firstOrNull;
+            targetLocaleId = enInLocale?.localeId;
+          }
+        } catch (e) {
+          debugPrint('[SpeechRecognitionService:Mobile] Locale check: $e');
+        }
+
         await _speechToText.listen(
           onResult: (result) {
             final words = result.recognizedWords.trim();
             if (words.isNotEmpty) {
               _liveTranscription = words;
-              _audioLevel = 0.80;
+              _audioLevel = 0.85;
               notifyListeners();
 
-              final lower = words.toLowerCase();
-              if (result.finalResult ||
-                  lower.contains('understand') ||
-                  lower.contains('understood') ||
-                  lower.contains('samjhe') ||
-                  lower.contains('samajh gaye') ||
-                  lower.contains('samjh')) {
+              if (result.finalResult) {
                 _onSpeechCompleted();
               } else {
                 _restartSilenceTimer();
               }
             }
           },
-          onSoundLevelChange: (level) {
-            final now = DateTime.now().millisecondsSinceEpoch;
-            if (now - _lastSoundLevelMs > 120) {
-              final newLevel = (level / 100.0).clamp(0.0, 1.0);
-              if ((_audioLevel - newLevel).abs() > 0.05) {
-                _audioLevel = newLevel;
-                _lastSoundLevelMs = now;
-                notifyListeners();
-              }
-            }
-          },
+          onSoundLevelChange: null,
           listenOptions: stt.SpeechListenOptions(
-            localeId: 'hi_IN',
-            listenMode: stt.ListenMode.confirmation,
+            localeId: targetLocaleId,
+            listenMode: stt.ListenMode.dictation,
             cancelOnError: false,
-            pauseFor: const Duration(milliseconds: 750),
+            partialResults: true,
+            pauseFor: const Duration(milliseconds: 2800),
+            listenFor: const Duration(seconds: 30),
           ),
         );
       }
     } catch (e) {
       debugPrint('[SpeechRecognitionService:Mobile] STT start failed: $e');
+      setError('Voice recognition could not start: $e');
     }
   }
 
@@ -213,18 +227,7 @@ class SpeechRecognitionService extends ChangeNotifier {
                 _liveTranscription = partial.trim();
                 _audioLevel = 0.85;
                 notifyListeners();
-
-                // Check for 'understand' / 'samajh gaye' end trigger
-                final lower = partial.toLowerCase();
-                if (lower.contains('understand') ||
-                    lower.contains('understood') ||
-                    lower.contains('samjhe') ||
-                    lower.contains('samajh gaye') ||
-                    lower.contains('samjh')) {
-                  _onSpeechCompleted();
-                } else {
-                  _restartSilenceTimer();
-                }
+                _restartSilenceTimer();
               }
             } else if (statusStr == 'RECOGNIZED') {
               final recognized = data['text']?.toString() ?? '';
@@ -336,17 +339,7 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
               _liveTranscription = partial;
               _audioLevel = 0.75;
               notifyListeners();
-
-              final lower = partial.toLowerCase();
-              if (lower.contains('understand') ||
-                  lower.contains('understood') ||
-                  lower.contains('samjhe') ||
-                  lower.contains('samajh gaye') ||
-                  lower.contains('samjh')) {
-                _onSpeechCompleted();
-              } else {
-                _restartSilenceTimer();
-              }
+              _restartSilenceTimer();
             }
           } else if (trimmed.startsWith('LEVEL:')) {
             final lvlInt = int.tryParse(trimmed.substring(6)) ?? 0;
@@ -389,10 +382,10 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
     }
   }
 
-  /// Restarts silence debounce timer: triggers execution 750ms after user stops speaking
+  /// Restarts silence debounce timer: triggers execution 1100ms after user stops speaking
   void _restartSilenceTimer() {
     _silenceTimer?.cancel();
-    _silenceTimer = Timer(const Duration(milliseconds: 750), () {
+    _silenceTimer = Timer(const Duration(milliseconds: 1100), () {
       if (_status == SpeechStatus.listening && _liveTranscription.isNotEmpty) {
         _onSpeechCompleted();
       }

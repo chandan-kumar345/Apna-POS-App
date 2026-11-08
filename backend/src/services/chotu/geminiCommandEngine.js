@@ -181,7 +181,7 @@ Only output valid JSON. Do not wrap in markdown or backticks.
 `;
 
     // 5. Execute Gemini call with fast timeout race
-    const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+    const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash'];
 
     for (const model of candidateModels) {
       try {
