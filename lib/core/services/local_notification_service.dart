@@ -620,14 +620,23 @@ class LocalNotificationService with WidgetsBindingObserver {
       final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
       final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
 
-      final bool isExplicitExternal = rawSource == 'whatsapp' ||
+      final bool isExplicitChatMessage = typeStr == 'whatsapp_message' ||
+          typeStr == 'chat_message' ||
+          data['entityType'] == 'whatsapp_chat' ||
+          data['entityType'] == 'whatsapp_message' ||
+          data['type'] == 'whatsapp_message' ||
+          data['type'] == 'chat_message';
+
+      final bool isExplicitExternal = !isExplicitChatMessage && (
+          rawSource == 'whatsapp' ||
           rawSource == 'profile' ||
           rawSource == 'storefront' ||
           rawSource == 'online' ||
           rawSource == 'qr' ||
           cleanType.contains('whatsapp') ||
           cleanType.contains('profile') ||
-          typeStr == 'whatsapp_order_request';
+          typeStr == 'whatsapp_order_request'
+      );
 
       final bool isDineInOrLocalPos = isKot ||
           (!isExplicitExternal && (
@@ -643,17 +652,16 @@ class LocalNotificationService with WidgetsBindingObserver {
         return;
       }
 
-      final isWhatsAppOrder = (typeStr == 'whatsapp_order_request' ||
+      final isWhatsAppOrder = !isExplicitChatMessage && !isDineInOrLocalPos && (
+          typeStr == 'whatsapp_order_request' ||
           typeStr == 'whatsapp_new_order' ||
           typeStr == 'whatsapp_order' ||
-          typeStr == 'new_order' ||
-          typeStr == 'newOrder' ||
-          typeStr == 'order_created' ||
-          typeStr == 'order' ||
-          data['entityType'] == 'whatsapp_order' ||
-          data['entityType'] == 'order' ||
-          data['orderSource'] == 'whatsapp' ||
-          data['orderId'] != null) && !isDineInOrLocalPos;
+          (typeStr == 'new_order' && rawSource != 'pos') ||
+          (typeStr == 'newOrder' && rawSource != 'pos') ||
+          (typeStr == 'order_created' && rawSource != 'pos') ||
+          (data['entityType'] == 'whatsapp_order') ||
+          (isExplicitExternal && (orderId.isNotEmpty || orderNum.isNotEmpty))
+      );
 
       String finalTitle = rawTitle;
       String finalBody = rawBody;
@@ -871,13 +879,16 @@ class LocalNotificationService with WidgetsBindingObserver {
 
     final bool isAppForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
-    // 1. Play in-app audio feedback whenever sound is enabled
-    // When the app is in foreground, native Android NotificationManager doesn't reliably play custom sounds on all OEM skins
-    if (playSound) {
-      SoundService.playNotificationSound();
-    }
-
     if (!_isSupportedPlatform) {
+      if (playSound) {
+        final rawType = (effectiveMeta['orderType'] ?? effectiveMeta['type'] ?? '').toString().toLowerCase().trim();
+        final isOrder = type == NotificationType.whatsappOrderRequest || rawType.contains('order');
+        if (isOrder) {
+          SoundService.playOrderRingtone();
+        } else {
+          SoundService.playNotificationSound();
+        }
+      }
       debugPrint('[LocalNotificationService] Push notification delivered (in-app): "$title"');
       return;
     }
@@ -948,6 +959,15 @@ class LocalNotificationService with WidgetsBindingObserver {
       }
 
       final isWhatsAppOrder = !isExplicitChatMessage && (isExplicitExternalOrder || isOrderType);
+
+      // Play audio feedback based on notification category
+      if (playSound) {
+        if (isWhatsAppOrder) {
+          SoundService.playOrderRingtone();
+        } else {
+          SoundService.playNotificationSound();
+        }
+      }
       final isWhatsApp = isWhatsAppOrder || type == NotificationType.whatsappMessage;
       final effectiveChannelId = isWhatsAppOrder
           ? 'apna_pos_whatsapp_orders_v2'

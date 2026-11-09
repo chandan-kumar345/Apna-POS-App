@@ -11,6 +11,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.RemoteMessage
 import io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService
@@ -82,7 +83,10 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                 }
                 val payloadString = payloadObj.toString()
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                prefs.edit().putString("flutter.pending_incoming_order_payload", payloadString).apply()
+                prefs.edit()
+                    .putString("flutter.pending_incoming_order_payload", payloadString)
+                    .putString("pending_incoming_order_payload", payloadString)
+                    .apply()
 
                 // 4. Build Intent to open MainActivity and show Order Accept Screen
                 val launchIntent = (packageManager.getLaunchIntentForPackage(packageName) ?: Intent(applicationContext, MainActivity::class.java)).apply {
@@ -216,7 +220,7 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                     .setContentTitle(notifTitle)
                     .setContentText(notifBody)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
-                    .setCategory(NotificationCompat.CATEGORY_EVENT)
+                    .setCategory(NotificationCompat.CATEGORY_CALL)
                     .setSound(soundUri)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                     .setFullScreenIntent(fullScreenPendingIntent, true)
@@ -228,9 +232,18 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                 notificationManager.notify(notifId, notifBuilder.build())
 
                 // 10. Bring app immediately to front over any other app
-                // Succeeds if app has overlay permission ("Display over other apps") or via fullScreenPendingIntent
+                // If user granted overlay permission ("Display over other apps") or device is unlocked, launch activity directly
                 try {
-                    fullScreenPendingIntent.send()
+                    val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Settings.canDrawOverlays(applicationContext)
+                    } else {
+                        true
+                    }
+                    if (canDraw) {
+                        applicationContext.startActivity(launchIntent, options.toBundle())
+                    } else {
+                        fullScreenPendingIntent.send()
+                    }
                 } catch (sendErr: Exception) {
                     try {
                         applicationContext.startActivity(launchIntent, options.toBundle())

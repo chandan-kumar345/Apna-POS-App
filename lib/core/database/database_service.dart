@@ -43,6 +43,9 @@ import '../../features/notifications/models/notification_model.dart';
 import '../../features/storefront/models/storefront_model.dart';
 import '../../features/orders/incoming_order_accept_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/notification_setting_model.dart';
+import '../services/upload_service.dart';
+import 'dart:io' show File;
 
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -1219,6 +1222,9 @@ class DatabaseService extends ChangeNotifier {
 
     // Asynchronously sync customers from backend server
     syncCustomersFromBackend();
+
+    // Asynchronously sync user's isolated notification & ringtone settings from cloud backend
+    fetchNotificationSettings().catchError((_) {});
   }
 
   // Initialize DB and load or seed data
@@ -7797,6 +7803,265 @@ class DatabaseService extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[DatabaseService] Error marking chat read locally: $e');
+    }
+  }
+
+  // ============================================================
+  // MULTI-TENANT & USER-ISOLATED NOTIFICATION SETTINGS
+  // ============================================================
+
+  NotificationSettingModel? _cachedNotificationSetting;
+
+  /// Active notification setting for currently logged-in user and business
+  NotificationSettingModel get notificationSetting {
+    if (_cachedNotificationSetting != null) {
+      return _cachedNotificationSetting!;
+    }
+    // Attempt local cache recovery
+    final localKey = _businessKey('user_notif_settings_');
+    final raw = _prefs?.getString(localKey) ?? _prefs?.getString('apna_pos_notification_settings');
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        _cachedNotificationSetting = NotificationSettingModel.fromJson(decoded);
+        SoundService().updateSoundPreferences(
+          orderRingtoneUrl: _cachedNotificationSetting!.orderRingtoneUrl,
+          orderRingtoneName: _cachedNotificationSetting!.orderRingtoneName,
+          orderRingtoneType: _cachedNotificationSetting!.orderRingtoneType,
+          orderVolume: _cachedNotificationSetting!.orderVolume,
+          notificationSoundUrl: _cachedNotificationSetting!.notificationSoundUrl,
+          notificationSoundName: _cachedNotificationSetting!.notificationSoundName,
+          notificationSoundType: _cachedNotificationSetting!.notificationSoundType,
+          notificationVolume: _cachedNotificationSetting!.notificationVolume,
+          soundEnabled: _cachedNotificationSetting!.soundEnabled,
+        );
+        return _cachedNotificationSetting!;
+      } catch (e) {
+        debugPrint('[DatabaseService] Error parsing local notification settings: ');
+      }
+    }
+    return NotificationSettingModel.defaults(
+      businessId: currentBusinessId,
+      userId: currentUser?.id,
+    );
+  }
+
+  /// Fetch user-isolated notification settings from remote API with local fallback
+  Future<NotificationSettingModel> fetchNotificationSettings({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedNotificationSetting != null) {
+      return _cachedNotificationSetting!;
+    }
+
+    final localKey = _businessKey('user_notif_settings_');
+
+    // 1. Try remote API first if authenticated
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final ApiClient client = ApiClient();
+        final response = await client.get(ApiEndpoints.notificationSettings);
+        if (response.data != null && response.data['success'] == true && response.data['data'] != null) {
+          final setting = NotificationSettingModel.fromJson(response.data['data'] as Map<String, dynamic>);
+          _cachedNotificationSetting = setting;
+
+          // Cache locally
+          await _prefs?.setString(localKey, jsonEncode(setting.toJson()));
+          await _prefs?.setString('apna_pos_notification_settings', jsonEncode(setting.toJson()));
+
+          // Apply to SoundService
+          SoundService().updateSoundPreferences(
+            orderRingtoneUrl: setting.orderRingtoneUrl,
+            orderRingtoneName: setting.orderRingtoneName,
+            orderRingtoneType: setting.orderRingtoneType,
+            orderVolume: setting.orderVolume,
+            notificationSoundUrl: setting.notificationSoundUrl,
+            notificationSoundName: setting.notificationSoundName,
+            notificationSoundType: setting.notificationSoundType,
+            notificationVolume: setting.notificationVolume,
+            soundEnabled: setting.soundEnabled,
+          );
+
+          notifyListeners();
+          return setting;
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Failed to fetch remote notification settings: ');
+    }
+
+    // 2. Fallback to local SharedPreferences
+    final raw = _prefs?.getString(localKey) ?? _prefs?.getString('apna_pos_notification_settings');
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        _cachedNotificationSetting = NotificationSettingModel.fromJson(decoded);
+        SoundService().updateSoundPreferences(
+          orderRingtoneUrl: _cachedNotificationSetting!.orderRingtoneUrl,
+          orderRingtoneName: _cachedNotificationSetting!.orderRingtoneName,
+          orderRingtoneType: _cachedNotificationSetting!.orderRingtoneType,
+          orderVolume: _cachedNotificationSetting!.orderVolume,
+          notificationSoundUrl: _cachedNotificationSetting!.notificationSoundUrl,
+          notificationSoundName: _cachedNotificationSetting!.notificationSoundName,
+          notificationSoundType: _cachedNotificationSetting!.notificationSoundType,
+          notificationVolume: _cachedNotificationSetting!.notificationVolume,
+          soundEnabled: _cachedNotificationSetting!.soundEnabled,
+        );
+        notifyListeners();
+        return _cachedNotificationSetting!;
+      } catch (_) {}
+    }
+
+    final defaultSetting = NotificationSettingModel.defaults(
+      businessId: currentBusinessId,
+      userId: currentUser?.id,
+    );
+    _cachedNotificationSetting = defaultSetting;
+    notifyListeners();
+    return defaultSetting;
+  }
+
+  /// Update and save notification settings both locally and to the backend database
+  Future<bool> updateNotificationSettings(NotificationSettingModel setting) async {
+    try {
+      _cachedNotificationSetting = setting;
+      final localKey = _businessKey('user_notif_settings_');
+
+      // Persist locally
+      await _prefs?.setString(localKey, jsonEncode(setting.toJson()));
+      await _prefs?.setString('apna_pos_notification_settings', jsonEncode(setting.toJson()));
+
+      // Apply immediately to SoundService
+      await SoundService().updateSoundPreferences(
+        orderRingtoneUrl: setting.orderRingtoneUrl,
+        orderRingtoneName: setting.orderRingtoneName,
+        orderRingtoneType: setting.orderRingtoneType,
+        orderVolume: setting.orderVolume,
+        notificationSoundUrl: setting.notificationSoundUrl,
+        notificationSoundName: setting.notificationSoundName,
+        notificationSoundType: setting.notificationSoundType,
+        notificationVolume: setting.notificationVolume,
+        soundEnabled: setting.soundEnabled,
+      );
+
+      notifyListeners();
+
+      // Sync to cloud database
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final ApiClient client = ApiClient();
+        await client.put(
+          ApiEndpoints.notificationSettings,
+          data: setting.toJson(),
+        );
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[DatabaseService] Error updating notification settings: ');
+      return false;
+    }
+  }
+
+  /// Upload a custom audio file (from disk or memory bytes) and register it in user's isolated custom ringtones
+  Future<CustomRingtone?> uploadCustomRingtone({
+    dynamic fileOrBytes,
+    required String fileName,
+    String type = 'order',
+    String? name,
+  }) async {
+    try {
+      final uploadService = UploadService();
+      Map<String, dynamic>? result;
+      if (fileOrBytes is Uint8List) {
+        result = await uploadService.uploadRingtone(
+          bytes: fileOrBytes,
+          fileName: fileName,
+          type: type,
+          name: name,
+        );
+      } else if (fileOrBytes is List<int>) {
+        result = await uploadService.uploadRingtone(
+          bytes: Uint8List.fromList(fileOrBytes),
+          fileName: fileName,
+          type: type,
+          name: name,
+        );
+      } else if (fileOrBytes is File) {
+        result = await uploadService.uploadRingtone(
+          file: fileOrBytes,
+          fileName: fileName,
+          type: type,
+          name: name,
+        );
+      }
+
+      if (result != null && result['success'] == true && result['ringtone'] != null) {
+        final ringtone = CustomRingtone.fromJson(result['ringtone'] as Map<String, dynamic>);
+
+        // Associate local file in audio cache map immediately
+        if (!kIsWeb && fileOrBytes is File && fileOrBytes.existsSync()) {
+          SoundService.cacheLocalFile(ringtone.url, fileOrBytes.path);
+        }
+
+        // Update local cached model
+        final current = notificationSetting;
+        final updatedList = List<CustomRingtone>.from(current.customRingtones)
+          ..removeWhere((r) => r.id == ringtone.id)
+          ..add(ringtone);
+
+        final updated = current.copyWith(customRingtones: updatedList);
+        await updateNotificationSettings(updated);
+        return ringtone;
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error uploading custom ringtone: ');
+    }
+    return null;
+  }
+
+  /// Delete a custom ringtone from the cloud database and user's profile
+  Future<bool> deleteCustomRingtone(String ringtoneId) async {
+    try {
+      final ApiClient client = ApiClient();
+      await client.delete(ApiEndpoints.deleteCustomRingtone(ringtoneId));
+
+      final current = notificationSetting;
+      final updatedList = current.customRingtones.where((r) => r.id != ringtoneId).toList();
+
+      // If active order ringtone was deleted, fallback to default
+      String orderUrl = current.orderRingtoneUrl;
+      String orderName = current.orderRingtoneName;
+      String orderType = current.orderRingtoneType;
+      if (current.orderRingtoneUrl.contains(ringtoneId) || current.orderRingtoneType == 'custom_' + ringtoneId) {
+        orderUrl = '';
+        orderName = 'Apna POS Default';
+        orderType = 'default';
+      }
+
+      // If active notification sound was deleted, fallback to default
+      String notifUrl = current.notificationSoundUrl;
+      String notifName = current.notificationSoundName;
+      String notifType = current.notificationSoundType;
+      if (current.notificationSoundUrl.contains(ringtoneId) || current.notificationSoundType == 'custom_' + ringtoneId) {
+        notifUrl = '';
+        notifName = 'Apna POS Alert';
+        notifType = 'default';
+      }
+
+      final updated = current.copyWith(
+        customRingtones: updatedList,
+        orderRingtoneUrl: orderUrl,
+        orderRingtoneName: orderName,
+        orderRingtoneType: orderType,
+        notificationSoundUrl: notifUrl,
+        notificationSoundName: notifName,
+        notificationSoundType: notifType,
+      );
+
+      await updateNotificationSettings(updated);
+      return true;
+    } catch (e) {
+      debugPrint('[DatabaseService] Error deleting custom ringtone: ');
+      return false;
     }
   }
 }

@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
@@ -30,8 +31,11 @@ class MainActivity : FlutterActivity() {
 
     private var userPresentReceiver: BroadcastReceiver? = null
 
-    // Default RenderMode.surface (SurfaceView) is used for maximum performance
-    // and zero MessageQueue stalls on Android 11+
+    // RenderMode.texture (TextureView) avoids native SurfaceView GPU/raster deadlocks
+    // on Android 11+ and eliminates LegacyMessageQueue freezes during screen/overlay transitions
+    override fun getRenderMode(): RenderMode {
+        return RenderMode.texture
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +57,10 @@ class MainActivity : FlutterActivity() {
                             pendingPayload = prefs.getString("pending_incoming_order_payload", null)
                         }
                         if (!pendingPayload.isNullOrEmpty()) {
+                            prefs.edit()
+                                .remove("flutter.pending_incoming_order_payload")
+                                .remove("pending_incoming_order_payload")
+                                .apply()
                             bringAppToForeground(pendingPayload)
                         }
                     } catch (e: Exception) {
@@ -125,7 +133,22 @@ class MainActivity : FlutterActivity() {
     }
 
     fun bringAppToForeground(payload: String? = null) {
+        if (!payload.isNullOrEmpty()) {
+            try {
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                prefs.edit()
+                    .putString("flutter.pending_incoming_order_payload", payload)
+                    .putString("pending_incoming_order_payload", payload)
+                    .apply()
+            } catch (_: Exception) {}
+        }
+
         wakeAndShowOverLockScreen()
+
+        // If the app is already in the foreground, do NOT call startActivity which causes self-pause and GPU surface deadlocks
+        if (isAppInForeground && !isFinishing && !isDestroyed) {
+            return
+        }
 
         val launchIntent = (packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this@MainActivity, MainActivity::class.java)).apply {
             action = "FLUTTER_NOTIFICATION_CLICK"
@@ -156,14 +179,23 @@ class MainActivity : FlutterActivity() {
         }
 
         try {
-            val pi = PendingIntent.getActivity(
-                applicationContext,
-                (System.currentTimeMillis() % 100000).toInt(),
-                launchIntent,
-                pendingIntentFlags,
-                options.toBundle()
-            )
-            pi.send()
+            val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Settings.canDrawOverlays(this@MainActivity)
+            } else {
+                true
+            }
+            if (canDraw) {
+                startActivity(launchIntent, options.toBundle())
+            } else {
+                val pi = PendingIntent.getActivity(
+                    applicationContext,
+                    (System.currentTimeMillis() % 100000).toInt(),
+                    launchIntent,
+                    pendingIntentFlags,
+                    options.toBundle()
+                )
+                pi.send()
+            }
         } catch (_: Exception) {
             try {
                 startActivity(launchIntent, options.toBundle())
@@ -242,6 +274,10 @@ class MainActivity : FlutterActivity() {
                                     Uri.parse("package:$packageName")
                                 ).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    putExtra("package", packageName)
+                                    putExtra("package_name", packageName)
+                                    putExtra("extra_pkgname", packageName)
+                                    putExtra("android.provider.extra.APP_PACKAGE", packageName)
                                 }
                                 startActivity(intent)
                                 result.success(true)
@@ -255,11 +291,24 @@ class MainActivity : FlutterActivity() {
                         try {
                             val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                putExtra("package", packageName)
+                                putExtra("package_name", packageName)
+                                putExtra("extra_pkgname", packageName)
+                                putExtra("android.provider.extra.APP_PACKAGE", packageName)
                             }
                             startActivity(intent)
                             result.success(true)
                         } catch (err: Exception) {
-                            result.error("OVERLAY_INTENT_ERROR", err.message, null)
+                            try {
+                                val appInfoIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:$packageName")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(appInfoIntent)
+                                result.success(true)
+                            } catch (finalErr: Exception) {
+                                result.error("OVERLAY_INTENT_ERROR", finalErr.message, null)
+                            }
                         }
                     }
                 }
@@ -349,10 +398,13 @@ class MainActivity : FlutterActivity() {
                 }
                 val payloadString = payloadObj.toString()
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                val editor = prefs.edit().putString("flutter.pending_incoming_order_payload", payloadString)
+                val editor = prefs.edit()
+                    .putString("flutter.pending_incoming_order_payload", payloadString)
+                    .putString("pending_incoming_order_payload", payloadString)
                 val action = extras.getString("pending_notification_action")
                 if (!action.isNullOrEmpty()) {
                     editor.putString("flutter.pending_notification_action", action)
+                    editor.putString("pending_notification_action", action)
                 }
                 editor.apply()
             } catch (e: Exception) {
@@ -369,34 +421,37 @@ class MainActivity : FlutterActivity() {
         lastWakeTime = now
 
         try {
-            if (activeWakeLock?.isHeld == true) {
-                activeWakeLock?.release()
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+            val isLocked = keyguardManager?.isKeyguardLocked ?: false
+
+            if (isLocked) {
+                if (activeWakeLock?.isHeld == true) {
+                    activeWakeLock?.release()
+                }
+                val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                activeWakeLock = pm?.newWakeLock(
+                    PowerManager.SCREEN_DIM_WAKE_LOCK or
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    PowerManager.ON_AFTER_RELEASE,
+                    "apnapos:main_activity_wake"
+                )
+                activeWakeLock?.acquire(5000)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    setShowWhenLocked(true)
+                    setTurnScreenOn(true)
+                    keyguardManager?.requestDismissKeyguard(this, null)
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.addFlags(
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                    )
+                }
             }
-            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            activeWakeLock = pm?.newWakeLock(
-                PowerManager.SCREEN_DIM_WAKE_LOCK or
-                PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                PowerManager.ON_AFTER_RELEASE,
-                "apnapos:main_activity_wake"
-            )
-            activeWakeLock?.acquire(5000)
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
-            keyguardManager?.requestDismissKeyguard(this, null)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-            )
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }

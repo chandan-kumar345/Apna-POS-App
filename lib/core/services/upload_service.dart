@@ -156,4 +156,50 @@ class UploadService {
       return null;
     }
   }
+
+  /// Upload an audio ringtone file to Server / Cloudflare R2
+  /// [file]: Audio File or bytes
+  /// [type]: 'notification' or 'order'
+  /// [name]: Custom label / title for the ringtone
+  Future<Map<String, dynamic>?> uploadRingtone({
+    File? file,
+    Uint8List? bytes,
+    required String fileName,
+    String type = 'order',
+    String? name,
+  }) async {
+    try {
+      final multipartFile = file != null
+          ? await MultipartFile.fromFile(file.path, filename: fileName)
+          : MultipartFile.fromBytes(bytes!, filename: fileName);
+
+      final formData = FormData.fromMap({
+        'audio': multipartFile,
+        'type': type,
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+      });
+
+      final response = await _client.post(
+        ApiEndpoints.uploadRingtone,
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          sendTimeout: const Duration(minutes: 2),
+          receiveTimeout: const Duration(minutes: 2),
+        ),
+      );
+
+      if (response != null && response is Map<String, dynamic>) {
+        if (response['success'] == true && response['data'] != null) {
+          final data = Map<String, dynamic>.from(response['data'] as Map);
+          debugPrint('[UploadService] Ringtone uploaded successfully: ${data['url']}');
+          return data;
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[UploadService] Ringtone upload failed: $e');
+      return null;
+    }
+  }
 }

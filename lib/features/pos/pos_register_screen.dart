@@ -2599,7 +2599,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       key: ValueKey('media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}'),
       item: item,
       fit: BoxFit.cover,
-      showDots: true,
+      showDots: false,
+      autoSlide: false,
       priorityPlayback: priorityPlayback,
       borderRadius: BorderRadius.circular(12),
     );

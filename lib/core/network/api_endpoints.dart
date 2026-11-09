@@ -529,6 +529,9 @@ class ApiEndpoints {
   static const String notificationsClearAll = '/notifications/clear-all';
   static const String registerDeviceToken = '/notifications/device-token';
   static const String triggerDailySummary = '/notifications/trigger-daily-summary';
+  static const String notificationSettings = '/notifications/settings';
+  static const String uploadRingtone = '/notifications/upload-ringtone';
+  static String deleteCustomRingtone(String id) => '/notifications/custom-ringtone/$id';
 
   // Subscription & Lead endpoints
   static const String subscriptionPlans = '/subscription/plans';

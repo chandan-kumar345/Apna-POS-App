@@ -34,6 +34,20 @@ const uploadVideoMulter = multer({
   },
 });
 
+const uploadAudioMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 15 * 1024 * 1024, // 15MB maximum audio size
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/') || file.originalname.match(/\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new ApiError(400, 'Only audio files (MP3, WAV, M4A, AAC, OGG) are allowed!'), false);
+    }
+  },
+});
+
 const optionalAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -50,6 +64,10 @@ router.post('/image', upload.single('image'), (req, res, next) =>
 
 router.post('/video', uploadVideoMulter.single('video'), (req, res, next) =>
   uploadController.uploadVideo(req, res, next)
+);
+
+router.post('/audio', uploadAudioMulter.single('audio'), (req, res, next) =>
+  uploadController.uploadAudio(req, res, next)
 );
 
 module.exports = router;

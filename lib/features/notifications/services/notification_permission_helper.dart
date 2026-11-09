@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/services/order_alert_permission_service.dart';
 
 class NotificationPermissionHelper {
   static const String _prefKeyInitialRequested = 'has_requested_initial_app_permissions';
@@ -66,8 +67,8 @@ class NotificationPermissionHelper {
   static Future<bool> isSystemAlertWindowGranted() async {
     try {
       if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
-      final status = await Permission.systemAlertWindow.status;
-      return status.isGranted;
+      final perms = await OrderAlertPermissionService.checkPermissions();
+      return perms['overlayGranted'] == true;
     } catch (_) {
       return false;
     }
@@ -75,14 +76,7 @@ class NotificationPermissionHelper {
 
   /// Request 'Display over other apps' permission
   static Future<bool> requestSystemAlertWindow() async {
-    try {
-      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
-      final status = await Permission.systemAlertWindow.request();
-      return status.isGranted;
-    } catch (e) {
-      debugPrint('[NotificationPermissionHelper] Error requesting systemAlertWindow: $e');
-      return false;
-    }
+    return OrderAlertPermissionService.requestOverlayPermission();
   }
 
   /// Check if battery optimizations are ignored (to prevent OEM background freezing)

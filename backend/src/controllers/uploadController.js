@@ -67,6 +67,37 @@ class UploadController {
       next(error);
     }
   }
+
+  async uploadAudio(req, res, next) {
+    try {
+      if (!req.file) {
+        throw ApiError.badRequest('Please upload an audio file (MP3, WAV, M4A, AAC, OGG)');
+      }
+
+      const folder = req.query.folder || 'ringtones';
+      let audioUrl = await storageService.uploadMedia(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype,
+        folder
+      );
+
+      if (audioUrl && audioUrl.startsWith('/')) {
+        const host = req.get('host');
+        const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+        audioUrl = `${proto}://${host}${audioUrl}`;
+      }
+
+      return ApiResponse.success(
+        res,
+        { audioUrl, folder, fileName: req.file.originalname },
+        'Audio uploaded successfully',
+        201
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new UploadController();

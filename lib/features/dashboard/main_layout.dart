@@ -36,6 +36,7 @@ import '../staff/screens/staff_profile_screen.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/services/wallet_service.dart';
 import '../../core/services/local_notification_service.dart';
+import '../../core/services/order_alert_permission_service.dart';
 
 
 /// Declarative Navigation Item Definition for dynamic sidebar rendering
@@ -503,6 +504,13 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       });
       // Check for incoming orders delivered while app was asleep or closed
       LocalNotificationService.checkAndShowPendingIncomingOrder();
+
+      // Proactively ask for 'Display over other apps' permission on Android if not granted
+      Future.delayed(const Duration(milliseconds: 1800), () {
+        if (mounted) {
+          OrderAlertPermissionService.showOverlayPermissionPromptIfNeeded(context);
+        }
+      });
     });
   }
 

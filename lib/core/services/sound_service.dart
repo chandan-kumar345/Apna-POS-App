@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../features/pos/pos_register_screen.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import '../network/api_endpoints.dart';
 
 class SoundService {
   static final SoundService _instance = SoundService._internal();
@@ -12,6 +15,20 @@ class SoundService {
 
   static const String _prefKeySoundEnabled = 'sound_feedback_enabled';
   static bool soundEnabled = true;
+
+  // Custom Ringtone and Sound configuration
+  static String orderRingtoneUrl = 'sounds/order_recieve_ringtone.mp3';
+  static String orderRingtoneName = 'Default Apna POS (Looping Alarm)';
+  static String orderRingtoneType = 'default';
+  static double orderVolume = 1.0;
+
+  static String notificationSoundUrl = 'sounds/Notification_sound.mp3';
+  static String notificationSoundName = 'Default Apna POS (Chime)';
+  static String notificationSoundType = 'default';
+  static double notificationVolume = 1.0;
+
+  static String? currentlyPreviewingSource;
+  static bool isPreviewPlaying = false;
 
   @visibleForTesting
   static VoidCallback? onButtonClickForTest;
@@ -25,6 +42,8 @@ class SoundService {
   AudioPlayer? _keyPlayer;
   AudioPlayer? _notificationPlayer;
   AudioPlayer? _ringtonePlayer;
+  AudioPlayer? _previewPlayer;
+  StreamSubscription? _previewCompleteSub;
 
   bool _isInitialized = false;
   int _lastButtonClickTime = 0;
@@ -38,6 +57,16 @@ class SoundService {
       final prefs = await SharedPreferences.getInstance();
       soundEnabled = prefs.getBool(_prefKeySoundEnabled) ?? true;
 
+      orderRingtoneUrl = prefs.getString('pref_order_ringtone_url') ?? 'sounds/order_recieve_ringtone.mp3';
+      orderRingtoneName = prefs.getString('pref_order_ringtone_name') ?? 'Default Apna POS (Looping Alarm)';
+      orderRingtoneType = prefs.getString('pref_order_ringtone_type') ?? 'default';
+      orderVolume = prefs.getDouble('pref_order_volume') ?? 1.0;
+
+      notificationSoundUrl = prefs.getString('pref_notif_sound_url') ?? 'sounds/Notification_sound.mp3';
+      notificationSoundName = prefs.getString('pref_notif_sound_name') ?? 'Default Apna POS (Chime)';
+      notificationSoundType = prefs.getString('pref_notif_sound_type') ?? 'default';
+      notificationVolume = prefs.getDouble('pref_notif_volume') ?? 1.0;
+
       if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
         _isInitialized = true;
         return;
@@ -47,18 +76,21 @@ class SoundService {
       _keyPlayer = AudioPlayer();
       _notificationPlayer = AudioPlayer();
       _ringtonePlayer = AudioPlayer();
+      _previewPlayer = AudioPlayer();
 
       if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
         await _buttonPlayer?.setPlayerMode(PlayerMode.lowLatency);
         await _keyPlayer?.setPlayerMode(PlayerMode.lowLatency);
         await _notificationPlayer?.setPlayerMode(PlayerMode.lowLatency);
         await _ringtonePlayer?.setPlayerMode(PlayerMode.mediaPlayer);
+        await _previewPlayer?.setPlayerMode(PlayerMode.mediaPlayer);
       }
 
       await _buttonPlayer?.setReleaseMode(ReleaseMode.stop);
       await _keyPlayer?.setReleaseMode(ReleaseMode.stop);
       await _notificationPlayer?.setReleaseMode(ReleaseMode.stop);
       await _ringtonePlayer?.setReleaseMode(ReleaseMode.loop);
+      await _previewPlayer?.setReleaseMode(ReleaseMode.stop);
 
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         await _ringtonePlayer?.setAudioContext(
@@ -89,10 +121,20 @@ class SoundService {
       // Clean, crisp acoustic volumes
       await _buttonPlayer?.setVolume(0.85);
       await _keyPlayer?.setVolume(0.40);
-      await _notificationPlayer?.setVolume(0.95);
-      await _ringtonePlayer?.setVolume(1.0);
+      await _notificationPlayer?.setVolume(notificationVolume);
+      await _ringtonePlayer?.setVolume(orderVolume);
 
       _isInitialized = true;
+
+      // Prefetch and cache custom ringtone & notification sounds in background for 0ms offline playback
+      if (!kIsWeb) {
+        if (orderRingtoneUrl.isNotEmpty) {
+          prefetchAndCacheAudio(orderRingtoneUrl);
+        }
+        if (notificationSoundUrl.isNotEmpty) {
+          prefetchAndCacheAudio(notificationSoundUrl);
+        }
+      }
     } catch (_) {
       _isInitialized = false;
     }
@@ -117,9 +159,6 @@ class SoundService {
 
   /// Bring Android app / MainActivity directly to the front over any currently open app or lock screen
   static Future<void> bringAppToFront({String? payload, bool isUrgent = true}) async {
-    if (PosRegisterScreen.isPosScreenActive) {
-      return;
-    }
     final now = DateTime.now().millisecondsSinceEpoch;
     final cooldown = isUrgent ? 4000 : 8000;
     if (now - _lastBringToFrontTime < cooldown) return;
@@ -177,6 +216,128 @@ class SoundService {
     }
   }
 
+  static final Map<String, String> _memoryAudioCache = {};
+
+  /// Directly associate a local file path with a URL in the cache map
+  static void cacheLocalFile(String rawUrl, String filePath) {
+    if (kIsWeb) return;
+    try {
+      final resolved = ApiEndpoints.resolveMediaUrl(rawUrl);
+      _memoryAudioCache[rawUrl] = filePath;
+      _memoryAudioCache[resolved] = filePath;
+      debugPrint('[SoundService] Registered local file in audio cache: $rawUrl -> $filePath');
+    } catch (_) {}
+  }
+
+  /// Pre-cache a remote audio file to local storage so it plays instantly with 0ms latency and 100% offline
+  static Future<String?> prefetchAndCacheAudio(String? rawUrl) async {
+    if (kIsWeb || rawUrl == null || rawUrl.trim().isEmpty) return null;
+    final clean = rawUrl.trim();
+    if (clean.startsWith('sounds/') || clean.startsWith('assets/sounds/')) {
+      return null;
+    }
+    if (File(clean).existsSync()) {
+      return clean;
+    }
+
+    final resolved = ApiEndpoints.resolveMediaUrl(clean);
+    if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
+      return null;
+    }
+
+    if (_memoryAudioCache.containsKey(resolved)) {
+      final cached = _memoryAudioCache[resolved]!;
+      if (File(cached).existsSync() && File(cached).lengthSync() > 100) {
+        return cached;
+      }
+    }
+
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final dir = Directory('${appDir.path}/ringtones');
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+
+      final uri = Uri.parse(resolved);
+      final rawExt = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last.toLowerCase() : 'mp3';
+      final ext = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac'].contains(rawExt) ? rawExt : 'mp3';
+      final fileName = 'ringtone_${resolved.hashCode.abs()}.$ext';
+      final targetFile = File('${dir.path}/$fileName');
+
+      if (targetFile.existsSync() && targetFile.lengthSync() > 100) {
+        _memoryAudioCache[resolved] = targetFile.path;
+        return targetFile.path;
+      }
+
+      final response = await http.get(uri).timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200 && response.bodyBytes.length > 100) {
+        await targetFile.writeAsBytes(response.bodyBytes);
+        _memoryAudioCache[resolved] = targetFile.path;
+        debugPrint('[SoundService] Cached custom audio locally: ${targetFile.path} (${response.bodyBytes.length} bytes)');
+        return targetFile.path;
+      }
+    } catch (e) {
+      debugPrint('[SoundService] Prefetch audio failed for "$resolved": $e');
+    }
+    return null;
+  }
+
+  /// Resolve raw source (asset, local file, or remote URL) to an audioplayers Source
+  static Future<Source> resolveAudioSource(String? rawSource, {bool isOrder = true}) async {
+    final defaultAsset = isOrder
+        ? 'sounds/order_recieve_ringtone.mp3'
+        : 'sounds/Notification_sound.mp3';
+
+    if (rawSource == null || rawSource.trim().isEmpty) {
+      return AssetSource(defaultAsset);
+    }
+
+    var clean = rawSource.trim();
+
+    // 1. Asset path
+    if (clean.startsWith('sounds/') || clean.startsWith('assets/sounds/')) {
+      return AssetSource(clean.replaceFirst(RegExp(r'^assets/'), ''));
+    }
+
+    // 2. Direct local file on disk
+    if (!kIsWeb) {
+      try {
+        final f = File(clean);
+        if (f.existsSync()) {
+          return DeviceFileSource(f.path);
+        }
+      } catch (_) {}
+    }
+
+    // 3. Resolve URL via ApiEndpoints (handles relative /uploads/..., localhost rewrites, etc.)
+    final resolved = ApiEndpoints.resolveMediaUrl(clean);
+
+    // If resolved to a local file
+    if (!kIsWeb) {
+      try {
+        final f = File(resolved);
+        if (f.existsSync()) {
+          return DeviceFileSource(f.path);
+        }
+      } catch (_) {}
+    }
+
+    // 4. Remote HTTP/HTTPS URL
+    if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+      if (!kIsWeb) {
+        // Check local cache
+        final cached = await prefetchAndCacheAudio(resolved);
+        if (cached != null && File(cached).existsSync()) {
+          return DeviceFileSource(cached);
+        }
+      }
+      return UrlSource(resolved);
+    }
+
+    return AssetSource(defaultAsset);
+  }
+
   void _playOrderRingtoneAsset() async {
     if (_isStartingRingtone) return;
     _isStartingRingtone = true;
@@ -187,10 +348,18 @@ class SoundService {
         await _ringtonePlayer?.setReleaseMode(ReleaseMode.loop);
       }
       await _ringtonePlayer?.stop();
-      await _ringtonePlayer?.setVolume(1.0);
-      await _ringtonePlayer?.play(AssetSource('sounds/order_recieve_ringtone.mp3'));
-    } catch (_) {
-      _playNotificationAsset();
+      await _ringtonePlayer?.setVolume(orderVolume);
+
+      final source = await resolveAudioSource(orderRingtoneUrl, isOrder: true);
+      debugPrint('[SoundService] 🔔 Playing active order ringtone: $orderRingtoneUrl -> $source at volume $orderVolume');
+      await _ringtonePlayer?.play(source);
+    } catch (e) {
+      debugPrint('[SoundService] Failed playing custom order ringtone: $e. Falling back to default.');
+      try {
+        await _ringtonePlayer?.play(AssetSource('sounds/order_recieve_ringtone.mp3'));
+      } catch (_) {
+        _playNotificationAsset();
+      }
     } finally {
       _isStartingRingtone = false;
     }
@@ -203,6 +372,161 @@ class SoundService {
       await _instance._ringtonePlayer?.stop();
     } catch (_) {}
   }
+
+  /// Start previewing an audio ringtone or notification sound
+  static Future<void> startPreview({
+    required String source,
+    required bool isLooping,
+    double volume = 1.0,
+    VoidCallback? onComplete,
+  }) async {
+    try {
+      await stopPreview();
+      final player = _instance._previewPlayer ??= AudioPlayer();
+      await player.setPlayerMode(PlayerMode.mediaPlayer);
+      await player.setReleaseMode(isLooping ? ReleaseMode.loop : ReleaseMode.stop);
+      await player.setVolume(volume);
+
+      _instance._previewCompleteSub?.cancel();
+      _instance._previewCompleteSub = player.onPlayerComplete.listen((_) {
+        isPreviewPlaying = false;
+        currentlyPreviewingSource = null;
+        _instance._previewCompleteSub?.cancel();
+        _instance._previewCompleteSub = null;
+        onComplete?.call();
+      });
+
+      final audioSource = await resolveAudioSource(source, isOrder: isLooping);
+      await player.play(audioSource);
+      isPreviewPlaying = true;
+      currentlyPreviewingSource = source;
+    } catch (e) {
+      debugPrint('[SoundService] Preview error: $e');
+      isPreviewPlaying = false;
+      currentlyPreviewingSource = null;
+    }
+  }
+
+  /// Stop current sound preview
+  static Future<void> stopPreview() async {
+    try {
+      isPreviewPlaying = false;
+      currentlyPreviewingSource = null;
+      _instance._previewCompleteSub?.cancel();
+      _instance._previewCompleteSub = null;
+      await _instance._previewPlayer?.stop();
+    } catch (_) {}
+  }
+
+  /// Synchronize sound preferences locally and update runtime state
+  Future<void> updateSoundPreferences({
+    String? orderRingtoneUrl,
+    String? orderRingtoneName,
+    String? orderRingtoneType,
+    double? orderVolume,
+    String? notificationSoundUrl,
+    String? notificationSoundName,
+    String? notificationSoundType,
+    double? notificationVolume,
+    bool? soundEnabled,
+    String? orderUrl,
+    String? orderName,
+    String? orderType,
+    double? orderVol,
+    String? notifUrl,
+    String? notifName,
+    String? notifType,
+    double? notifVol,
+    bool? isSoundOn,
+  }) async {
+    final effectiveOrderUrl = orderRingtoneUrl ?? orderUrl;
+    final effectiveOrderName = orderRingtoneName ?? orderName;
+    final effectiveOrderType = orderRingtoneType ?? orderType;
+    final effectiveOrderVol = orderVolume ?? orderVol;
+
+    final effectiveNotifUrl = notificationSoundUrl ?? notifUrl;
+    final effectiveNotifName = notificationSoundName ?? notifName;
+    final effectiveNotifType = notificationSoundType ?? notifType;
+    final effectiveNotifVol = notificationVolume ?? notifVol;
+
+    final effectiveSoundEnabled = soundEnabled ?? isSoundOn;
+
+    if (effectiveOrderUrl != null) SoundService.orderRingtoneUrl = effectiveOrderUrl;
+    if (effectiveOrderName != null) SoundService.orderRingtoneName = effectiveOrderName;
+    if (effectiveOrderType != null) SoundService.orderRingtoneType = effectiveOrderType;
+    if (effectiveOrderVol != null) SoundService.orderVolume = effectiveOrderVol;
+
+    if (effectiveNotifUrl != null) SoundService.notificationSoundUrl = effectiveNotifUrl;
+    if (effectiveNotifName != null) SoundService.notificationSoundName = effectiveNotifName;
+    if (effectiveNotifType != null) SoundService.notificationSoundType = effectiveNotifType;
+    if (effectiveNotifVol != null) SoundService.notificationVolume = effectiveNotifVol;
+
+    if (effectiveSoundEnabled != null) SoundService.soundEnabled = effectiveSoundEnabled;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (effectiveOrderUrl != null) await prefs.setString('pref_order_ringtone_url', effectiveOrderUrl);
+      if (effectiveOrderName != null) await prefs.setString('pref_order_ringtone_name', effectiveOrderName);
+      if (effectiveOrderType != null) await prefs.setString('pref_order_ringtone_type', effectiveOrderType);
+      if (effectiveOrderVol != null) await prefs.setDouble('pref_order_volume', effectiveOrderVol);
+
+      if (effectiveNotifUrl != null) await prefs.setString('pref_notif_sound_url', effectiveNotifUrl);
+      if (effectiveNotifName != null) await prefs.setString('pref_notif_sound_name', effectiveNotifName);
+      if (effectiveNotifType != null) await prefs.setString('pref_notif_sound_type', effectiveNotifType);
+      if (effectiveNotifVol != null) await prefs.setDouble('pref_notif_volume', effectiveNotifVol);
+
+      if (effectiveSoundEnabled != null) await prefs.setBool(_prefKeySoundEnabled, effectiveSoundEnabled);
+
+      if (SoundService.orderVolume > 0 && _ringtonePlayer != null) {
+        await _ringtonePlayer?.setVolume(SoundService.orderVolume);
+      }
+      if (SoundService.notificationVolume > 0 && _notificationPlayer != null) {
+        await _notificationPlayer?.setVolume(SoundService.notificationVolume);
+      }
+
+      // Prefetch audio in background so when an order or alert arrives it plays instantly
+      if (!kIsWeb) {
+        if (effectiveOrderUrl != null && effectiveOrderUrl.isNotEmpty) {
+          prefetchAndCacheAudio(effectiveOrderUrl);
+        }
+        if (effectiveNotifUrl != null && effectiveNotifUrl.isNotEmpty) {
+          prefetchAndCacheAudio(effectiveNotifUrl);
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Static helper for backwards compatibility
+  static Future<void> syncSoundPreferences({
+    String? orderRingtoneUrl,
+    String? orderRingtoneName,
+    String? orderRingtoneType,
+    double? orderVolume,
+    String? notificationSoundUrl,
+    String? notificationSoundName,
+    String? notificationSoundType,
+    double? notificationVolume,
+    bool? soundEnabled,
+    String? orderUrl,
+    String? orderName,
+    String? orderType,
+    double? orderVol,
+    String? notifUrl,
+    String? notifName,
+    String? notifType,
+    double? notifVol,
+    bool? isSoundOn,
+  }) => _instance.updateSoundPreferences(
+    orderRingtoneUrl: orderRingtoneUrl ?? orderUrl,
+    orderRingtoneName: orderRingtoneName ?? orderName,
+    orderRingtoneType: orderRingtoneType ?? orderType,
+    orderVolume: orderVolume ?? orderVol,
+    notificationSoundUrl: notificationSoundUrl ?? notifUrl,
+    notificationSoundName: notificationSoundName ?? notifName,
+    notificationSoundType: notificationSoundType ?? notifType,
+    notificationVolume: notificationVolume ?? notifVol,
+    soundEnabled: soundEnabled ?? isSoundOn,
+  );
 
   /// Play real-time iPhone-style click sound when sound setting is on
   static void playIphoneClickSound() => playButtonClick();
@@ -237,9 +561,23 @@ class SoundService {
 
   void _playNotificationAsset() async {
     try {
+      if (_notificationPlayer == null) {
+        _notificationPlayer = AudioPlayer();
+        await _notificationPlayer?.setPlayerMode(PlayerMode.lowLatency);
+        await _notificationPlayer?.setReleaseMode(ReleaseMode.stop);
+      }
       await _notificationPlayer?.stop();
-      await _notificationPlayer?.play(AssetSource('sounds/Notification_sound.mp3'));
-    } catch (_) {}
+      await _notificationPlayer?.setVolume(notificationVolume);
+
+      final source = await resolveAudioSource(notificationSoundUrl, isOrder: false);
+      debugPrint('[SoundService] 🔔 Playing active notification alert sound: $notificationSoundUrl -> $source at volume $notificationVolume');
+      await _notificationPlayer?.play(source);
+    } catch (e) {
+      debugPrint('[SoundService] Failed playing custom notification sound: $e. Falling back to default.');
+      try {
+        await _notificationPlayer?.play(AssetSource('sounds/Notification_sound.mp3'));
+      } catch (_) {}
+    }
   }
 
   /// Play crisp real-time button click sound on interactive tap without double-trigger

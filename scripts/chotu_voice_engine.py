@@ -96,20 +96,9 @@ def run_listener():
                     combined_text = " ".join(accumulated_phrases).strip()
                     
                     print(json.dumps({"status": "PARTIAL", "text": combined_text}), flush=True)
-
-                    # Check if user said "understand" / "samajh gaye" to end conversation
-                    if contains_trigger(combined_text) or contains_trigger(chunk_text):
-                        print(json.dumps({
-                            "status": "RECOGNIZED",
-                            "text": combined_text,
-                            "trigger_ended": True,
-                            "confidence": 0.98
-                        }), flush=True)
-                        return
-                    else:
-                        # Once a complete POS phrase is spoken and paused, finalize
-                        time.sleep(0.1)
-                        break
+                    # Natural VAD: If a complete phrase is recognized and user pauses, finalize
+                    time.sleep(0.1)
+                    break
 
             final_text = " ".join(accumulated_phrases).strip()
             if final_text:

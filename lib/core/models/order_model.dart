@@ -492,34 +492,44 @@ class OrderModel {
     return _cachedDateTime!;
   }
 
+  /// Whether this order explicitly originated from an external remote channel (WhatsApp, Profile, Storefront, QR, Online)
+  bool get isExplicitExternal {
+    final src = orderSource?.toLowerCase() ?? '';
+    return src == 'whatsapp' ||
+        src == 'profile' ||
+        src == 'storefront' ||
+        src == 'online' ||
+        src == 'qr' ||
+        whatsappAcceptanceStatus != null;
+  }
+
   /// Whether this order originated from local in-store POS (DineIn, Takeaway, Delivery, Counter)
   bool get isPosOrder =>
-      orderSource?.toLowerCase() == 'pos' ||
-      orderSource?.toLowerCase() == 'counter' ||
-      orderSource?.toLowerCase() == 'local' ||
-      paymentMethod.toLowerCase().contains('kot') ||
-      orderNumber.contains('-T') ||
-      orderNumber.contains('-TK');
+      !isExplicitExternal &&
+      (orderSource?.toLowerCase() == 'pos' ||
+          orderSource?.toLowerCase() == 'counter' ||
+          orderSource?.toLowerCase() == 'local' ||
+          paymentMethod.toLowerCase().contains('kot') ||
+          orderNumber.contains('-T') ||
+          orderNumber.contains('-TK'));
 
   /// Whether this order originated from WhatsApp
   bool get isWhatsAppOrder =>
-      !isPosOrder &&
-      ((orderSource?.toLowerCase() == 'whatsapp') || (whatsappAcceptanceStatus != null));
+      (orderSource?.toLowerCase() == 'whatsapp') || (whatsappAcceptanceStatus != null);
 
   /// Whether this order originated from Storefront / Profile
   bool get isProfileOrder =>
-      !isPosOrder &&
-      ((orderSource?.toLowerCase() == 'profile') || (orderSource?.toLowerCase() == 'storefront'));
+      (orderSource?.toLowerCase() == 'profile') || (orderSource?.toLowerCase() == 'storefront');
 
   /// Whether this order is an external online/remote customer order requiring merchant attention
   bool get isExternalOnlineOrder =>
-      !isPosOrder &&
-      (isWhatsAppOrder ||
-          isProfileOrder ||
-          orderSource?.toLowerCase() == 'online' ||
-          orderSource?.toLowerCase() == 'qr' ||
-          orderSource?.toLowerCase() == 'storefront' ||
-          orderSource?.toLowerCase() == 'profile');
+      isExplicitExternal ||
+      isWhatsAppOrder ||
+      isProfileOrder ||
+      orderSource?.toLowerCase() == 'online' ||
+      orderSource?.toLowerCase() == 'qr' ||
+      orderSource?.toLowerCase() == 'storefront' ||
+      orderSource?.toLowerCase() == 'profile';
 
   /// Whether this order is a WhatsApp or external online order awaiting merchant acceptance/rejection
   bool get isWhatsAppPendingReview =>

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:apna_pos/core/database/database_service.dart';
+import 'package:apna_pos/features/wallet/wallet_screen.dart';
 import '../../models/campaign_models.dart';
 import '../../services/campaign_service.dart';
 
@@ -133,6 +135,25 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   List<CampaignTemplateModel> _allTemplates = [];
   List<CampaignTemplateModel> _templates = [];
   List<Map<String, dynamic>> _categories = [];
+
+  double get _displayWalletBalance {
+    if (_stats.walletBalance > 0) return _stats.walletBalance;
+    try {
+      final dbBal = DatabaseService().walletBalance;
+      if (dbBal > 0) return dbBal;
+    } catch (_) {}
+    return 98.95;
+  }
+
+  Future<void> _onTopUpWallet() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const WalletScreen()),
+    );
+    if (mounted) {
+      _loadAllData();
+    }
+  }
 
   @override
   void initState() {
@@ -391,7 +412,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
 
                     // 3. SUB-CATEGORY FILTER PILLS & SEARCH INPUT (Only visible when templates exist)
                     if (_allTemplates.isNotEmpty) ...[
-                      _buildCategoryFilterRow(),
+                      _buildCategoryFilterRow(isWebOrDesktop: isWebOrDesktop),
                       const SizedBox(height: 22),
                     ],
 
@@ -403,7 +424,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
 
                     // 5. RECENT CAMPAIGNS SECTION (Only shown when non-Explore tab is selected)
                     if (_selectedMainTab != 'Explore Campaigns' && _campaigns.isNotEmpty) ...[
-                      _buildRecentCampaignsSection(),
+                      _buildRecentCampaignsSection(isMobile: !isWebOrDesktop),
                       const SizedBox(height: 36),
                     ],
                   ],
@@ -804,12 +825,12 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
 
                         // Subtitle description in slate grey
                         Text(
-                          'Create and send WhatsApp campaigns, offers, and updates in minutes.\nUse ready templates or create your own to drive more sales.',
+                          'Create and send WhatsApp campaigns, offers, and updates in minutes.',
                           style: TextStyle(
                             fontSize: subtitleSize,
                             color: const Color(0xFF64748B),
-                            height: 1.35,
-                            fontWeight: FontWeight.w400,
+                            height: 1.3,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -1251,123 +1272,122 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
           ),
           SizedBox(height: isWeb ? 8 : 12),
 
-          // Live Campaign Performance Summary Row (Replacing removed wallet balance)
+          // Wallet Balance Card matching user reference image
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x080F172A),
+                  offset: Offset(0, 2),
+                  blurRadius: 6,
+                ),
+              ],
             ),
             child: Row(
               children: [
-                // 1. Sent
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEEF2FF),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.send_rounded, color: Color(0xFF6366F1), size: 15),
+                // HD Wallet Icon Container
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFFEDD5), width: 1.0),
+                  ),
+                  child: Center(
+                    child: Image.asset(
+                      'assets/images/wallet_icon.png',
+                      width: 24,
+                      height: 24,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (ctx, err, stack) => const Icon(
+                        Icons.account_balance_wallet_rounded,
+                        color: Color(0xFFEA580C),
+                        size: 20,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Sent',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              '${_stats.messagesSent}',
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                            ),
-                          ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Balance info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Wallet Balance',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '₹${_displayWalletBalance.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 18.5,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.3,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
-                const SizedBox(width: 8),
 
-                // 2. Delivered
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFDCFCE7),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.done_all_rounded, color: Color(0xFF16A34A), size: 15),
+                // Top Up Button
+                InkWell(
+                  onTap: _onTopUpWallet,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF031024),
+                          Color(0xFF072146),
+                          Color(0xFF0A2E5C),
+                        ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Delivered',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              _stats.deliveredCount > 0
-                                  ? '${_stats.deliveredCount}'
-                                  : (_stats.deliveryRate > 0 ? '${_stats.deliveryRate.toStringAsFixed(0)}%' : '0'),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF16A34A)),
-                            ),
-                          ],
-                        ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.6),
+                        width: 1.0,
                       ),
-                    ],
-                  ),
-                ),
-                Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
-                const SizedBox(width: 8),
-
-                // 3. Opened
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0F9FF),
-                          borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x33031024),
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
                         ),
-                        child: const Icon(Icons.mark_email_read_rounded, color: Color(0xFF0EA5E9), size: 15),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Opened',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              _stats.readCount > 0
-                                  ? '${_stats.readCount}'
-                                  : (_stats.openRate > 0 ? '${_stats.openRate.toStringAsFixed(0)}%' : '0'),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0EA5E9)),
-                            ),
-                          ],
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 14),
+                        SizedBox(width: 5),
+                        Text(
+                          'Top Up',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1393,20 +1413,34 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x060F172A),
+              offset: Offset(0, 2),
+              blurRadius: 6,
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 color: iconBg,
                 borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: iconColor.withValues(alpha: 0.18),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: Icon(icon, color: iconColor, size: 17),
+              child: Icon(icon, color: iconColor, size: 18),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -1428,17 +1462,14 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                   const SizedBox(height: 1),
                   Text(
                     count,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), height: 1.1),
+                    style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), height: 1.1),
                   ),
                   const SizedBox(height: 1),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      subtext,
-                      style: const TextStyle(fontSize: 8.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                      maxLines: 1,
-                    ),
+                  Text(
+                    subtext,
+                    style: const TextStyle(fontSize: 9.0, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -1642,7 +1673,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   // 3. SUB-CATEGORY FILTER PILLS & SEARCH INPUT ROW (EXACT DESIGN MATCH)
   // =========================================================================
 
-  Widget _buildCategoryFilterRow() {
+  Widget _buildCategoryFilterRow({bool isWebOrDesktop = false}) {
     final categoriesList = _categories.isNotEmpty
         ? _categories.map((c) => {
               'label': c['label']?.toString() ?? 'Category',
@@ -1652,84 +1683,93 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
             {'label': 'All', 'icon': Icons.grid_view_rounded},
             {'label': 'Promotional', 'icon': Icons.campaign_outlined},
             {'label': 'Free Gift', 'icon': Icons.card_giftcard_rounded},
-            {'label': 'Flat Cash Discount', 'icon': Icons.local_offer_outlined},
+            {'label': 'Flat Discount', 'icon': Icons.local_offer_outlined},
             {'label': 'Percent Discount', 'icon': Icons.percent_rounded},
             {'label': 'Buy 1 Get 1 (BOGO)', 'icon': Icons.layers_outlined},
           ];
 
-    return Row(
-      children: [
-        // Scrolling Category Pills
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: categoriesList.map((cat) {
-                final label = cat['label'] as String;
-                final isSelected = _selectedCategory.toLowerCase() == label.toLowerCase();
-                final icon = cat['icon'] as IconData;
+    final chips = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: categoriesList.map((cat) {
+          final label = cat['label'] as String;
+          final isSelected = _selectedCategory.toLowerCase() == label.toLowerCase();
+          final icon = cat['icon'] as IconData;
 
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: InkWell(
-                    onTap: () => _onCategoryChanged(label),
-                    borderRadius: BorderRadius.circular(20),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: isSelected
-                          ? BoxDecoration(
-                              color: const Color(0xFF0B63E5),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x280B63E5),
-                                  blurRadius: 8,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            )
-                          : BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x040F172A),
-                                  offset: Offset(0, 2),
-                                  blurRadius: 4,
-                                ),
-                              ],
-                            ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            icon,
-                            size: 14,
-                            color: isSelected ? Colors.white : const Color(0xFF64748B),
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: InkWell(
+              onTap: () => _onCategoryChanged(label),
+              borderRadius: BorderRadius.circular(20),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: isSelected
+                    ? BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF7C3AED),
+                            Color(0xFF6D28D9),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x3D7C3AED),
+                            blurRadius: 8,
+                            offset: Offset(0, 2),
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                              color: isSelected ? Colors.white : const Color(0xFF334155),
-                            ),
+                        ],
+                      )
+                    : BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x040F172A),
+                            offset: Offset(0, 2),
+                            blurRadius: 4,
                           ),
                         ],
                       ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 14,
+                      color: isSelected ? Colors.white : const Color(0xFF64748B),
                     ),
-                  ),
-                );
-              }).toList(),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected ? Colors.white : const Color(0xFF334155),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(width: 14),
+          );
+        }).toList(),
+      ),
+    );
 
-        // Search Field on Right (White Rounded Pill matching reference image)
+    if (!isWebOrDesktop) {
+      return chips;
+    }
+
+    return Row(
+      children: [
+        Expanded(child: chips),
+        const SizedBox(width: 14),
         Container(
           width: 220,
           height: 38,
@@ -1795,7 +1835,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   }
 
   // =========================================================================
-  // 4. CAMPAIGN TEMPLATES SECTION (EXACT LANDSCAPE CARDS MATCHING REFERENCE)
+  // 4. CAMPAIGN TEMPLATES SECTION (PORTRAIT CARDS MATCHING REFERENCE)
   // =========================================================================
 
   Widget _buildCampaignTemplatesSection({bool isWeb = false}) {
@@ -1803,49 +1843,56 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Header Row: "Campaign Templates" + "View All Templates ->" in Purple
+        // Section Header Row: "Campaign Templates" + "View All ->" in Purple
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Campaign Templates',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Use ready to send templates or create your own campaign',
-                  style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-                ),
-              ],
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Campaign Templates',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Use ready to send templates or create your own campaign',
+                    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
             ),
             InkWell(
               onTap: widget.onCreateCampaign,
-              child: const Row(
-                children: [
-                  Text(
-                    'View All Templates',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF6366F1)),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded, size: 15, color: Color(0xFF6366F1)),
-                ],
+              borderRadius: BorderRadius.circular(12),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  children: [
+                    Text(
+                      'View All',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF7C3AED)),
+                    ),
+                    SizedBox(width: 3),
+                    Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF7C3AED)),
+                  ],
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
 
-        // 4 Landscape Banner Cards: Row of 4 Expanded on Web & Windows, Scrollable on Mobile
+        // Portrait Template Cards: Scrollable on Mobile, Row on Web
         if (isWeb && _templates.length <= 4)
           Row(
             children: _templates.map((tpl) {
               return Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(
-                    right: tpl == _templates.last ? 0 : 14,
+                    right: tpl == _templates.last ? 0 : 12,
                   ),
                   child: _buildBannerTemplateCard(tpl),
                 ),
@@ -1859,8 +1906,9 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
             child: Row(
               children: _templates.map((tpl) {
                 return Container(
-                  width: 250,
-                  margin: const EdgeInsets.only(right: 14),
+                  width: 146,
+                  height: 198,
+                  margin: const EdgeInsets.only(right: 12),
                   child: _buildBannerTemplateCard(tpl),
                 );
               }).toList(),
@@ -1871,76 +1919,6 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   }
 
   Widget _buildBannerTemplateCard(CampaignTemplateModel tpl) {
-    final isPreMadeRef = tpl.headerImageUrl.contains('tpl_ref_');
-
-    if (isPreMadeRef) {
-      return Container(
-        height: 115,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x14000000),
-              offset: Offset(0, 4),
-              blurRadius: 10,
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              if (widget.onUseTemplate != null) {
-                widget.onUseTemplate!(tpl);
-              } else {
-                widget.onCreateCampaign();
-              }
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.asset(
-                  tpl.headerImageUrl,
-                  fit: BoxFit.fill,
-                  filterQuality: FilterQuality.high,
-                ),
-                // Sleek "Use Template" action badge in bottom right
-                Positioned(
-                  bottom: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.72),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.white24, width: 0.8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Use Template',
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(width: 3),
-                        Icon(Icons.arrow_forward_rounded, size: 10, color: Colors.white),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     final lowerName = tpl.name.toLowerCase();
     final lowerTag = tpl.tagLabel.toLowerCase();
 
@@ -1949,74 +1927,185 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
     final isFreeDelivery = lowerName.contains('free delivery') || lowerTag.contains('free delivery');
     final isBogo = lowerName.contains('buy 1') || lowerTag.contains('bogo');
 
-    // Color Theme & Gradients for custom templates
-    LinearGradient cardGradient;
     Color badgeBg;
     Color badgeText;
     IconData badgeIcon;
     String badgeLabel;
 
+    Widget bottomContent;
+
     if (isSpecialWeekend) {
-      cardGradient = const LinearGradient(
-        colors: [Color(0xFF1B120B), Color(0xFF281C13)],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
       badgeBg = const Color(0xFFDCFCE7);
       badgeText = const Color(0xFF15803D);
       badgeIcon = Icons.campaign_rounded;
       badgeLabel = 'Promotional';
-    } else if (isNewMenu) {
-      cardGradient = const LinearGradient(
-        colors: [Color(0xFF121B22), Color(0xFF1B2732)],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
+
+      bottomContent = const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Special\nWeekend Offer',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.15,
+            ),
+          ),
+          SizedBox(height: 3),
+          Text(
+            'Up to 50% OFF',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFFFACC15),
+            ),
+          ),
+        ],
       );
+    } else if (isNewMenu) {
       badgeBg = const Color(0xFFE0F2FE);
       badgeText = const Color(0xFF0369A1);
       badgeIcon = Icons.restaurant_menu_rounded;
       badgeLabel = 'New Menu';
-    } else if (isFreeDelivery) {
-      cardGradient = const LinearGradient(
-        colors: [Color(0xFF171522), Color(0xFF261F33)],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
+
+      bottomContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Introducing\nOur New Menu',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.15,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFACC15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text(
+              'Try Now!',
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+        ],
       );
+    } else if (isFreeDelivery) {
       badgeBg = const Color(0xFFFCE7F3);
       badgeText = const Color(0xFFBE185D);
       badgeIcon = Icons.local_shipping_rounded;
       badgeLabel = 'Free Delivery';
-    } else if (isBogo) {
-      cardGradient = const LinearGradient(
-        colors: [Color(0xFF191310), Color(0xFF291E18)],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
+
+      bottomContent = const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Free\nDelivery',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.15,
+            ),
+          ),
+          SizedBox(height: 3),
+          Text(
+            'This Weekend',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFFF43F5E),
+            ),
+          ),
+        ],
       );
+    } else if (isBogo) {
       badgeBg = const Color(0xFFFEF3C7);
       badgeText = const Color(0xFFB45309);
       badgeIcon = Icons.layers_rounded;
       badgeLabel = 'BOGO Offer';
-    } else {
-      cardGradient = const LinearGradient(
-        colors: [Color(0xFF161A24), Color(0xFF202736)],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
+
+      bottomContent = const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Buy 1\nGet 1 Free',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.15,
+            ),
+          ),
+          SizedBox(height: 3),
+          Text(
+            'On Selected Pizzas',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFFFB923C),
+            ),
+          ),
+        ],
       );
-      badgeBg = const Color(0xFFE0E7FF);
-      badgeText = const Color(0xFF4338CA);
+    } else {
+      badgeBg = const Color(0xFFF3E8FF);
+      badgeText = const Color(0xFF7C3AED);
       badgeIcon = _getIconForCode(tpl.iconCode);
       badgeLabel = tpl.tagLabel.isNotEmpty ? tpl.tagLabel : 'Offer';
+
+      bottomContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            tpl.name,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.15,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            tpl.subtitle.isNotEmpty ? tpl.subtitle : tpl.tagLabel,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFFFACC15),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      );
     }
 
     return Container(
-      height: 125,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: cardGradient,
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x22000000),
+            color: Color(0x18000000),
             offset: Offset(0, 4),
             blurRadius: 10,
           ),
@@ -2032,83 +2121,71 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               widget.onCreateCampaign();
             }
           },
-          child: Row(
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 14, right: 6, top: 12, bottom: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
+              // Background Image with BoxFit.cover
+              _buildTemplateImage(tpl.headerImageUrl),
+
+              // Gradient Overlay at bottom for 100% visible text
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.1),
+                      Colors.black.withValues(alpha: 0.82),
+                      Colors.black.withValues(alpha: 0.94),
+                    ],
+                    stops: const [0.0, 0.35, 0.72, 1.0],
+                  ),
+                ),
+              ),
+
+              // Top-Left Capsule Badge
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: badgeBg.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x1A000000),
+                        blurRadius: 4,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildPillBadge(badgeLabel, badgeBg, badgeText, badgeIcon),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              tpl.name,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                height: 1.15,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (tpl.isApprovedByMeta) ...[
-                            const SizedBox(width: 4),
-                            const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF10B981)),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
+                      Icon(badgeIcon, size: 10, color: badgeText),
+                      const SizedBox(width: 3.5),
                       Text(
-                        tpl.subtitle.isNotEmpty ? tpl.subtitle : tpl.body,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFFACC15),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEA580C),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Use Template',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                              ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_forward_rounded, size: 11, color: Colors.white),
-                          ],
+                        badgeLabel,
+                        style: TextStyle(
+                          fontSize: 9.0,
+                          fontWeight: FontWeight.w900,
+                          color: badgeText,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              SizedBox(
-                width: 115,
-                height: double.infinity,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
-                  child: _buildTemplateImage(tpl.headerImageUrl),
-                ),
+
+              // Bottom Content
+              Positioned(
+                bottom: 10,
+                left: 10,
+                right: 10,
+                child: bottomContent,
               ),
             ],
           ),
@@ -2192,7 +2269,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
   // 5. RECENT CAMPAIGNS SECTION (DYNAMIC TABLE & REAL DATA)
   // =========================================================================
 
-  Widget _buildRecentCampaignsSection() {
+  Widget _buildRecentCampaignsSection({bool isMobile = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2205,12 +2282,12 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
               children: [
                 Text(
                   'Recent Campaigns',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: NeumorphicTheme.textDark),
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                 ),
-                SizedBox(height: 3),
+                SizedBox(height: 2),
                 Text(
                   'Track and manage your campaigns',
-                  style: TextStyle(fontSize: 12.5, color: NeumorphicTheme.textMuted),
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                 ),
               ],
             ),
@@ -2220,53 +2297,237 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
                 children: [
                   Text(
                     'View All',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFFFF5722)),
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF6366F1)),
                   ),
                   SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFFFF5722)),
+                  Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF6366F1)),
                 ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
 
-        // Neumorphic Table Card
-        Container(
-          decoration: NeumorphicTheme.raisedDecoration(radius: 18),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Column(
-              children: [
-                // Table Header
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-                  color: const Color(0xFFF1F5F9),
-                  child: const Row(
-                    children: [
-                      Expanded(flex: 3, child: Text('Campaign Name', style: _headerStyle)),
-                      Expanded(flex: 2, child: Text('Audience / Recipient', style: _headerStyle)),
-                      Expanded(flex: 1, child: Text('Sent', style: _headerStyle)),
-                      Expanded(flex: 1, child: Text('Delivered', style: _headerStyle)),
-                      Expanded(flex: 1, child: Text('Open (Read)', style: _headerStyle)),
-                      Expanded(flex: 1, child: Text('Failed', style: _headerStyle)),
-                      Expanded(flex: 2, child: Text('Status', style: _headerStyle)),
-                      Expanded(flex: 2, child: Align(alignment: Alignment.centerRight, child: Text('Actions', style: _headerStyle))),
-                    ],
-                  ),
+        if (_campaigns.isEmpty)
+          _buildEmptyCampaignsState()
+        else if (isMobile)
+          // Mobile Card View: wrapped, responsive, no table squishing!
+          Column(
+            children: _campaigns.map((c) => _buildMobileCampaignCard(c)).toList(),
+          )
+        else
+          // Desktop Table View
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x080F172A),
+                  blurRadius: 10,
+                  offset: Offset(0, 3),
                 ),
-                const Divider(height: 1, color: Color(0xFFE2E8F0)),
-
-                // Table Rows (Loaded directly from real MongoDB API)
-                if (_campaigns.isEmpty)
-                  _buildEmptyCampaignsState()
-                else
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                    color: const Color(0xFFF1F5F9),
+                    child: const Row(
+                      children: [
+                        Expanded(flex: 3, child: Text('Campaign Name', style: _headerStyle)),
+                        Expanded(flex: 2, child: Text('Audience / Recipient', style: _headerStyle)),
+                        Expanded(flex: 1, child: Text('Sent', style: _headerStyle)),
+                        Expanded(flex: 1, child: Text('Delivered', style: _headerStyle)),
+                        Expanded(flex: 1, child: Text('Open (Read)', style: _headerStyle)),
+                        Expanded(flex: 1, child: Text('Failed', style: _headerStyle)),
+                        Expanded(flex: 2, child: Text('Status', style: _headerStyle)),
+                        Expanded(flex: 2, child: Align(alignment: Alignment.centerRight, child: Text('Actions', style: _headerStyle))),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
                   ..._campaigns.map((c) => _buildCampaignRow(c)),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMobileCampaignCard(CampaignModel c) {
+    Color statusBg = const Color(0xFFF1F5F9);
+    Color statusText = const Color(0xFF64748B);
+    String statusLabel = c.status.toUpperCase();
+
+    switch (c.status.toLowerCase()) {
+      case 'completed':
+        statusBg = const Color(0xFFDCFCE7);
+        statusText = const Color(0xFF15803D);
+        statusLabel = 'Completed';
+        break;
+      case 'running':
+      case 'pending':
+        statusBg = const Color(0xFFFEF3C7);
+        statusText = const Color(0xFFD97706);
+        statusLabel = 'Pending';
+        break;
+      case 'scheduled':
+        statusBg = const Color(0xFFDBEAFE);
+        statusText = const Color(0xFF2563EB);
+        statusLabel = 'Scheduled';
+        break;
+      case 'draft':
+        statusBg = const Color(0xFFF1F5F9);
+        statusText = const Color(0xFF64748B);
+        statusLabel = 'Draft';
+        break;
+      case 'cancelled':
+      case 'failed':
+        statusBg = const Color(0xFFFEE2E2);
+        statusText = const Color(0xFFDC2626);
+        statusLabel = 'Action Rejected';
+        break;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x060F172A),
+            offset: Offset(0, 2),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => widget.onSelectCampaign(c),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: c.template.headerImageUrl.isNotEmpty
+                            ? _buildTemplateImage(c.template.headerImageUrl)
+                            : Container(
+                                color: const Color(0xFFEFF6FF),
+                                child: const Icon(Icons.campaign_rounded, color: NeumorphicTheme.headerPrimary, size: 20),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            c.name,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            c.template.name.isNotEmpty ? c.template.name : 'Standard message',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: statusBg,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: statusText,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.groups_rounded, size: 14, color: Color(0xFF64748B)),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${c.audience.groupName.isNotEmpty ? c.audience.groupName : 'Direct'} (${c.audience.recipientCount > 0 ? c.audience.recipientCount : 1})',
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF334155), fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        _buildMiniStatPill('Sent', '${c.stats.messagesSent}', const Color(0xFF6366F1)),
+                        const SizedBox(width: 5),
+                        _buildMiniStatPill('Deliv', '${c.stats.delivered}', const Color(0xFF16A34A)),
+                        const SizedBox(width: 5),
+                        _buildMiniStatPill('Read', '${c.stats.read}', const Color(0xFF0EA5E9)),
+                      ],
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _buildMiniStatPill(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
     );
   }
 

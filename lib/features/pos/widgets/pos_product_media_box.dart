@@ -57,12 +57,12 @@ class _PosMediaPlaybackCoordinator {
   final List<_PosPlaybackClient> _activeClients = [];
 
   int get _maxActiveDecoders {
-    if (kIsWeb) return 6;
+    if (kIsWeb) return 2;
     if (defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS) {
-      return 3;
+      return 1;
     }
-    return 4;
+    return 2;
   }
 
   bool isCurrentSlot(_PosPlaybackClient client) => _activeClients.contains(client);
@@ -81,6 +81,10 @@ class _PosMediaPlaybackCoordinator {
       _activeClients.remove(client);
       _activeClients.add(client);
       return true;
+    }
+
+    if (!forcePriority && _activeClients.length >= _maxActiveDecoders) {
+      return false;
     }
 
     _activeClients.add(client);
@@ -117,6 +121,7 @@ class PosProductMediaBox extends StatefulWidget {
   final bool isMini;
   final bool autoSlide;
   final bool priorityPlayback;
+  final bool autoPlayVideo;
   final VoidCallback? onTap;
 
   const PosProductMediaBox({
@@ -129,8 +134,9 @@ class PosProductMediaBox extends StatefulWidget {
     this.showDots = true,
     this.showArrows = false,
     this.isMini = false,
-    this.autoSlide = true,
+    this.autoSlide = false,
     this.priorityPlayback = false,
+    this.autoPlayVideo = false,
     this.onTap,
   });
 
@@ -177,6 +183,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
   Timer? _resumeAutoSlideTimer;
   bool _isUserInteracting = false;
   bool _isVideoFinishingSlide = false;
+  int _lastVideoCheckMs = 0;
 
   @override
   bool get isMountedClient => mounted;
@@ -314,9 +321,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       _pageController = null;
     }
 
-    // If initial slide is video, automatically start streaming video immediately
+    // If initial slide is video, automatically start streaming video immediately only if autoPlayVideo or priorityPlayback is requested
     if (_mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-      if (!widget.isMini) {
+      if (!widget.isMini && (widget.autoPlayVideo || widget.priorityPlayback)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _currentPage == 0 && _mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
             _scheduleVideoStreamInit(_mediaList[0].url, forcePriority: widget.priorityPlayback);
@@ -462,7 +469,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       }
 
       _videoController = controller;
-      _videoController!.addListener(_videoListener);
+      if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
+        _videoController!.addListener(_videoListener);
+      }
 
       // Auto-play immediately if active slide is currently on Video
       if (_mediaList.isNotEmpty &&
@@ -520,6 +529,10 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
 
     if (!val.isInitialized) return;
 
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs - _lastVideoCheckMs < 250) return;
+    _lastVideoCheckMs = nowMs;
+
     // Detect when video has played fully from start to finish
     if (widget.autoSlide &&
         _mediaList.length > 1 &&
@@ -575,17 +588,19 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     if (currentMedia.type == PosMediaType.video) {
       _autoSlideTimer?.cancel();
       _isVideoFinishingSlide = false;
-      // Auto-slide or user switched to video: acquire decoder slot and auto-play
-      final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(this, forcePriority: true);
-      if (acquired) {
-        if (_videoController != null && _isVideoInitialized) {
-          _videoController!.seekTo(Duration.zero).then((_) {
-            if (mounted && _currentPage == index && _videoController != null) {
-              _videoController!.play();
-            }
-          });
-        } else if (!_isVideoLoading) {
-          _initVideoStream(currentMedia.url);
+      // Auto-slide or user switched to video: acquire decoder slot and play if enabled
+      if (widget.autoPlayVideo || widget.priorityPlayback) {
+        final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(this, forcePriority: true);
+        if (acquired) {
+          if (_videoController != null && _isVideoInitialized) {
+            _videoController!.seekTo(Duration.zero).then((_) {
+              if (mounted && _currentPage == index && _videoController != null) {
+                _videoController!.play();
+              }
+            });
+          } else if (!_isVideoLoading) {
+            _initVideoStream(currentMedia.url);
+          }
         }
       }
     } else {

@@ -134,6 +134,200 @@ class NotificationController {
       next(error);
     }
   }
+
+  // GET /api/v1/notifications/settings
+  async getSettings(req, res, next) {
+    try {
+      const userId = req.user._id;
+      let businessId = req.business ? req.business._id : req.user.businessId;
+      if (!businessId) {
+        const biz = await Business.findOne({ ownerId: userId }).select('_id').lean();
+        if (biz) businessId = biz._id;
+      }
+
+      const NotificationSetting = require('../models/NotificationSetting');
+      let setting = null;
+      if (businessId) {
+        setting = await NotificationSetting.findOne({ businessId, userId }).lean();
+      }
+
+      if (!setting) {
+        setting = {
+          businessId: businessId || null,
+          userId,
+          notificationSound: 'default',
+          notificationSoundName: 'Default Apna POS (Chime)',
+          notificationSoundUrl: 'sounds/Notification_sound.mp3',
+          notificationSoundType: 'default',
+          orderRingtone: 'default',
+          orderRingtoneName: 'Default Apna POS (Looping Alarm)',
+          orderRingtoneUrl: 'sounds/order_recieve_ringtone.mp3',
+          orderRingtoneType: 'default',
+          soundEnabled: true,
+          orderVolume: 1.0,
+          notificationVolume: 1.0,
+          vibrationEnabled: true,
+          autoOpenOrderScreen: true,
+          customRingtones: [],
+        };
+      }
+
+      return ApiResponse.success(res, setting, 'Notification settings retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // PUT /api/v1/notifications/settings
+  async updateSettings(req, res, next) {
+    try {
+      const userId = req.user._id;
+      let businessId = req.business ? req.business._id : (req.user.businessId || req.body.businessId);
+      if (!businessId) {
+        const biz = await Business.findOne({ ownerId: userId }).select('_id').lean();
+        if (biz) businessId = biz._id;
+      }
+
+      if (!businessId) {
+        return ApiResponse.error(res, 'Business ID is required to save notification settings', 400);
+      }
+
+      const NotificationSetting = require('../models/NotificationSetting');
+      const updateData = {};
+      const allowedFields = [
+        'notificationSound',
+        'notificationSoundName',
+        'notificationSoundUrl',
+        'notificationSoundType',
+        'orderRingtone',
+        'orderRingtoneName',
+        'orderRingtoneUrl',
+        'orderRingtoneType',
+        'soundEnabled',
+        'orderVolume',
+        'notificationVolume',
+        'vibrationEnabled',
+        'autoOpenOrderScreen',
+      ];
+
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
+        }
+      }
+
+      const setting = await NotificationSetting.findOneAndUpdate(
+        { businessId, userId },
+        {
+          $set: updateData,
+          $setOnInsert: { businessId, userId },
+        },
+        { upsert: true, new: true, runValidators: true }
+      );
+
+      return ApiResponse.success(res, setting, 'Notification settings updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // POST /api/v1/notifications/upload-ringtone
+  async uploadRingtone(req, res, next) {
+    try {
+      if (!req.file) {
+        return ApiResponse.error(res, 'Please upload an audio file (MP3, WAV, M4A, OGG, AAC)', 400);
+      }
+
+      const userId = req.user._id;
+      let businessId = req.business ? req.business._id : req.user.businessId;
+      if (!businessId) {
+        const biz = await Business.findOne({ ownerId: userId }).select('_id').lean();
+        if (biz) businessId = biz._id;
+      }
+
+      const type = req.body.type === 'notification' ? 'notification' : 'order';
+      const ringtoneName = (req.body.name || req.file.originalname.replace(/\.[^/.]+$/, '')).trim();
+
+      const storageService = require('../utils/storageService');
+      let audioUrl = await storageService.uploadMedia(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype,
+        'ringtones'
+      );
+
+      if (audioUrl && audioUrl.startsWith('/')) {
+        const host = req.get('host');
+        const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+        audioUrl = `${proto}://${host}${audioUrl}`;
+      }
+
+      const ringtoneItem = {
+        id: `rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: ringtoneName,
+        url: audioUrl,
+        type,
+        sizeBytes: req.file.size || req.file.buffer.length,
+        createdAt: new Date(),
+      };
+
+      if (businessId) {
+        const NotificationSetting = require('../models/NotificationSetting');
+        await NotificationSetting.findOneAndUpdate(
+          { businessId, userId },
+          {
+            $push: { customRingtones: ringtoneItem },
+            $setOnInsert: { businessId, userId },
+          },
+          { upsert: true }
+        );
+      }
+
+      return ApiResponse.success(
+        res,
+        {
+          ringtone: ringtoneItem,
+          url: audioUrl,
+          name: ringtoneName,
+          type,
+        },
+        'Ringtone uploaded and saved successfully',
+        201
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // DELETE /api/v1/notifications/custom-ringtone/:id
+  async deleteCustomRingtone(req, res, next) {
+    try {
+      const { id } = req.params;
+      const userId = req.user._id;
+      let businessId = req.business ? req.business._id : req.user.businessId;
+      if (!businessId) {
+        const biz = await Business.findOne({ ownerId: userId }).select('_id').lean();
+        if (biz) businessId = biz._id;
+      }
+
+      if (!businessId) {
+        return ApiResponse.error(res, 'Business ID is required', 400);
+      }
+
+      const NotificationSetting = require('../models/NotificationSetting');
+      const setting = await NotificationSetting.findOneAndUpdate(
+        { businessId, userId },
+        {
+          $pull: { customRingtones: { id } },
+        },
+        { new: true }
+      );
+
+      return ApiResponse.success(res, setting, 'Custom ringtone deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new NotificationController();
