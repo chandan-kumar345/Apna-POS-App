@@ -1448,26 +1448,24 @@ class _OrdersScreenState extends State<OrdersScreen> {
           final bool isDineInTable = o.orderType == OrderType.dineIn || (o.tableNumber != null && o.tableNumber!.trim().isNotEmpty);
           if (o.status == OrderStatus.cancelled) {
             effectiveStatus = OrderStatus.cancelled;
-          } else if (o.status == OrderStatus.completed && (!isDineInTable || o.isPaid)) {
+          } else if (isDineInTable && !o.isPaid) {
+            final tKey = (o.tableNumber ?? '').trim().toLowerCase();
+            final isRunningKot = tKey.isNotEmpty && runningKotTables.contains(tKey);
+            if (isRunningKot || o.status == OrderStatus.preparing) {
+              effectiveStatus = OrderStatus.preparing;
+            } else if (o.status == OrderStatus.ready) {
+              effectiveStatus = OrderStatus.ready;
+            } else {
+              effectiveStatus = OrderStatus.pending;
+            }
+          } else if (o.status == OrderStatus.completed) {
             effectiveStatus = OrderStatus.completed;
           } else if (o.status == OrderStatus.ready) {
             effectiveStatus = OrderStatus.ready;
           } else if (o.status == OrderStatus.preparing) {
-            // An order with status preparing IS preparing (never downgrade to pending)
             effectiveStatus = OrderStatus.preparing;
           } else {
-            final tKey = (o.tableNumber ?? '').trim().toLowerCase();
-            final isRunningKot = tKey.isNotEmpty && runningKotTables.contains(tKey);
-
-            if (o.status == OrderStatus.pending || (isDineInTable && !o.isPaid)) {
-              if (isDineInTable && isRunningKot) {
-                effectiveStatus = OrderStatus.preparing;
-              } else {
-                effectiveStatus = OrderStatus.pending;
-              }
-            } else {
-              effectiveStatus = o.status;
-            }
+            effectiveStatus = o.status;
           }
 
           // Accumulate status counts
@@ -1833,14 +1831,31 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   /// Single Neumorphic Order Card with Balanced Header, Items, Actions & Bottom Bar
   Widget _buildNeumorphicOrderCard(OrderModel order, String currency, bool isWide) {
+    final isDineInTable = order.orderType == OrderType.dineIn || (order.tableNumber != null && order.tableNumber!.trim().isNotEmpty);
     final isRunningKot = order.tableNumber != null &&
         order.status != OrderStatus.cancelled &&
         db.tables.any((t) =>
-            (t.name == order.tableNumber || t.tableNumber.toString() == order.tableNumber) &&
+            (t.name == order.tableNumber ||
+             t.tableNumber.toString() == order.tableNumber ||
+             'T-${t.tableNumber}' == order.tableNumber ||
+             'Table ${t.tableNumber}' == order.tableNumber) &&
             t.status == TableStatus.runningKot);
-    final effectiveStatus = (isRunningKot && order.status == OrderStatus.pending)
-        ? OrderStatus.preparing
-        : order.status;
+    final OrderStatus effectiveStatus;
+    if (order.status == OrderStatus.cancelled) {
+      effectiveStatus = OrderStatus.cancelled;
+    } else if (isDineInTable && !order.isPaid) {
+      if (isRunningKot || order.status == OrderStatus.preparing) {
+        effectiveStatus = OrderStatus.preparing;
+      } else if (order.status == OrderStatus.ready) {
+        effectiveStatus = OrderStatus.ready;
+      } else {
+        effectiveStatus = OrderStatus.pending;
+      }
+    } else {
+      effectiveStatus = (isRunningKot && order.status == OrderStatus.pending)
+          ? OrderStatus.preparing
+          : order.status;
+    }
     final statusColor = _getStatusColor(effectiveStatus);
 
     // Format Created Date

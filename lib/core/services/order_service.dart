@@ -10,14 +10,22 @@ class OrderService {
   Future<OrderModel> createOrder(OrderModel order) async {
     try {
       final pm = order.paymentMethod.toLowerCase().trim();
-      final isKotOrUnpaid = pm.contains('kot') ||
+      final bool isTableDineIn = order.orderType == OrderType.dineIn ||
+          (order.tableNumber != null && order.tableNumber!.trim().isNotEmpty);
+
+      final isKotOrUnpaid = isTableDineIn ||
+          pm.contains('kot') ||
           pm.contains('pending') ||
+          pm.contains('counter') ||
+          pm.contains('table') ||
           pm == 'unpaid' ||
           pm.isEmpty ||
           order.status == OrderStatus.pending ||
           order.status == OrderStatus.preparing;
 
-      final isPaid = order.status == OrderStatus.completed || order.isPaid || (!isKotOrUnpaid && order.paymentStatus == 'paid');
+      final isPaid = isTableDineIn
+          ? (order.status == OrderStatus.completed && order.isPaid)
+          : (order.status == OrderStatus.completed || order.isPaid || (!isKotOrUnpaid && order.paymentStatus == 'paid'));
 
       final itemsPayload = order.items.isNotEmpty
           ? order.items.map((i) => {
@@ -40,11 +48,13 @@ class OrderService {
 
       final payload = {
         'orderNumber': order.orderNumber,
-        'orderType': order.orderType.name,
+        'orderType': isTableDineIn ? OrderType.dineIn.name : order.orderType.name,
         'orderSource': order.orderSource ?? 'pos',
         'isKot': isKotOrUnpaid,
-        'status': isPaid ? 'completed' : order.status.name,
-        'tableNumber': order.orderType == OrderType.dineIn ? (order.tableNumber ?? '') : '',
+        'status': isTableDineIn && !isPaid
+            ? (order.status == OrderStatus.preparing ? 'preparing' : 'pending')
+            : (isPaid ? 'completed' : order.status.name),
+        'tableNumber': isTableDineIn ? (order.tableNumber ?? '') : '',
         'deliveryAddress': order.orderType == OrderType.delivery ? (order.deliveryAddress ?? '') : '',
         'customerId': order.customerId ?? '',
         'customerName': order.customerName ?? '',
@@ -64,19 +74,23 @@ class OrderService {
         'discountAmount': order.discountAmount,
         'taxAmount': order.taxAmount,
         'tipAmount': order.tipAmount,
-        'deliveryCharge': order.deliveryCharge,
+        'deliveryCharge': isTableDineIn ? 0.0 : order.deliveryCharge,
         'roundOff': order.roundOff,
         'couponCode': order.couponCode,
         'couponDiscount': order.couponDiscount,
         'totalAmount': order.totalAmount,
-        'paymentMethod': isPaid ? (order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash') : (isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod),
+        'paymentMethod': isPaid
+            ? (order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash')
+            : (isTableDineIn ? 'Pay at Counter / Table' : (isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod)),
         'paymentStatus': isPaid ? 'paid' : 'pending',
         'idempotencyKey': 'pos:generatePosOrder:${order.id}',
         'clientSyncId': order.id,
         'localOrderId': order.id,
         'isPaid': isPaid,
-        'isDineIn': order.orderType == OrderType.dineIn,
-        'paymentMode': isPaid ? (order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash') : (isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod),
+        'isDineIn': isTableDineIn,
+        'paymentMode': isPaid
+            ? (order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash')
+            : (isTableDineIn ? 'Pay at Counter / Table' : (isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod)),
         'paymentDetails': isPaid
             ? [
                 {
@@ -98,7 +112,17 @@ class OrderService {
       if (response != null && response['data'] != null) {
         final orderData = (response['data']['order'] ?? response['data']) as Map<String, dynamic>?;
         if (orderData != null) {
-          return OrderModel.fromJson(orderData).copyWith(isSynced: true);
+          final remoteOrder = OrderModel.fromJson(orderData).copyWith(isSynced: true);
+          if (isTableDineIn && !isPaid) {
+            return remoteOrder.copyWith(
+              status: order.status == OrderStatus.preparing ? OrderStatus.preparing : OrderStatus.pending,
+              isPaid: false,
+              paymentStatus: 'pending',
+              paymentMethod: 'Pay at Counter / Table',
+              tableNumber: order.tableNumber,
+            );
+          }
+          return remoteOrder;
         }
       }
       return order.copyWith(isSynced: true);

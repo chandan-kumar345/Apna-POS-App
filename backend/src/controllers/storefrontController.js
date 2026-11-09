@@ -254,20 +254,23 @@ class StorefrontController {
       const order = new Order({
         businessId,
         orderNumber,
-        orderType,
-        tableNumber,
+        orderType: isDineIn ? 'dineIn' : orderType,
+        tableNumber: isDineIn ? (tableNumber || '') : '',
+        tableCode: isDineIn ? (tableNumber || '') : '',
         status: 'pending',
         items: orderPayload.items || [],
         subtotal: orderPayload.subtotal || 0,
         taxAmount: orderPayload.taxAmount || 0,
         deliveryCharge: isDineIn ? 0 : (orderPayload.deliveryCharge || 0),
         totalAmount: orderPayload.totalAmount || 0,
-        paymentMethod: orderPayload.paymentMethod || 'UPI',
+        paymentMethod: isDineIn ? 'Pay at Counter / Table' : (orderPayload.paymentMethod || 'UPI'),
         paymentStatus: 'pending',
+        isPaid: false,
+        isDineIn: isDineIn,
         deliveryAddress: isDineIn ? '' : (orderPayload.deliveryAddress || ''),
-        customerName: orderPayload.customerName || (isDineIn ? `Guest (${tableNumber || 'Table'})` : 'Online Guest'),
+        customerName: orderPayload.customerName || (isDineIn ? `Guest (Table ${tableNumber || 'Dine-In'})` : 'Online Guest'),
         customerPhone: orderPayload.customerPhone || '',
-        orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
+        orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (isDineIn ? 'storefront' : (orderPayload.orderSource || orderPayload.source || 'storefront')),
         notes: orderPayload.notes || '',
       });
 
@@ -283,7 +286,7 @@ class StorefrontController {
           const tableLabel = tableNumber ? ` • Table ${tableNumber}` : '';
           socketService.broadcastToBusiness(bId, 'new_order', {
             order: orderJson,
-            alertTitle: isDineIn ? `🍽️ New Table Order (${tableNumber || 'Dine-In'})!` : '🔔 New Online Order Received!',
+            alertTitle: isDineIn ? `🍽️ New Table Order (${tableNumber ? `Table ${tableNumber}` : 'Dine-In'})!` : '🔔 New Online Order Received!',
             alertMessage: `Order #${orderNumber} for ₹${order.totalAmount}${tableLabel}`,
           });
           socketService.emitOrderCreated(bId, {
@@ -292,7 +295,10 @@ class StorefrontController {
             tableNumber: order.tableNumber || '',
             totalAmount: order.totalAmount,
             orderType: order.orderType,
-            orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
+            orderSource: order.orderSource || 'storefront',
+            status: 'pending',
+            isPaid: false,
+            paymentStatus: 'pending',
             order: orderJson,
           });
           socketService.emitWhatsAppOrderRequest(bId, {
@@ -302,7 +308,7 @@ class StorefrontController {
             totalAmount: order.totalAmount,
             orderType: order.orderType,
             tableNumber: order.tableNumber || '',
-            orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
+            orderSource: order.orderSource || 'storefront',
           });
         }
       } catch (sockErr) {

@@ -1176,7 +1176,9 @@ class DatabaseService extends ChangeNotifier {
     if (loadedOrders.isNotEmpty) {
       orders = deduplicateOrdersList(loadedOrders);
       for (final o in orders) {
-        markOrderDismissed(o.id, o.orderNumber);
+        if (o.status != OrderStatus.pending) {
+          markOrderDismissed(o.id, o.orderNumber);
+        }
       }
     } else {
       orders = [];
@@ -1828,20 +1830,30 @@ class DatabaseService extends ChangeNotifier {
           if (existingRemote == null) {
             orderMap[key] = local;
           } else {
-            if ((local.status == OrderStatus.completed || local.isPaid) &&
+            final bool isTableDineIn = local.orderType == OrderType.dineIn ||
+                (local.tableNumber != null && local.tableNumber!.trim().isNotEmpty);
+            if (isTableDineIn && local.status == OrderStatus.pending && existingRemote.status == OrderStatus.completed && !local.isPaid) {
+              orderMap[key] = local.copyWith(isSynced: false);
+            } else if ((local.status == OrderStatus.completed || local.isPaid) &&
                 existingRemote.status != OrderStatus.completed &&
                 !existingRemote.isPaid) {
               orderMap[key] = local.copyWith(isSynced: false);
             } else {
               orderMap[key] = existingRemote.copyWith(
                 items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
+                status: isTableDineIn && !existingRemote.isPaid && (local.status == OrderStatus.pending || local.status == OrderStatus.preparing)
+                    ? local.status
+                    : existingRemote.status,
+                isPaid: isTableDineIn ? (existingRemote.status == OrderStatus.completed && existingRemote.isPaid) : existingRemote.isPaid,
               );
             }
           }
         }
-        // Mark all existing remote orders as dismissed so background sync never hijacks the screen
+        // Only mark non-pending orders as dismissed so background sync never suppresses active pending order popups!
         for (final r in remoteOrders) {
-          markOrderDismissed(r.id, r.orderNumber);
+          if (r.status != OrderStatus.pending) {
+            markOrderDismissed(r.id, r.orderNumber);
+          }
         }
 
         final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
@@ -5048,21 +5060,31 @@ class DatabaseService extends ChangeNotifier {
           if (existingRemote == null) {
             orderMap[key] = local;
           } else {
-            if ((local.status == OrderStatus.completed || local.isPaid) &&
+            final bool isTableDineIn = local.orderType == OrderType.dineIn ||
+                (local.tableNumber != null && local.tableNumber!.trim().isNotEmpty);
+            if (isTableDineIn && local.status == OrderStatus.pending && existingRemote.status == OrderStatus.completed && !local.isPaid) {
+              orderMap[key] = local.copyWith(isSynced: false);
+            } else if ((local.status == OrderStatus.completed || local.isPaid) &&
                 existingRemote.status != OrderStatus.completed &&
                 !existingRemote.isPaid) {
               orderMap[key] = local.copyWith(isSynced: false);
             } else {
               orderMap[key] = existingRemote.copyWith(
                 items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
+                status: isTableDineIn && !existingRemote.isPaid && (local.status == OrderStatus.pending || local.status == OrderStatus.preparing)
+                    ? local.status
+                    : existingRemote.status,
+                isPaid: isTableDineIn ? (existingRemote.status == OrderStatus.completed && existingRemote.isPaid) : existingRemote.isPaid,
               );
             }
           }
         }
 
-        // Mark all existing remote orders as dismissed so targeted order sync never hijacks the screen
+        // Only mark non-pending orders as dismissed so targeted order sync never suppresses active pending order popups!
         for (final r in remoteOrders) {
-          markOrderDismissed(r.id, r.orderNumber);
+          if (r.status != OrderStatus.pending) {
+            markOrderDismissed(r.id, r.orderNumber);
+          }
         }
 
         final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
@@ -5082,7 +5104,9 @@ class DatabaseService extends ChangeNotifier {
   /// Start persistent Order Radar polling (every 20s) as a fail-safe monitor
   void startOrderRadar() {
     for (final o in orders) {
-      markOrderDismissed(o.id, o.orderNumber);
+      if (o.status != OrderStatus.pending) {
+        markOrderDismissed(o.id, o.orderNumber);
+      }
     }
     _orderRadarTimer?.cancel();
     _orderRadarTimer = Timer.periodic(const Duration(seconds: 30), (_) {

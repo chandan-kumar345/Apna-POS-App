@@ -241,13 +241,14 @@ class CustomerStorefrontApiService {
       createdAt: now,
     );
 
+    final bool isTableDineIn = isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+    final bool resolvedIsPaid = isTableDineIn ? false : (paymentMethod != 'Cash on Delivery');
+    final String resolvedPaymentStatus = isTableDineIn ? 'pending' : (resolvedIsPaid ? 'paid' : 'pending');
+    final String resolvedPaymentMethod = isTableDineIn ? 'Pay at Counter / Table' : (paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI');
+
     // 3. Save to local POS DatabaseService
     try {
       final cartModelItems = cartItems.map((c) => c.toCartItemModel()).toList();
-      final bool isTableDineIn = isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
-      final bool resolvedIsPaid = isTableDineIn ? false : (paymentMethod != 'Cash on Delivery');
-      final String resolvedPaymentStatus = isTableDineIn ? 'pending' : (resolvedIsPaid ? 'paid' : 'pending');
-      final String resolvedPaymentMethod = isTableDineIn ? 'Pay at Counter / Table' : (paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI');
 
       final posOrder = OrderModel(
         id: orderId,

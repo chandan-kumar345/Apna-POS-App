@@ -250,13 +250,16 @@ class OrderService {
     const paymentMode = (rawData.paymentMode || rawData.paymentMethod || '').toString().trim();
     const orderDevice = (rawData.orderDevice || 'web').toString().trim();
     const rawMethod = (rawData.paymentMethod || paymentMode || '').toLowerCase();
-        const isKotOrder = isKOT || Boolean(rawData.isKot) || rawMethod.includes('kot');
-    const isPaid = !isKotOrder && (
-      rawData.isPaid === true ||
-      (rawData.paymentStatus === 'paid' && rawData.status === 'completed') ||
-      rawData.status === 'completed'
-    );
+    const isKotOrder = isKOT || Boolean(rawData.isKot) || rawMethod.includes('kot');
     const isDineIn = rawData.isDineIn !== undefined ? Boolean(rawData.isDineIn) : (rawData.orderType === 'dineIn' || Boolean(rawData.T || rawData.tableNumber));
+    const isTableOrder = isDineIn || Boolean(rawData.tableNumber || rawData.T);
+    const isPaid = isTableOrder
+      ? (rawData.status === 'completed' && (rawData.isPaid === true || rawData.paymentStatus === 'paid'))
+      : (!isKotOrder && (
+          rawData.isPaid === true ||
+          (rawData.paymentStatus === 'paid' && rawData.status === 'completed') ||
+          rawData.status === 'completed'
+        ));
     const restaurantCode = (rawData.R || '').toString().trim();
     const tableCode = (rawData.T || rawData.tableNumber || '').toString().trim();
     const reason = (rawData.reason || '').toString().trim();
@@ -339,7 +342,7 @@ class OrderService {
       }
     }
 
-    const status = isPaid ? 'completed' : (rawData.status || 'pending');
+    const status = isPaid ? 'completed' : (isTableOrder && (rawData.status === 'preparing' || rawData.isKot) ? 'preparing' : (rawData.status || 'pending'));
     const paymentStatus = isPaid ? 'paid' : 'pending';
     const rawTypeCandidate = (rawData.orderType || (tableCode ? 'dineIn' : 'takeaway')).toString().toLowerCase();
     let orderType = isDineIn ? 'dineIn' : 'takeaway';

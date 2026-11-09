@@ -632,7 +632,9 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       final existing = _db.orders[existingIdx];
       final updated = existing.copyWith(
         status: targetStatus,
-        
+        isPaid: resolvedType == OrderType.dineIn ? false : existing.isPaid,
+        paymentStatus: resolvedType == OrderType.dineIn ? 'pending' : existing.paymentStatus,
+        paymentMethod: resolvedType == OrderType.dineIn ? 'Pay at Counter / Table' : existing.paymentMethod,
         tableNumber: tableNum ?? existing.tableNumber,
         deliveryAddress: widget.deliveryAddress.isNotEmpty ? widget.deliveryAddress : existing.deliveryAddress,
         customerName: widget.customerName.isNotEmpty ? widget.customerName : existing.customerName,
@@ -682,6 +684,9 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       totalAmount: widget.totalAmount,
       orderSource: widget.source.isNotEmpty ? widget.source : 'whatsapp',
       createdAt: widget.createdAt.toIso8601String(),
+      isPaid: false,
+      paymentStatus: 'pending',
+      paymentMethod: resolvedType == OrderType.dineIn ? 'Pay at Counter / Table' : 'Pending',
       isSynced: true,
     );
 

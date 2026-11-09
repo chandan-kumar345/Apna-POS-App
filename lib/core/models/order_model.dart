@@ -270,9 +270,31 @@ class OrderModel {
 
     final bool isTableDineIn = rawTableStr.isNotEmpty || parsedType == OrderType.dineIn || rawAddress.contains('table');
 
+    final String? rawSrcCandidate = json['orderSource']?.toString() ??
+        json['source']?.toString() ??
+        json['order_source']?.toString() ??
+        (json['whatsappDetails'] != null ? 'whatsapp' : null) ??
+        (rawTypeStr.contains('whatsapp') ? 'whatsapp' : null) ??
+        (rawTypeStr.contains('profile') ? 'profile' : null) ??
+        (rawTypeStr.contains('storefront') ? 'storefront' : null);
+
+    final bool isStorefrontOrQr = (rawSrcCandidate != null && (
+        rawSrcCandidate.toLowerCase().contains('storefront') ||
+        rawSrcCandidate.toLowerCase().contains('qr') ||
+        rawSrcCandidate.toLowerCase().contains('online'))) ||
+        rawId.startsWith('ONL') ||
+        (json['orderNumber']?.toString() ?? '').startsWith('ONL');
+
+    final bool hasExplicitSettlement = json['isSettled'] == true ||
+        json['settledAt'] != null ||
+        json['closedAt'] != null ||
+        (json['paymentDetails'] is List && (json['paymentDetails'] as List).isNotEmpty);
+
     // Status normalization (case-insensitive & synonym-aware)
     final String rawStatusStr = (json['status'] ?? json['orderStatus'] ?? '').toString().toLowerCase().trim();
-    final bool isTableSettled = rawStatusStr == 'completed' || rawStatusStr == 'settled' || rawStatusStr == 'closed';
+    // Table QR orders are physical dining table orders: strictly UNPAID and NOT completed unless explicitly settled at POS!
+    final bool isTableSettled = (rawStatusStr == 'completed' || rawStatusStr == 'settled' || rawStatusStr == 'closed') &&
+        (!isStorefrontOrQr || hasExplicitSettlement);
 
     final OrderStatus parsedStatus;
     if (isTableDineIn) {
@@ -402,13 +424,6 @@ class OrderModel {
         json['updatedAt']?.toString() ??
         '';
 
-    final String? rawSrcCandidate = json['orderSource']?.toString() ??
-        json['source']?.toString() ??
-        json['order_source']?.toString() ??
-        (json['whatsappDetails'] != null ? 'whatsapp' : null) ??
-        (rawTypeStr.contains('whatsapp') ? 'whatsapp' : null) ??
-        (rawTypeStr.contains('profile') ? 'profile' : null) ??
-        (rawTypeStr.contains('storefront') ? 'storefront' : null);
     final String? resolvedOrderSource = rawSrcCandidate?.toLowerCase().trim();
     String? resolvedWhatsappStatus = json['whatsappAcceptanceStatus']?.toString();
     if (resolvedWhatsappStatus == null && json['whatsappDetails'] is Map) {
@@ -573,6 +588,7 @@ class OrderModel {
     String? id,
     String? orderNumber,
     String? tableNumber,
+    OrderType? orderType,
     OrderStatus? status,
     String? paymentMethod,
     String? paymentStatus,
@@ -606,7 +622,7 @@ class OrderModel {
       id: id ?? this.id,
       orderNumber: orderNumber ?? this.orderNumber,
       tableNumber: tableNumber ?? this.tableNumber,
-      orderType: orderType,
+      orderType: orderType ?? this.orderType,
       status: status ?? this.status,
       items: items ?? this.items,
       subtotal: subtotal ?? this.subtotal,
