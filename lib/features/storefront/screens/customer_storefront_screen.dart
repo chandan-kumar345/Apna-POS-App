@@ -55,6 +55,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
   // In-memory cart
   final List<StorefrontCartItem> _cartItems = [];
+  static final Map<String, Uint8List> _avatarBytesCache = {};
+  bool get _isTableSession => _activeTableCode != null && _activeTableCode!.trim().isNotEmpty;
 
   @override
   void initState() {
@@ -481,48 +483,75 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
     final rest = _data!.restaurant;
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
             Row(
               children: [
-                _buildRestaurantAvatar(rest.logoUrl, rest.name, size: 50),
+                _buildRestaurantAvatar(rest.logoUrl, rest.name, size: 54),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(rest.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                      Text(rest.cuisineType, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                      Text(
+                        rest.name,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                        softWrap: true,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        rest.cuisineType,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                        softWrap: true,
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
-            const Divider(height: 28),
+            const Divider(height: 28, color: Color(0xFFE2E8F0)),
             _buildInfoRow(Icons.phone_rounded, rest.phone),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             _buildInfoRow(Icons.location_on_rounded, rest.address),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             _buildInfoRow(Icons.access_time_rounded, '${rest.openingTime} - ${rest.closingTime}'),
-            const SizedBox(height: 16),
+            const SizedBox(height: 22),
             SizedBox(
               width: double.infinity,
+              height: 48,
               child: ElevatedButton.icon(
                 onPressed: () {
                   final phoneClean = rest.phone.replaceAll(RegExp(r'[^0-9+]'), '');
                   launchUrl(Uri.parse('tel:$phoneClean'));
                 },
-                icon: const Icon(Icons.call_rounded),
-                label: const Text('Call Outlet'),
+                icon: const Icon(Icons.call_rounded, color: Colors.white),
+                label: const Text('Call Outlet', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _themeColor,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
               ),
             ),
@@ -534,10 +563,17 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 18, color: _themeColor),
         const SizedBox(width: 10),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A)))),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: Color(0xFF0F172A), height: 1.4),
+            softWrap: true,
+          ),
+        ),
       ],
     );
   }
@@ -547,28 +583,30 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         ? logo.trim()
         : DatabaseService().companyLogoPath?.trim();
 
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: _themeColor.withValues(alpha: 0.8), width: 1.5),
-        boxShadow: [
-          const BoxShadow(
-            color: Colors.white,
-            offset: Offset(-2, -2),
-            blurRadius: 4,
-          ),
-          BoxShadow(
-            color: const Color(0xFF94A3B8).withValues(alpha: 0.25),
-            offset: const Offset(2, 2.5),
-            blurRadius: 5,
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: _buildAvatarImage(effectiveLogo, name, size),
+    return RepaintBoundary(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: _themeColor.withValues(alpha: 0.8), width: 1.5),
+          boxShadow: [
+            const BoxShadow(
+              color: Colors.white,
+              offset: Offset(-2, -2),
+              blurRadius: 4,
+            ),
+            BoxShadow(
+              color: const Color(0xFF94A3B8).withValues(alpha: 0.25),
+              offset: const Offset(2, 2.5),
+              blurRadius: 5,
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: _buildAvatarImage(effectiveLogo, name, size),
+        ),
       ),
     );
   }
@@ -581,12 +619,18 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           (path.length > 80 && !path.startsWith('http') && !path.startsWith('assets/'))) {
         try {
           final clean = path.contains(',') ? path.split(',').last : path;
-          final bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          final normalized = clean.replaceAll('\n', '').replaceAll('\r', '').trim();
+          Uint8List? bytes = _avatarBytesCache[normalized];
+          if (bytes == null) {
+            bytes = base64Decode(normalized);
+            _avatarBytesCache[normalized] = bytes;
+          }
           return Image.memory(
             bytes,
             width: size,
             height: size,
             fit: BoxFit.cover,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
           );
         } catch (_) {}
@@ -596,6 +640,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           width: size,
           height: size,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
         );
       } else if (path.startsWith('assets/')) {
@@ -604,6 +649,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           width: size,
           height: size,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
         );
       } else if (!kIsWeb) {
@@ -615,6 +661,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
               width: size,
               height: size,
               fit: BoxFit.cover,
+              gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) => _buildFallbackImage(name, size),
             );
           }
@@ -630,6 +677,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       width: size,
       height: size,
       fit: BoxFit.cover,
+      gaplessPlayback: true,
       errorBuilder: (context, error, stackTrace) => _buildEmblemLogo(name, size),
     );
   }
@@ -978,7 +1026,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                         ),
                                         const SizedBox(width: 2),
-                                        const Text('(1.2k+)', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                                        Text('(${restaurant.likesCount >= 1000 ? "${(restaurant.likesCount / 1000).toStringAsFixed(1)}k+" : "${restaurant.likesCount}+"})', style: const TextStyle(fontSize: 10, color: Color(0xFF64748B))),
                                       ],
                                     ),
 
@@ -1020,6 +1068,18 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                 iconColor: _isFavorite ? const Color(0xFFEF4444) : const Color(0xFF0F172A),
                                 onTap: () {
                                   setState(() => _isFavorite = !_isFavorite);
+                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        _isFavorite ? 'Saved to your favorites ❤️' : 'Removed from favorites',
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                      duration: const Duration(seconds: 1),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  );
                                 },
                               ),
                               const SizedBox(width: 5),
@@ -1117,18 +1177,19 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                     ],
                                   ),
                                 ),
-                                TextButton.icon(
-                                  onPressed: _showSelectValidTableDialog,
-                                  icon: const Icon(Icons.swap_horiz_rounded, size: 14, color: Colors.white),
-                                  label: const Text('Change', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
-                                  style: TextButton.styleFrom(
-                                    backgroundColor: Colors.white.withValues(alpha: 0.2),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                if (!_isTableSession)
+                                  TextButton.icon(
+                                    onPressed: _showSelectValidTableDialog,
+                                    icon: const Icon(Icons.swap_horiz_rounded, size: 14, color: Colors.white),
+                                    label: const Text('Change', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                                    style: TextButton.styleFrom(
+                                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                           )
@@ -1221,7 +1282,71 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 2.1 Segmented Delivery / Pickup Switcher (Sunken Neumorphic Track)
+                          // 2.1 Table Lockdown Badge or Segmented Delivery / Pickup Switcher
+                          if (_isTableSession)
+                            Container(
+                              height: 44,
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(color: _themeColor.withValues(alpha: 0.35)),
+                                boxShadow: [
+                                  const BoxShadow(
+                                    color: Colors.white,
+                                    offset: Offset(-2, -2),
+                                    blurRadius: 5,
+                                  ),
+                                  BoxShadow(
+                                    color: const Color(0xFF94A3B8).withValues(alpha: 0.20),
+                                    offset: const Offset(2, 2.5),
+                                    blurRadius: 5,
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: BoxDecoration(
+                                      color: _themeColor.withValues(alpha: 0.12),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.table_restaurant_rounded, size: 16, color: _themeColor),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Table $_activeTableCode',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: _themeColor,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    width: 4,
+                                    height: 4,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF94A3B8),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Dine-in Ordering Active',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
                           Container(
                             height: 42,
                             padding: const EdgeInsets.all(3.5),
@@ -1400,7 +1525,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                           // 2.2 Location & ETA Bar (Elevated Neumorphic Card)
                           InkWell(
                             borderRadius: BorderRadius.circular(16),
-                            onTap: _orderType == OrderType.dineIn ? _showSelectValidTableDialog : _showChangeLocationDialog,
+                            onTap: _isTableSession ? null : (_orderType == OrderType.dineIn ? _showSelectValidTableDialog : _showChangeLocationDialog),
                             child: Container(
                               width: double.infinity,
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1458,21 +1583,41 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF1F5F9),
-                                      borderRadius: BorderRadius.circular(8),
+                                  if (!_isTableSession) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text('Change', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _themeColor)),
+                                          Icon(Icons.keyboard_arrow_right_rounded, size: 14, color: _themeColor),
+                                        ],
+                                      ),
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text('Change', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _themeColor)),
-                                        Icon(Icons.keyboard_arrow_right_rounded, size: 14, color: _themeColor),
-                                      ],
+                                  ] else ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFECFDF5),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFFA7F3D0)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF059669)),
+                                          SizedBox(width: 3),
+                                          Text('Verified', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF059669))),
+                                        ],
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -2017,8 +2162,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       width: 88,
                       height: 88,
                       borderRadius: BorderRadius.circular(12),
-                      showDots: true,
-                      autoSlide: true,
+                      showDots: false,
+                      autoSlide: false,
+                      autoPlayVideo: false,
                       onTap: () => _openCustomizationModal(item),
                     ),
                   ),
@@ -2073,6 +2219,30 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star_rounded, size: 11, color: Color(0xFFF59E0B)),
+                            const SizedBox(width: 2),
+                            Text(
+                              item.rating.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF92400E),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

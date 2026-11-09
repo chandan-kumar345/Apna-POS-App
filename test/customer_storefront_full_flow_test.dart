@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apna_pos/core/database/database_service.dart';
 import 'package:apna_pos/core/models/menu_item_model.dart';
 import 'package:apna_pos/core/models/restaurant_model.dart';
+import 'package:apna_pos/core/models/extra_model.dart';
 import 'package:apna_pos/features/storefront/models/customer_storefront_flow_models.dart';
 import 'package:apna_pos/features/storefront/models/storefront_model.dart';
 import 'package:apna_pos/features/storefront/screens/customer_storefront_screen.dart';
@@ -153,6 +154,10 @@ void main() {
             body: StorefrontProductDetailSheet(
               item: testPizzaItem,
               themeColor: const Color(0xFFE65100),
+              availableAddons: [
+                ExtraModel(id: 'add_1', name: 'Extra Cheese', price: 49.0, type: 'addon', isAvailable: true),
+                ExtraModel(id: 'add_2', name: 'Extra Paneer', price: 59.0, type: 'addon', isAvailable: true),
+              ],
               onAddToCart: (item, {bool openCartImmediately = false}) {
                 addedCartItem = item;
               },

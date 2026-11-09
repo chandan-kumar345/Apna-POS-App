@@ -23,6 +23,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import '../storefront/screens/customer_storefront_screen.dart';
+import 'notification_settings_screen.dart';
 
 /// Neumorphic Color Constants & Styling
 class _NeumorphicTheme {
@@ -1927,6 +1928,35 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           ),
                           const SizedBox(height: 20),
                         ],
+
+                        // Quick Action to Customize Ringtones
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(dialogCtx);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const NotificationSettingsScreen(),
+                                ),
+                              ).then((_) => _refreshState());
+                            },
+                            icon: const Icon(Icons.music_note_rounded, size: 16),
+                            label: const Text(
+                              'Customize Order & Notification Ringtones',
+                              softWrap: true,
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF6366F1),
+                              side: const BorderSide(color: Color(0xFF6366F1), width: 1.5),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
 
                         _buildNeumorphicButton(
                           label: 'Done',
@@ -4239,6 +4269,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                               : (db.currentUser?.phone ?? ''),
                           logoUrl: restaurant?.logoUrl ?? db.companyLogoPath ?? '',
                           outletAddress: outletAddress,
+                          likesCount: restaurant?.likesCount ?? 1248,
                           isMobile: isMobile,
                           onEdit: _showEditBusinessProfileModal,
                         ),
@@ -4456,7 +4487,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       _buildNeumorphicSectionHeader(
                         title: 'Hardware & Logistics',
                         icon: Icons.devices_other_rounded,
-                        countText: '2 Items',
+                        countText: '3 Items',
                         accentColor: const Color(0xFFD97706),
                       ),
                       const SizedBox(height: 14),
@@ -4484,6 +4515,22 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             accentColor: const Color(0xFFE11D48),
                             badgeText: SoundService.soundEnabled ? 'ON' : 'MUTED',
                             onTap: _showSoundSettingsModal,
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Notification Setting',
+                            subtitle: 'Order Ringtones & Alert Sounds',
+                            icon: Icons.notifications_active_rounded,
+                            accentColor: const Color(0xFF6366F1),
+                            badgeText: 'Ringtones',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const NotificationSettingsScreen(),
+                                ),
+                              ).then((_) => _refreshState());
+                            },
                           ),
                         ],
                       ),
@@ -5895,6 +5942,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     required String phone,
     required String logoUrl,
     required String outletAddress,
+    int likesCount = 1248,
     required bool isMobile,
     required VoidCallback onEdit,
   }) {
@@ -5971,6 +6019,30 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                               fontSize: 10,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEE2E2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFFCA5A5), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.favorite_rounded, color: Color(0xFFDC2626), size: 10),
+                          const SizedBox(width: 4),
+                          Text(
+                            likesCount >= 1000 ? 'k+ Likes' : ' Likes',
+                            style: const TextStyle(
+                              color: Color(0xFFB91C1C),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.3,
                             ),
                           ),
                         ],

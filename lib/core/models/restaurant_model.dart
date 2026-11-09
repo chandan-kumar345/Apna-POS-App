@@ -38,6 +38,7 @@ class RestaurantModel {
   final bool isStorefrontOnline;
   final int storefrontThemeColor;
   final int? storefrontThemeColorEnd;
+  final int likesCount;
 
   static String slugify(String text) {
     final clean = text.trim().toLowerCase();
@@ -91,6 +92,7 @@ class RestaurantModel {
     this.freeDeliveryEnabled = false,
     this.freeDeliveryMinOrder = 0.0,
     this.maxDeliveryDistanceKm = 10.0,
+    this.likesCount = 1248,
     this.logoUrl,
   });
 
@@ -102,6 +104,7 @@ class RestaurantModel {
         'isStorefrontOnline': isStorefrontOnline,
         'storefrontThemeColor': storefrontThemeColor,
         'storefrontThemeColorEnd': storefrontThemeColorEnd,
+        'likesCount': likesCount,
         'tagline': tagline,
         'phone': phone,
         'address': address,
@@ -216,6 +219,7 @@ class RestaurantModel {
             : (json['isOnline'] is bool ? json['isOnline'] as bool : true),
         storefrontThemeColor: (json['storefrontThemeColor'] as num?)?.toInt() ?? 0xFFE65100,
         storefrontThemeColorEnd: (json['storefrontThemeColorEnd'] as num?)?.toInt(),
+        likesCount: (json['likesCount'] as num?)?.toInt() ?? 1248,
       );
   }
 
@@ -231,6 +235,7 @@ class RestaurantModel {
     bool? isStorefrontOnline,
     int? storefrontThemeColor,
     Object? storefrontThemeColorEnd = _sentinel,
+    int? likesCount,
     String? tagline,
     String? phone,
     String? address,
@@ -295,6 +300,7 @@ class RestaurantModel {
       freeDeliveryEnabled: freeDeliveryEnabled ?? this.freeDeliveryEnabled,
       freeDeliveryMinOrder: freeDeliveryMinOrder ?? this.freeDeliveryMinOrder,
       maxDeliveryDistanceKm: maxDeliveryDistanceKm ?? this.maxDeliveryDistanceKm,
+      likesCount: likesCount ?? this.likesCount,
       logoUrl: logoUrl ?? this.logoUrl,
     );
   }

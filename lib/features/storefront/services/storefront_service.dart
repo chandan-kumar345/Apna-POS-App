@@ -210,7 +210,7 @@ class StorefrontService {
       addOns = List<ExtraModel>.from(_db.extras);
     }
 
-    // Ensure banners are present
+    // Ensure banners are present if configured in DB
     if (banners.isEmpty) {
       if (_db.storefrontBanners.isNotEmpty) {
         final active = _db.storefrontBanners.where((b) => b.isActive).toList();
@@ -218,37 +218,6 @@ class StorefrontService {
           banners = List<StorefrontBanner>.from(active);
         }
       }
-    }
-    if (banners.isEmpty) {
-      banners = [
-        const StorefrontBanner(
-          id: 'b1',
-          tag: 'HOT & CHEESY',
-          headline: 'PIZZA LOVERS',
-          subtitle: 'Fresh Ingredients Bigger Happiness',
-          ctaText: 'ORDER NOW ➔',
-          imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1200&q=80',
-          accentColorHex: 0xFFE65100,
-        ),
-        const StorefrontBanner(
-          id: 'b2',
-          tag: 'CHEF RECOMMENDATION',
-          headline: 'PANEER SUPREME',
-          subtitle: 'Loaded with 100% Mozzarella & Spiced Paneer',
-          ctaText: 'VIEW ITEM ➔',
-          imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=1200&q=80',
-          accentColorHex: 0xFFD84315,
-        ),
-        const StorefrontBanner(
-          id: 'b3',
-          tag: 'SUPER SAVER COMBO',
-          headline: 'PIZZA + FRIES + COKE',
-          subtitle: 'Save flat 25% on Lunch & Dinner combos',
-          ctaText: 'GRAB COMBO ➔',
-          imageUrl: 'https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?auto=format&fit=crop&w=1200&q=80',
-          accentColorHex: 0xFFC2185B,
-        ),
-      ];
     }
 
     if (resolvedTableInfo == null && tableCode != null && tableCode.trim().isNotEmpty) {

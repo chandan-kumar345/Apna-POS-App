@@ -85,9 +85,12 @@ class MenuItemModel {
   final List<ProductVariant> variants;
   final bool trackInventory;
   final List<String> aliases;
+  final double rating;
+  final int ratingsCount;
 
   String get title => name;
 
+  bool get isVeg => itemType.toLowerCase() == 'veg';
   bool get isInStock => stockStatus == 'in_stock';
   bool get isLowStock => stockStatus == 'low_stock';
   bool get isOutOfStock => stockStatus == 'out_of_stock';
@@ -118,6 +121,8 @@ class MenuItemModel {
     this.variants = const [],
     this.trackInventory = true,
     this.aliases = const [],
+    this.rating = 4.8,
+    this.ratingsCount = 85,
   })  : productId = (productId != null && productId.isNotEmpty) ? productId : id,
         availablePortions = availablePortions ?? stockQuantity;
 
@@ -164,6 +169,8 @@ class MenuItemModel {
         'variants': variants.map((v) => v.toJson()).toList(),
         'trackInventory': trackInventory,
         'aliases': aliases,
+        'rating': rating,
+        'ratingsCount': ratingsCount,
       };
 
   factory MenuItemModel.fromJson(Map<dynamic, dynamic> json) {
@@ -271,6 +278,8 @@ class MenuItemModel {
       variants: parsedVariants,
       trackInventory: json['trackInventory'] ?? true,
       aliases: parsedAliases,
+      rating: (json['rating'] as num?)?.toDouble() ?? 4.8,
+      ratingsCount: (json['ratingsCount'] as num?)?.toInt() ?? 85,
     );
   }
 
@@ -299,6 +308,8 @@ class MenuItemModel {
     List<ProductVariant>? variants,
     bool? trackInventory,
     List<String>? aliases,
+    double? rating,
+    int? ratingsCount,
   }) {
     return MenuItemModel(
       id: id ?? this.id,
@@ -325,6 +336,8 @@ class MenuItemModel {
       variants: variants ?? this.variants,
       trackInventory: trackInventory ?? this.trackInventory,
       aliases: aliases ?? this.aliases,
+      rating: rating ?? this.rating,
+      ratingsCount: ratingsCount ?? this.ratingsCount,
     );
   }
 }

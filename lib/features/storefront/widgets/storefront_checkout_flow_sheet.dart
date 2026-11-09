@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/restaurant_model.dart';
 import '../../../core/models/order_model.dart';
+import 'package:flutter/services.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../models/storefront_model.dart';
 import '../services/customer_storefront_api_service.dart';
+import '../screens/customer_my_orders_screen.dart';
 
 class StorefrontCheckoutFlowSheet extends StatefulWidget {
   final RestaurantModel restaurant;
@@ -243,18 +245,418 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     }
   }
 
+  Future<Map<String, String>?> _showCustomerDetailsDialog() async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController(
+      text: (_currentCustomer != null && !_currentCustomer!.name.startsWith('Guest'))
+          ? _currentCustomer!.name
+          : '',
+    );
+    final phoneController = TextEditingController(
+      text: _phoneController.text.trim().isNotEmpty
+          ? _phoneController.text.trim()
+          : (_currentCustomer != null && _currentCustomer!.phone.isNotEmpty
+              ? _currentCustomer!.phone.replaceAll('+91', '').trim()
+              : ''),
+    );
+
+    return showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: widget.themeColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.table_restaurant_rounded, size: 20, color: widget.themeColor),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Table ${widget.tableCode ?? "01"} • Customer Details',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
+                              ),
+                              softWrap: true,
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Enter your details for table service and bill',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Color(0xFF64748B),
+                              ),
+                              softWrap: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                        onPressed: () => Navigator.of(dialogCtx).pop(null),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24, color: Color(0xFFE2E8F0)),
+
+                  // Customer Name
+                  const Text(
+                    'Customer Name',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: nameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      hintText: 'e.g. Rahul Sharma',
+                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      prefixIcon: const Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF64748B)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: widget.themeColor, width: 1.5),
+                      ),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) {
+                        return 'Please enter your name';
+                      }
+                      if (val.trim().length < 2) {
+                        return 'Name is too short';
+                      }
+                      return null;
+                    },
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Phone Number
+                  const Text(
+                    'Phone Number',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                    decoration: InputDecoration(
+                      hintText: '10-digit mobile number',
+                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      prefixIcon: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.phone_outlined, size: 18, color: Color(0xFF64748B)),
+                            SizedBox(width: 4),
+                            Text(
+                              '+91',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: widget.themeColor, width: 1.5),
+                      ),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) {
+                        return 'Please enter your mobile number';
+                      }
+                      final digits = val.replaceAll(RegExp(r'\D'), '');
+                      if (digits.length != 10) {
+                        return 'Enter a valid 10-digit number';
+                      }
+                      return null;
+                    },
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Continue Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        if (formKey.currentState?.validate() == true) {
+                          final name = nameController.text.trim();
+                          final rawPhone = phoneController.text.trim();
+                          final cleanPhone = rawPhone.startsWith('+91') ? rawPhone : '+91 $rawPhone';
+                          Navigator.of(dialogCtx).pop({
+                            'name': name,
+                            'phone': cleanPhone,
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.arrow_forward_rounded, size: 18, color: Colors.white),
+                      label: const Text(
+                        'Continue',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: widget.themeColor,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showOrderSuccessDialog(CustomerOrderTrackingModel order) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Celebration Icon
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      size: 44,
+                      color: Color(0xFF16A34A),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Order Placed Successfully! 🎉',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.3,
+                  ),
+                  softWrap: true,
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Your order has been sent to the kitchen. Fresh food is being prepared for your table!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF64748B),
+                    height: 1.4,
+                  ),
+                  softWrap: true,
+                ),
+                const SizedBox(height: 14),
+
+                // Order & Table Info Box
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'ORDER ID',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8)),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            order.orderNumber,
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: Text(
+                          'Table ${widget.tableCode ?? "01"}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF059669),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Primary Button: View Order
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(dialogCtx).pop(); // Close success dialog
+                      Navigator.of(context).pop(); // Close checkout flow sheet
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CustomerMyOrdersScreen(
+                            order: order,
+                            restaurant: widget.restaurant,
+                            tableCode: widget.tableCode,
+                            themeColor: widget.themeColor,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.receipt_long_rounded, size: 18, color: Colors.white),
+                    label: const Text(
+                      'View Order',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: widget.themeColor,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Secondary Text Button: Order More Items
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogCtx).pop(); // Close success dialog
+                    Navigator.of(context).pop(); // Close checkout flow sheet
+                  },
+                  child: const Text(
+                    'Order More Items',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _handlePlaceOrder() async {
     if (_isTableOrder) {
-      _selectedAddress ??= CustomerAddressModel(
+      final details = await _showCustomerDetailsDialog();
+      if (details == null) {
+        return; // User dismissed details dialog
+      }
+
+      _selectedAddress = CustomerAddressModel(
         id: 'addr_table_${widget.tableCode}',
         label: 'Dining Table',
         fullAddress: 'Table ${widget.tableCode}, ${widget.restaurant.name}',
         isDefault: true,
       );
-      _currentCustomer ??= CustomerProfileModel(
+      _currentCustomer = CustomerProfileModel(
         id: 'cust_table_${DateTime.now().millisecondsSinceEpoch}',
-        phone: _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : '+91 97095 93705',
-        name: 'Guest (${widget.tableCode})',
+        phone: details['phone']!,
+        name: details['name']!,
         addresses: [_selectedAddress!],
       );
     } else if (_selectedAddress == null) {
@@ -264,6 +666,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     }
 
     setState(() => _isSubmittingOrder = true);
+    final stopwatch = Stopwatch()..start();
 
     final order = await _customerService.placeCustomerOrder(
       restaurant: widget.restaurant,
@@ -281,13 +684,25 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
       orderType: _isTableOrder ? OrderType.dineIn : OrderType.delivery,
     );
 
-    setState(() => _isSubmittingOrder = false);
+    final elapsed = stopwatch.elapsedMilliseconds;
+    if (elapsed < 800) {
+      await Future.delayed(Duration(milliseconds: 800 - elapsed));
+    }
+
+    if (mounted) {
+      setState(() => _isSubmittingOrder = false);
+    }
 
     if (order != null && mounted) {
       setState(() => _activeOrder = order);
       widget.onClearCart();
       _subscribeToOrderUpdates(order.orderId);
-      _navigateToStep(10); // Order Confirmation & Live Tracking
+
+      if (_isTableOrder) {
+        await _showOrderSuccessDialog(order);
+      } else {
+        _navigateToStep(10); // Order Confirmation & Live Tracking
+      }
     } else {
       _showSnackbar('Could not place order. Please try again.');
     }
@@ -312,6 +727,100 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     );
   }
 
+  bool get _isRestaurantCategory {
+    final cuisine = widget.restaurant.cuisineType.toLowerCase();
+    const nonFoodCategories = [
+      'grocery', 'retail', 'fashion', 'apparel', 'footwear', 'jewelry',
+      'watch', 'beauty', 'personal care', 'furniture', 'home decor',
+      'building materials', 'e-commerce', 'electronics', 'books',
+      'stationery', 'pharmacy', 'clinic', 'healthcare', 'sports',
+      'fitness', 'gym', 'automobile', 'real estate', 'hardware',
+      'agriculture', 'pet shop', 'entertainment', 'services',
+    ];
+    for (final nonFood in nonFoodCategories) {
+      if (cuisine.contains(nonFood)) return false;
+    }
+    return true;
+  }
+
+  Widget _buildSubmittingOrderOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.45),
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 28),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [
+                BoxShadow(color: Color(0x33000000), blurRadius: 28, offset: Offset(0, 10)),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isRestaurantCategory) ...[
+                  Container(
+                    width: 140,
+                    height: 140,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset(
+                        'assets/images/restaurant_loader.gif',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Image.asset(
+                          'assets/images/restaurant_cooking_pan.jpg',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Sending Order to Kitchen...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'Tossing fresh ingredients & notifying chefs',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ] else ...[
+                  CircularProgressIndicator(color: widget.themeColor, strokeWidth: 3),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Placing Your Order...',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
@@ -322,25 +831,30 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
         color: Color(0xFFEFF3F8), // Soft Neumorphic Canvas
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Column(
+      child: Stack(
         children: [
-          // Drag handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 6),
-              width: 44,
-              height: 4.5,
-              decoration: BoxDecoration(
-                color: const Color(0xFFCBD5E1),
-                borderRadius: BorderRadius.circular(3),
+          Column(
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 6),
+                  width: 44,
+                  height: 4.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
               ),
-            ),
-          ),
 
-          // Dynamic Step View
-          Expanded(
-            child: _buildStepView(),
+              // Dynamic Step View
+              Expanded(
+                child: _buildStepView(),
+              ),
+            ],
           ),
+          if (_isSubmittingOrder) _buildSubmittingOrderOverlay(),
         ],
       ),
     );
@@ -2099,7 +2613,68 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+
+          // Restaurant Live Kitchen Preparing Animation
+          if (_isRestaurantCategory && currentStepIdx <= 1) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.asset(
+                        'assets/images/restaurant_loader.gif',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Image.asset(
+                          'assets/images/restaurant_cooking_pan.jpg',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Kitchen is Preparing Your Food',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Chefs are tossing fresh ingredients for your order',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // Live Vertical Status Timeline Card
           Container(
