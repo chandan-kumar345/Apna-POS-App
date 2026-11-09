@@ -5031,9 +5031,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   height: 34,
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      final shareMsg = 'Order delicious food directly from ${restaurant?.name ?? "our outlet"} online for takeaway & delivery!
-
-👉 $storeUrl';
+                      final shareMsg = 'Order delicious food directly from ${restaurant?.name ?? "our outlet"} online for takeaway & delivery!\n\n👉 $storeUrl';
                       SharePlus.instance.share(ShareParams(text: shareMsg));
                     },
                     icon: const Icon(Icons.share_rounded, size: 12),

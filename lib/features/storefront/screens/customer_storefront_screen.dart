@@ -1124,76 +1124,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                         ),
                       ],
 
-                      // Table Ordering Active Callout Banner / Invalid Table Warning Banner
-                      if (_activeTableCode != null && _activeTableCode!.trim().isNotEmpty) ...[
-                        if (_isTableValid)
-                          Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF065F46), Color(0xFF059669)],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF059669).withValues(alpha: 0.28),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 16),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Table Ordering Active: $_activeTableCode',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      const Text(
-                                        'Orders are sent directly to the kitchen for your dining table',
-                                        style: TextStyle(
-                                          color: Color(0xFFD1FAE5),
-                                          fontSize: 10.5,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (!_isTableSession)
-                                  TextButton.icon(
-                                    onPressed: _showSelectValidTableDialog,
-                                    icon: const Icon(Icons.swap_horiz_rounded, size: 14, color: Colors.white),
-                                    label: const Text('Change', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
-                                    style: TextButton.styleFrom(
-                                      backgroundColor: Colors.white.withValues(alpha: 0.2),
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          )
-                        else
+                      // Table Ordering Invalid Warning Banner (if invalid table scanned)
+                      if (_activeTableCode != null && _activeTableCode!.trim().isNotEmpty && !_isTableValid) ...[
                           Container(
                             width: double.infinity,
                             margin: const EdgeInsets.only(bottom: 12),
@@ -1522,7 +1454,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                           ),
                           const SizedBox(height: 8),
 
-                          // 2.2 Location & ETA Bar (Elevated Neumorphic Card)
+                          // 2.2 Location & ETA Bar (Elevated Neumorphic Card) - only for delivery & takeaway
+                          if (_orderType != OrderType.dineIn)
                           InkWell(
                             borderRadius: BorderRadius.circular(16),
                             onTap: _isTableSession ? null : (_orderType == OrderType.dineIn ? _showSelectValidTableDialog : _showChangeLocationDialog),

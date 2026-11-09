@@ -3274,44 +3274,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   List<StorefrontBanner> _defaultStorefrontBanners() {
-    return const [
-      StorefrontBanner(
-        id: 'banner_1',
-        tag: 'HOT & CHEESY',
-        headline: 'PIZZA LOVERS FEST',
-        subtitle: 'Fresh Hand-Tossed Pizzas & Bigger Happiness',
-        ctaText: 'ORDER NOW ➔',
-        imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1200&q=80',
-        accentColorHex: 0xFFE65100,
-        couponCode: 'PIZZA50',
-        discountText: 'FLAT 50% OFF',
-        isActive: true,
-      ),
-      StorefrontBanner(
-        id: 'banner_2',
-        tag: 'CHEF RECOMMENDATION',
-        headline: 'PANEER SUPREME SPECIAL',
-        subtitle: 'Loaded with 100% Mozzarella & Herb Spiced Paneer',
-        ctaText: 'VIEW ITEM ➔',
-        imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=1200&q=80',
-        accentColorHex: 0xFFD84315,
-        couponCode: 'CHEF20',
-        discountText: '20% OFF',
-        isActive: true,
-      ),
-      StorefrontBanner(
-        id: 'banner_3',
-        tag: 'SUPER SAVER COMBO',
-        headline: 'COMBO DELIGHT BOX',
-        subtitle: 'Pizza + Fries + Cold Drink at exclusive prices',
-        ctaText: 'GRAB COMBO ➔',
-        imageUrl: 'https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?auto=format&fit=crop&w=1200&q=80',
-        accentColorHex: 0xFFC2185B,
-        couponCode: 'COMBO100',
-        discountText: 'FLAT ₹100 OFF',
-        isActive: true,
-      ),
-    ];
+    return const [];
   }
 
   Future<void> _loadStorefrontBannersFromPrefs() async {
@@ -3324,10 +3287,8 @@ class DatabaseService extends ChangeNotifier {
         debugPrint('[DatabaseService] Error parsing cached storefront banners: $e');
         _storefrontBanners = [];
       }
-    }
-    if (_storefrontBanners.isEmpty) {
-      _storefrontBanners = _defaultStorefrontBanners();
-      await _saveStorefrontBannersToPrefs();
+    } else {
+      _storefrontBanners = [];
     }
   }
 

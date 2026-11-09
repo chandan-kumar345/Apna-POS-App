@@ -8,6 +8,8 @@ import '../models/customer_storefront_flow_models.dart';
 import '../models/storefront_model.dart';
 import '../services/customer_storefront_api_service.dart';
 import '../screens/customer_my_orders_screen.dart';
+import '../../../core/models/coupon_model.dart';
+import '../../../core/services/coupon_service.dart';
 
 class StorefrontCheckoutFlowSheet extends StatefulWidget {
   final RestaurantModel restaurant;
@@ -50,7 +52,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   CustomerOrderTrackingModel? _activeOrder;
 
   // Step 5 & 6 Inputs
-  final TextEditingController _phoneController = TextEditingController(text: '97095 93705');
+  final TextEditingController _phoneController = TextEditingController();
   final List<TextEditingController> _otpControllers = List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _otpFocusNodes = List.generate(6, (_) => FocusNode());
   int _resendTimerSeconds = 30;
@@ -81,12 +83,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
         fullAddress: 'Table ${widget.tableCode}, ${widget.restaurant.name}',
         isDefault: true,
       );
-      _currentCustomer = CustomerProfileModel(
-        id: 'cust_table_${DateTime.now().millisecondsSinceEpoch}',
-        phone: '+91 97095 93705',
-        name: 'Guest (${widget.tableCode})',
-        addresses: [_selectedAddress!],
-      );
+      _currentCustomer = null;
     } else {
       _currentCustomer = const CustomerProfileModel(
         id: 'cust_default',
@@ -196,17 +193,36 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     setState(() => _currentStep = step);
   }
 
-  void _handleProceedToCheckout() {
+  Future<void> _handleProceedToCheckout() async {
     if (_isTableOrder) {
-      _selectedAddress ??= CustomerAddressModel(
+      // Direct Table Order: Ask for customer details via bottom sheet and place order directly!
+      // Bypasses Step 8 (dining table details) and Step 9 (payment method selection).
+      final details = await _showCustomerDetailsBottomSheet();
+      if (details == null) {
+        return; // User cancelled
+      }
+
+      _selectedAddress = CustomerAddressModel(
         id: 'addr_table_${widget.tableCode}',
         label: 'Dining Table',
         fullAddress: 'Table ${widget.tableCode}, ${widget.restaurant.name}',
         isDefault: true,
       );
-      _navigateToStep(8); // Proceed directly to review & payment for table ordering
+      _currentCustomer = CustomerProfileModel(
+        id: 'cust_table_${DateTime.now().millisecondsSinceEpoch}',
+        phone: details['phone']!,
+        name: details['name']!,
+        addresses: [_selectedAddress!],
+      );
+      if (details['instructions'] != null && details['instructions']!.isNotEmpty) {
+        _deliveryInstructionsController.text = details['instructions']!;
+      }
+      _selectedPaymentMethod = 'Pay at Counter (Dine-In)';
+
+      await _executeOrderPlacement();
       return;
     }
+
     if (_currentCustomer != null) {
       _navigateToStep(8); // Delivery Details
     } else {
@@ -245,48 +261,70 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     }
   }
 
-  Future<Map<String, String>?> _showCustomerDetailsDialog() async {
+  Future<Map<String, String>?> _showCustomerDetailsBottomSheet() async {
     final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController(
-      text: (_currentCustomer != null && !_currentCustomer!.name.startsWith('Guest'))
-          ? _currentCustomer!.name
-          : '',
-    );
-    final phoneController = TextEditingController(
-      text: _phoneController.text.trim().isNotEmpty
-          ? _phoneController.text.trim()
-          : (_currentCustomer != null && _currentCustomer!.phone.isNotEmpty
-              ? _currentCustomer!.phone.replaceAll('+91', '').trim()
-              : ''),
+    // Strictly NO PREFILL DETAILS as requested by user
+    final nameController = TextEditingController(text: '');
+    final phoneController = TextEditingController(text: '');
+    final instructionsController = TextEditingController(
+      text: _deliveryInstructionsController.text.trim(),
     );
 
-    return showDialog<Map<String, String>>(
+    return showModalBottomSheet<Map<String, String>>(
       context: context,
-      barrierDismissible: true,
-      builder: (dialogCtx) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomCtx) {
+        return Container(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(bottomCtx).viewInsets.bottom,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 16,
+                offset: Offset(0, -4),
+              ),
+            ],
+          ),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             child: Form(
               key: formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Top Drag Handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // Header with Table Number & Close
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(9),
                         decoration: BoxDecoration(
-                          color: widget.themeColor.withValues(alpha: 0.12),
+                          color: const Color(0xFFDCFCE7),
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF86EFAC)),
                         ),
-                        child: Icon(Icons.table_restaurant_rounded, size: 20, color: widget.themeColor),
+                        child: const Icon(Icons.table_restaurant_rounded, size: 22, color: Color(0xFF15803D)),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,40 +332,40 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                             Text(
                               'Table ${widget.tableCode ?? "01"} • Customer Details',
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 16.5,
                                 fontWeight: FontWeight.w900,
                                 color: Color(0xFF0F172A),
                               ),
-                              softWrap: true,
                             ),
                             const SizedBox(height: 2),
                             const Text(
-                              'Enter your details for table service and bill',
+                              'Enter your details to send order to the kitchen',
                               style: TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 12,
                                 color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500,
                               ),
-                              softWrap: true,
                             ),
                           ],
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
-                        onPressed: () => Navigator.of(dialogCtx).pop(null),
+                        icon: const Icon(Icons.close_rounded, size: 22, color: Color(0xFF64748B)),
+                        onPressed: () => Navigator.of(bottomCtx).pop(null),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
                     ],
                   ),
+
                   const Divider(height: 24, color: Color(0xFFE2E8F0)),
 
-                  // Customer Name
+                  // 1. Customer Name Field (Clear high contrast black text, no prefill)
                   const Text(
-                    'Customer Name',
+                    'Customer Name *',
                     style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -335,11 +373,16 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                   TextFormField(
                     controller: nameController,
                     textCapitalization: TextCapitalization.words,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
                     decoration: InputDecoration(
-                      hintText: 'e.g. Rahul Sharma',
-                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                      prefixIcon: const Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF64748B)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      hintText: 'Enter your name (e.g. Rahul Sharma)',
+                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                      prefixIcon: const Icon(Icons.person_outline_rounded, size: 20, color: Color(0xFF64748B)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       border: OutlineInputBorder(
@@ -360,7 +403,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                         return 'Please enter your name';
                       }
                       if (val.trim().length < 2) {
-                        return 'Name is too short';
+                        return 'Name must be at least 2 characters';
                       }
                       return null;
                     },
@@ -368,12 +411,12 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
 
                   const SizedBox(height: 14),
 
-                  // Phone Number
+                  // 2. Mobile Number Field (Clear high contrast black text, no prefill)
                   const Text(
-                    'Phone Number',
+                    'Mobile Number *',
                     style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -381,32 +424,37 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                   TextFormField(
                     controller: phoneController,
                     keyboardType: TextInputType.phone,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
                       LengthLimitingTextInputFormatter(10),
                     ],
                     decoration: InputDecoration(
                       hintText: '10-digit mobile number',
-                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
                       prefixIcon: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: const [
                             Icon(Icons.phone_outlined, size: 18, color: Color(0xFF64748B)),
-                            SizedBox(width: 4),
+                            SizedBox(width: 6),
                             Text(
                               '+91',
                               style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
                                 color: Color(0xFF0F172A),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       border: OutlineInputBorder(
@@ -434,33 +482,121 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                     },
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
 
-                  // Continue Button
+                  // 3. Special Requests / Kitchen Notes (Optional)
+                  const Text(
+                    'Kitchen Requests (Optional)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: instructionsController,
+                    maxLines: 2,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. Less spicy, no onions, extra napkins',
+                      hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                      prefixIcon: const Padding(
+                        padding: EdgeInsets.only(bottom: 24),
+                        child: Icon(Icons.edit_note_rounded, size: 22, color: Color(0xFF64748B)),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: widget.themeColor, width: 1.5),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Payment & Total Strip
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: const [
+                            Icon(Icons.point_of_sale_rounded, size: 18, color: Color(0xFF0F172A)),
+                            SizedBox(width: 8),
+                            Text(
+                              'Pay at Counter',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          '₹${_grandTotal.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF10B981),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Confirm & Send to Kitchen Button
                   SizedBox(
                     width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
+                    height: 50,
+                    child: ElevatedButton(
                       onPressed: () {
                         if (formKey.currentState?.validate() == true) {
                           final name = nameController.text.trim();
                           final rawPhone = phoneController.text.trim();
                           final cleanPhone = rawPhone.startsWith('+91') ? rawPhone : '+91 $rawPhone';
-                          Navigator.of(dialogCtx).pop({
+                          Navigator.of(bottomCtx).pop({
                             'name': name,
                             'phone': cleanPhone,
+                            'instructions': instructionsController.text.trim(),
                           });
                         }
                       },
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 18, color: Colors.white),
-                      label: const Text(
-                        'Continue',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
-                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: widget.themeColor,
-                        elevation: 0,
+                        foregroundColor: Colors.white,
+                        elevation: 2,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.soup_kitchen_rounded, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Confirm & Send to Kitchen • ₹${_grandTotal.toStringAsFixed(0)}',
+                            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -640,31 +776,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     );
   }
 
-  Future<void> _handlePlaceOrder() async {
-    if (_isTableOrder) {
-      final details = await _showCustomerDetailsDialog();
-      if (details == null) {
-        return; // User dismissed details dialog
-      }
-
-      _selectedAddress = CustomerAddressModel(
-        id: 'addr_table_${widget.tableCode}',
-        label: 'Dining Table',
-        fullAddress: 'Table ${widget.tableCode}, ${widget.restaurant.name}',
-        isDefault: true,
-      );
-      _currentCustomer = CustomerProfileModel(
-        id: 'cust_table_${DateTime.now().millisecondsSinceEpoch}',
-        phone: details['phone']!,
-        name: details['name']!,
-        addresses: [_selectedAddress!],
-      );
-    } else if (_selectedAddress == null) {
-      _showSnackbar('Please select or add a delivery address');
-      _navigateToStep(8);
-      return;
-    }
-
+  Future<void> _executeOrderPlacement() async {
     setState(() => _isSubmittingOrder = true);
     final stopwatch = Stopwatch()..start();
 
@@ -706,6 +818,19 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     } else {
       _showSnackbar('Could not place order. Please try again.');
     }
+  }
+
+  Future<void> _handlePlaceOrder() async {
+    if (_isTableOrder) {
+      await _handleProceedToCheckout();
+      return;
+    } else if (_selectedAddress == null) {
+      _showSnackbar('Please select or add a delivery address');
+      _navigateToStep(8);
+      return;
+    }
+
+    await _executeOrderPlacement();
   }
 
   void _subscribeToOrderUpdates(String orderId) {
@@ -902,9 +1027,39 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Your Cart',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                  Row(
+                    children: [
+                      const Text(
+                        'Your Cart',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                      ),
+                      if (_isTableOrder) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF86EFAC)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.table_restaurant_rounded, size: 14, color: Color(0xFF15803D)),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Table ${widget.tableCode}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF15803D),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   Text(
                     '${widget.cartItems.length} ${widget.cartItems.length == 1 ? "item" : "items"}',
@@ -935,6 +1090,50 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Table Order Dine-in Strip
+                      if (_isTableOrder)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.table_restaurant_rounded, size: 18, color: Color(0xFF16A34A)),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Table ${widget.tableCode} • Dine-In Order',
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF15803D),
+                                      ),
+                                    ),
+                                    const Text(
+                                      'Order will be delivered directly to your table',
+                                      style: TextStyle(fontSize: 11.5, color: Color(0xFF166534)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       // 1. CART ITEMS LIST
                       ...widget.cartItems.map((cartItem) => _buildCartItemCard(cartItem)),
 
@@ -953,7 +1152,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                       // 4. PROCEED TO CHECKOUT BUTTON
                       SizedBox(
                         width: double.infinity,
-                        height: 50,
+                        height: 52,
                         child: ElevatedButton(
                           onPressed: _handleProceedToCheckout,
                           style: ElevatedButton.styleFrom(
@@ -961,14 +1160,20 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                             foregroundColor: Colors.white,
                             elevation: 3,
                             shadowColor: widget.themeColor.withValues(alpha: 0.4),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text('Proceed to Checkout', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-                              SizedBox(width: 6),
-                              Icon(Icons.arrow_forward_rounded, size: 18),
+                              Text(
+                                _isTableOrder ? 'Send Order to Kitchen' : 'Proceed to Checkout',
+                                style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                _isTableOrder ? Icons.soup_kitchen_rounded : Icons.arrow_forward_rounded,
+                                size: 19,
+                              ),
                             ],
                           ),
                         ),
@@ -1058,6 +1263,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Food Thumbnail
           ClipRRect(
@@ -1079,34 +1285,42 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
           ),
           const SizedBox(width: 12),
 
-          // Title & Size & Price
+          // Title & Size & Price (Full product text clearly visible)
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildVegDot(cartItem.item.itemType),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: _buildVegDot(cartItem.item.itemType),
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         cartItem.item.name,
                         style: const TextStyle(
-                          fontSize: 14.5,
+                          fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF0F172A),
+                          height: 1.25,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
+                        softWrap: true,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  sizeText,
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                ),
+                if (sizeText.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    sizeText,
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(
                   '₹${cartItem.unitPrice.toStringAsFixed(0)}',
@@ -1164,81 +1378,516 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   }
 
   Widget _buildApplyCouponCard() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
-          BoxShadow(
-            color: const Color(0xFF94A3B8).withValues(alpha: 0.15),
-            offset: const Offset(2, 2.5),
-            blurRadius: 5,
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: widget.themeColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+    final bool hasCoupon = _appliedCouponCode != null && _appliedCouponCode!.isNotEmpty;
+    return InkWell(
+      onTap: hasCoupon ? null : _showCouponsBottomSheet,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+            BoxShadow(
+              color: const Color(0xFF94A3B8).withValues(alpha: 0.15),
+              offset: const Offset(2, 2.5),
+              blurRadius: 5,
             ),
-            child: Icon(Icons.local_offer_rounded, color: widget.themeColor, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _appliedCouponCode != null ? 'Coupon Applied: $_appliedCouponCode' : 'Apply Coupon',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                ),
-                if (_appliedCouponCode != null)
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: widget.themeColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.local_offer_rounded, color: widget.themeColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    'Saved ₹${_couponDiscount.toStringAsFixed(0)}',
-                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w700),
+                    hasCoupon ? 'Coupon Applied: $_appliedCouponCode' : 'Apply Coupon',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                   ),
-              ],
+                  if (hasCoupon)
+                    Text(
+                      'Saved ₹${_couponDiscount.toStringAsFixed(0)}',
+                      style: const TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w700),
+                    ),
+                ],
+              ),
             ),
-          ),
-          TextButton(
-            onPressed: () {
-              // Apply default promo coupon
-              setState(() {
-                if (_appliedCouponCode == null) {
-                  _appliedCouponCode = 'WELCOME50';
-                  _couponDiscount = 50.0;
-                } else {
-                  _appliedCouponCode = null;
-                  _couponDiscount = 0.0;
-                }
-              });
-            },
-            child: Row(
-              children: [
-                Text(
-                  _appliedCouponCode != null ? 'Remove' : 'Select a coupon',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: _appliedCouponCode != null ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                  ),
+            if (hasCoupon)
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _appliedCouponCode = null;
+                    _couponDiscount = 0.0;
+                  });
+                  _showSnackbar('Coupon removed');
+                },
+                child: const Row(
+                  children: [
+                    Text(
+                      'Remove',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFEF4444),
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: Color(0xFFEF4444),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 11,
-                  color: _appliedCouponCode != null ? const Color(0xFFEF4444) : const Color(0xFF64748B),
+              )
+            else
+              TextButton(
+                onPressed: _showCouponsBottomSheet,
+                child: const Row(
+                  children: [
+                    Text(
+                      'Select a coupon',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 11,
+                      color: Color(0xFF64748B),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ],
+              ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Future<void> _showCouponsBottomSheet() async {
+    // 1. Load active coupons from CouponService or fallback list
+    List<CouponModel> availableCoupons = [];
+    try {
+      final res = await CouponService().getCoupons(status: 'active');
+      availableCoupons = res.coupons.where((c) => c.isActive && !c.isExpired).toList();
+    } catch (e) {
+      debugPrint('[CheckoutSheet] getCoupons error: $e');
+    }
+
+    // Fallback offers if none configured yet
+    if (availableCoupons.isEmpty) {
+      availableCoupons = [
+        const CouponModel(
+          id: 'welcome_50',
+          code: 'WELCOME50',
+          title: 'Flat ₹50 OFF',
+          description: 'Special discount on your order',
+          discountType: 'flat',
+          discountValue: 50.0,
+          minCartAmount: 200.0,
+          isActive: true,
+        ),
+        const CouponModel(
+          id: 'chef_20',
+          code: 'CHEF20',
+          title: '20% OFF Chef Special',
+          description: 'Get 20% discount on order value',
+          discountType: 'percentage',
+          discountValue: 20.0,
+          maxDiscountAmount: 100.0,
+          minCartAmount: 300.0,
+          isActive: true,
+        ),
+        const CouponModel(
+          id: 'festive_100',
+          code: 'FESTIVE100',
+          title: 'Flat ₹100 Mega Saver',
+          description: 'Save ₹100 on party & family feasts',
+          discountType: 'flat',
+          discountValue: 100.0,
+          minCartAmount: 500.0,
+          isActive: true,
+        ),
+      ];
+    }
+
+    final codeInputController = TextEditingController();
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (bottomCtx, setModalState) {
+            void applySpecificCoupon(CouponModel coupon) {
+              if (_itemTotal < coupon.minCartAmount) {
+                final diff = (coupon.minCartAmount - _itemTotal).toStringAsFixed(0);
+                Navigator.of(sheetCtx).pop();
+                _showSnackbar('Add ₹$diff more to apply coupon ${coupon.code}');
+                return;
+              }
+
+              double discount = 0.0;
+              if (coupon.isPercentage) {
+                discount = (_itemTotal * coupon.discountValue) / 100.0;
+                if (coupon.maxDiscountAmount != null && coupon.maxDiscountAmount! > 0) {
+                  discount = discount > coupon.maxDiscountAmount! ? coupon.maxDiscountAmount! : discount;
+                }
+              } else {
+                discount = coupon.discountValue > _itemTotal ? _itemTotal : coupon.discountValue;
+              }
+
+              setState(() {
+                _appliedCouponCode = coupon.code;
+                _couponDiscount = discount;
+              });
+
+              Navigator.of(sheetCtx).pop();
+              _showSnackbar('Coupon ${coupon.code} applied! Saved ₹${discount.toStringAsFixed(0)}');
+            }
+
+            void applyEnteredCode() async {
+              final code = codeInputController.text.trim().toUpperCase();
+              if (code.isEmpty) {
+                ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  const SnackBar(content: Text('Please enter a coupon code')),
+                );
+                return;
+              }
+
+              // Check in available coupons
+              final match = availableCoupons.firstWhere(
+                (c) => c.code.toUpperCase() == code,
+                orElse: () => const CouponModel(
+                  id: '',
+                  code: '',
+                  discountValue: 0,
+                  isActive: false,
+                ),
+              );
+
+              if (match.code.isNotEmpty) {
+                applySpecificCoupon(match);
+                return;
+              }
+
+              // Validate via CouponService
+              final val = await CouponService().validateCoupon(
+                code: code,
+                cartSubtotal: _itemTotal,
+                orderType: _isTableOrder ? 'dine_in' : 'delivery',
+              );
+
+              if (val.valid) {
+                setState(() {
+                  _appliedCouponCode = val.code ?? code;
+                  _couponDiscount = val.discountAmount;
+                });
+                if (Navigator.of(sheetCtx).canPop()) {
+                  Navigator.of(sheetCtx).pop();
+                }
+                _showSnackbar(val.message ?? 'Coupon applied!');
+              } else {
+                ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  SnackBar(
+                    content: Text(val.message ?? 'Invalid coupon code'),
+                    backgroundColor: const Color(0xFFEF4444),
+                  ),
+                );
+              }
+            }
+
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: widget.themeColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.local_offer_rounded, color: widget.themeColor, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Apply Coupon',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Choose or enter a promo code to get discounts',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 22, color: Color(0xFF64748B)),
+                          onPressed: () => Navigator.of(sheetCtx).pop(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+
+                  // Coupon Code Input Bar
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 10),
+                          const Icon(Icons.confirmation_number_outlined, size: 20, color: Color(0xFF64748B)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: codeInputController,
+                              textCapitalization: TextCapitalization.characters,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                                letterSpacing: 0.8,
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: 'Enter coupon code',
+                                hintStyle: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF94A3B8),
+                                  letterSpacing: 0,
+                                  fontWeight: FontWeight.normal,
+                                ),
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: applyEnteredCode,
+                            style: TextButton.styleFrom(
+                              backgroundColor: widget.themeColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: const Text(
+                              'APPLY',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Available Coupons List
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                      itemCount: availableCoupons.length,
+                      separatorBuilder: (c, i) => const SizedBox(height: 12),
+                      itemBuilder: (c, idx) {
+                        final coupon = availableCoupons[idx];
+                        final bool isEligible = _itemTotal >= coupon.minCartAmount;
+                        final bool isCurrent = _appliedCouponCode == coupon.code;
+
+                        return Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isCurrent
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFE2E8F0),
+                              width: isCurrent ? 1.5 : 1.0,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF94A3B8).withValues(alpha: 0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // Dashed coupon badge
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: widget.themeColor.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: widget.themeColor.withValues(alpha: 0.4)),
+                                    ),
+                                    child: Text(
+                                      coupon.code,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                        color: widget.themeColor,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+
+                                  if (isCurrent)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFDCFCE7),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text(
+                                        'APPLIED',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w900,
+                                          color: Color(0xFF16A34A),
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    ElevatedButton(
+                                      onPressed: () => applySpecificCoupon(coupon),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isEligible ? widget.themeColor : const Color(0xFF94A3B8),
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'APPLY',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                coupon.title.isNotEmpty ? coupon.title : 'Special Offer',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              if (coupon.description.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  coupon.description,
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(
+                                    isEligible ? Icons.check_circle_outline_rounded : Icons.info_outline_rounded,
+                                    size: 14,
+                                    color: isEligible ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      isEligible
+                                          ? 'Valid on this order (min order: ₹${coupon.minCartAmount.toStringAsFixed(0)})'
+                                          : 'Add ₹${(coupon.minCartAmount - _itemTotal).toStringAsFixed(0)} more to unlock this coupon',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: isEligible ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1266,8 +1915,10 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
           ),
           const SizedBox(height: 12),
           _buildBillRow('Item Total', '₹${_itemTotal.toStringAsFixed(0)}'),
-          const SizedBox(height: 8),
-          _buildBillRow('Delivery Charge', _isTableOrder ? 'FREE (Dine-In)' : '₹${_deliveryCharge.toStringAsFixed(0)}', isGreen: _isTableOrder),
+          if (!_isTableOrder) ...[
+            const SizedBox(height: 8),
+            _buildBillRow('Delivery Charge', '₹${_deliveryCharge.toStringAsFixed(0)}'),
+          ],
           const SizedBox(height: 8),
           _buildBillRow('Taxes & Charges (GST)', '₹${_taxesAndCharges.toStringAsFixed(0)}'),
           if (_couponDiscount > 0) ...[
@@ -2384,8 +3035,10 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                 ),
                 const SizedBox(height: 8),
                 _buildBillRow('Item Total', '₹${_itemTotal.toStringAsFixed(0)}'),
-                const SizedBox(height: 4),
-                _buildBillRow('Delivery Charge', _isTableOrder ? 'FREE (Dine-In)' : '₹${_deliveryCharge.toStringAsFixed(0)}', isGreen: _isTableOrder),
+                if (!_isTableOrder) ...[
+                  const SizedBox(height: 4),
+                  _buildBillRow('Delivery Charge', '₹${_deliveryCharge.toStringAsFixed(0)}'),
+                ],
               ],
             ),
           ),
