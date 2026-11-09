@@ -26,6 +26,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
   final double totalAmount;
   final String orderType;
   final String deliveryAddress;
+  final String? tableNumber;
   final List<Map<String, dynamic>> items;
   final DateTime createdAt;
   final String source;
@@ -41,6 +42,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     required this.totalAmount,
     this.orderType = 'takeaway',
     this.deliveryAddress = '',
+    this.tableNumber,
     this.items = const [],
     required this.createdAt,
     this.source = 'whatsapp',
@@ -67,6 +69,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     required double totalAmount,
     String? orderType,
     String? deliveryAddress,
+    String? tableNumber,
     dynamic itemsPayload,
     DateTime? createdAt,
     String? source,
@@ -75,11 +78,19 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
   }) async {
     final cleanType = (orderType ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
     final cleanSource = (source ?? '').toLowerCase().trim();
+    final bool isTable = (tableNumber != null && tableNumber.trim().isNotEmpty) ||
+        cleanSource.contains('qr') ||
+        cleanSource.contains('table') ||
+        cleanType.contains('table') ||
+        cleanType.contains('dine') ||
+        (deliveryAddress != null && deliveryAddress.toLowerCase().contains('table'));
+
     final bool isExplicitExternal = cleanSource == 'whatsapp' ||
         cleanSource == 'profile' ||
         cleanSource == 'storefront' ||
         cleanSource == 'online' ||
         cleanSource == 'qr' ||
+        isTable ||
         cleanType.contains('whatsapp') ||
         cleanType.contains('profile');
 
@@ -144,6 +155,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
               totalAmount: totalAmount,
               orderType: orderType ?? 'takeaway',
               deliveryAddress: deliveryAddress ?? '',
+              tableNumber: tableNumber,
               items: parsedItems,
               createdAt: effectiveCreatedAt,
               source: source ?? 'whatsapp',
@@ -208,6 +220,10 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
     final deliveryAddress = metadata['deliveryAddress']?.toString() ??
         data['deliveryAddress']?.toString() ??
         '';
+    final tableNumber = metadata['tableNumber']?.toString() ??
+        data['tableNumber']?.toString() ??
+        metadata['table']?.toString() ??
+        data['table']?.toString();
     final itemsPayload = metadata['items'] ?? data['items'];
     final createdAtStr = metadata['createdAt']?.toString() ?? data['createdAt']?.toString();
     DateTime? createdAt;
@@ -235,6 +251,7 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
       totalAmount: totalAmount,
       orderType: orderType,
       deliveryAddress: deliveryAddress,
+      tableNumber: tableNumber,
       itemsPayload: itemsPayload,
       createdAt: createdAt,
       source: source,
@@ -336,6 +353,41 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     with SingleTickerProviderStateMixin {
   final OrderService _orderService = OrderService();
   final DatabaseService _db = DatabaseService();
+
+  String? get _resolvedTableNumber {
+    if (widget.tableNumber != null && widget.tableNumber!.trim().isNotEmpty) {
+      final clean = widget.tableNumber!.trim();
+      return clean.replaceAll(RegExp(r'(?i)table\s*'), '').trim().toUpperCase();
+    }
+    if (widget.deliveryAddress.isNotEmpty) {
+      final match = RegExp(r'(?:table|tbl|t)\s*[:#\-]?\s*([0-9a-zA-Z]+)', caseSensitive: false)
+          .firstMatch(widget.deliveryAddress);
+      if (match != null && match.group(1) != null) {
+        return match.group(1)!.toUpperCase();
+      }
+      if (widget.deliveryAddress.toLowerCase().contains('table')) {
+        final cleaned = widget.deliveryAddress.replaceAll(RegExp(r'(?i)table\s*'), '').trim();
+        if (cleaned.isNotEmpty) return cleaned.toUpperCase();
+      }
+    }
+    final matchName = RegExp(r'\((?:table|tbl|t)?\s*([0-9a-zA-Z]+)\)', caseSensitive: false)
+        .firstMatch(widget.customerName);
+    if (matchName != null && matchName.group(1) != null) {
+      return matchName.group(1)!.toUpperCase();
+    }
+    return null;
+  }
+
+  bool get _isTableOrder {
+    final cleanType = widget.orderType.toLowerCase();
+    final cleanSource = widget.source.toLowerCase();
+    return cleanType.contains('dine') ||
+        cleanType.contains('table') ||
+        cleanSource.contains('qr') ||
+        cleanSource.contains('table') ||
+        widget.deliveryAddress.toLowerCase().contains('table') ||
+        _resolvedTableNumber != null;
+  }
 
   int _selectedPrepTime = 20;
   bool _isProcessing = false;
@@ -551,8 +603,8 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     }
 
     // Resolve table number if dine-in
-    String? tableNum;
-    if (resolvedType == OrderType.dineIn) {
+    String? tableNum = _resolvedTableNumber;
+    if (tableNum == null && resolvedType == OrderType.dineIn) {
       final match = RegExp(r'(?:table|tbl|t)\s*[:#\-]?\s*([0-9a-zA-Z]+)', caseSensitive: false)
           .firstMatch('${widget.deliveryAddress} ${widget.orderNumber}');
       if (match != null) {
@@ -560,14 +612,13 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       } else if (widget.deliveryAddress.trim().isNotEmpty) {
         tableNum = widget.deliveryAddress.trim();
       }
-      if (tableNum != null && !tableNum.toLowerCase().startsWith('table') && !tableNum.toLowerCase().startsWith('t')) {
-        final existingTable = _db.tables.where((t) => isSameTable(t.name, tableNum)).firstOrNull;
-        if (existingTable != null) {
-          tableNum = existingTable.name;
-        }
+    }
+    if (tableNum != null && !tableNum.toLowerCase().startsWith('table') && !tableNum.toLowerCase().startsWith('t')) {
+      final existingTable = _db.tables.where((t) => isSameTable(t.name, tableNum)).firstOrNull;
+      if (existingTable != null) {
+        tableNum = existingTable.name;
       }
     }
-
     final existingIdx = _db.orders.indexWhere(
       (o) => (widget.orderId.isNotEmpty && o.id == widget.orderId) ||
              (widget.orderNumber.isNotEmpty && o.orderNumber == widget.orderNumber),
@@ -618,7 +669,7 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       customerName: widget.customerName,
       customerPhone: widget.customerPhone,
       deliveryAddress: widget.deliveryAddress,
-      tableNumber: tableNum,
+      tableNumber: tableNum ?? _resolvedTableNumber,
       orderType: resolvedType,
       status: targetStatus,
       items: cartItems,
@@ -656,17 +707,88 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       // 1. Immediately update order in DatabaseService to 'OrderStatus.preparing'
       final updatedOrder = _syncOrderToDatabase(targetStatus: OrderStatus.preparing);
 
-      // If Dine-In with table, update table status to runningKot
-      if (updatedOrder.orderType == OrderType.dineIn && updatedOrder.tableNumber != null && updatedOrder.tableNumber!.isNotEmpty) {
-        final tbl = _db.tables.where((t) => isSameTable(t.name, updatedOrder.tableNumber)).firstOrNull;
-        if (tbl != null) {
-          _db.updateTableStatus(
-            tbl.id,
+      // If Dine-In with table, update table status to runningKot and populate cart & customer info
+      final isTableOrderActive = updatedOrder.orderType == OrderType.dineIn || _isTableOrder;
+      final String? tableRef = updatedOrder.tableNumber ?? _resolvedTableNumber;
+      if (isTableOrderActive && tableRef != null && tableRef.trim().isNotEmpty) {
+        final cleanTableRef = tableRef.trim();
+
+        // 1. Locate existing table or create it dynamically (e.g. Table 8)
+        TableModel? targetTbl = _db.tables.where((t) =>
+            isSameTable(t.name, cleanTableRef) ||
+            isSameTable(t.tableNumber.toString(), cleanTableRef) ||
+            isSameTable('T-${t.tableNumber}', cleanTableRef) ||
+            t.tableNumber.toString() == cleanTableRef.replaceAll(RegExp(r'[^0-9]'), '')
+        ).firstOrNull;
+
+        final nowIso = DateTime.now().toIso8601String();
+        if (targetTbl == null) {
+          final int num = int.tryParse(cleanTableRef.replaceAll(RegExp(r'[^0-9]'), '')) ?? 8;
+          final String autoName = cleanTableRef.toLowerCase().startsWith('t') || cleanTableRef.toLowerCase().startsWith('table')
+              ? cleanTableRef
+              : 'T-$num';
+          targetTbl = TableModel(
+            id: 'table_${num}_${DateTime.now().millisecondsSinceEpoch}',
+            tableNumber: num,
+            name: autoName,
+            floor: 'Ground Floor',
+            capacity: 4,
+            status: TableStatus.runningKot,
+            currentOrderId: updatedOrder.id,
+            occupiedSince: nowIso,
+            activeOrderNumber: updatedOrder.orderNumber,
+            activeOrderTotal: updatedOrder.totalAmount,
+            activeItemCount: updatedOrder.items.length,
+          );
+          _db.tables.add(targetTbl);
+          await _db.saveTablesToPrefs();
+        } else {
+          final tblOccupiedSince = targetTbl.occupiedSince ?? nowIso;
+          await _db.updateTableStatus(
+            targetTbl.id,
             TableStatus.runningKot,
             orderId: updatedOrder.id,
-            occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String(),
+            occupiedSince: tblOccupiedSince,
           );
+
+          final idx = _db.tables.indexWhere((t) => t.id == targetTbl!.id);
+          if (idx >= 0) {
+            _db.tables[idx] = _db.tables[idx].copyWith(
+              status: TableStatus.runningKot,
+              currentOrderId: updatedOrder.id,
+              activeOrderNumber: updatedOrder.orderNumber,
+              activeOrderTotal: updatedOrder.totalAmount,
+              activeItemCount: updatedOrder.items.length,
+              occupiedSince: tblOccupiedSince,
+            );
+            await _db.saveTablesToPrefs();
+          }
         }
+
+        // 2. Store live cart items & totals for instantaneous POS and table grid sync
+        _db.setLiveTableCart(targetTbl.name, updatedOrder.items);
+        _db.setLiveCartTotal(targetTbl.name, updatedOrder.totalAmount);
+        if (cleanTableRef != targetTbl.name) {
+          _db.setLiveTableCart(cleanTableRef, updatedOrder.items);
+          _db.setLiveCartTotal(cleanTableRef, updatedOrder.totalAmount);
+        }
+
+        // 3. Store filled customer name and mobile number on the table
+        if (updatedOrder.customerName != null && updatedOrder.customerName!.isNotEmpty) {
+          _db.setLiveCustomerInfo(
+            targetTbl.name,
+            name: updatedOrder.customerName!,
+            phone: updatedOrder.customerPhone ?? '',
+          );
+          if (cleanTableRef != targetTbl.name) {
+            _db.setLiveCustomerInfo(
+              cleanTableRef,
+              name: updatedOrder.customerName!,
+              phone: updatedOrder.customerPhone ?? '',
+            );
+          }
+        }
+        _db.notifyListeners();
       }
 
       // 2. Dispatch backend acceptance
@@ -679,20 +801,30 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       unawaited(_db.syncOrdersOnly());
 
       // 4. Auto-print KOT if thermal printer configured
+      bool kotPrinted = false;
       try {
         final printer = BluetoothPrinterService();
-        final connected = await printer.isConnected();
-        if (connected) {
-          await printer.printKOT(order: updatedOrder);
+        kotPrinted = await printer.printKOT(order: updatedOrder);
+        if (kotPrinted) {
+          debugPrint('[IncomingOrderAcceptScreen] KOT successfully auto-printed for Table #${updatedOrder.tableNumber ?? _resolvedTableNumber}');
+        } else {
+          debugPrint('[IncomingOrderAcceptScreen] Thermal printer not connected or unavailable. Skipping auto-print gracefully.');
         }
       } catch (printErr) {
-        debugPrint('[IncomingOrderAcceptScreen] Auto-print KOT notice: $printErr');
+        debugPrint('[IncomingOrderAcceptScreen] Auto-print KOT notice (non-fatal): $printErr');
       }
+
+      // 5. Update storefront order status in Firestore for real-time customer tracking
+      try {
+        FirestoreService().updateStorefrontOrderStatus(widget.orderId, 'preparing', 1);
+      } catch (_) {}
 
       _closeScreen();
 
       final navCtx = LocalNotificationService.navigatorKey.currentContext;
       if (navCtx != null && navCtx.mounted) {
+        final String tblDisplay = tableRef != null && tableRef.isNotEmpty ? 'Table $tableRef • ' : '';
+        final String printMsg = kotPrinted ? ' (KOT Printed)' : '';
         ScaffoldMessenger.of(navCtx).showSnackBar(
           SnackBar(
             content: Row(
@@ -701,8 +833,8 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Order #${widget.orderNumber} Accepted! Prep time: $_selectedPrepTime mins.',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    '${tblDisplay}Order #${widget.orderNumber} Accepted & Sent to KOT!$printMsg Prep: $_selectedPrepTime mins.',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
                   ),
                 ),
               ],
@@ -1065,8 +1197,8 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
                 },
               ),
               const SizedBox(width: 6),
-              const Text(
-                'NEW INCOMING ORDER',
+              Text(
+                _isTableOrder ? 'TABLE QR INCOMING ORDER' : 'NEW INCOMING ORDER',
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w900,
@@ -1113,18 +1245,25 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
   }
 
   Widget _buildTopAlertBar() {
+    final isTable = _isTableOrder;
+    final tblNum = _resolvedTableNumber;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFF1F2), Color(0xFFFFE4E6)],
+          gradient: LinearGradient(
+            colors: isTable
+                ? const [Color(0xFFECFDF5), Color(0xFFD1FAE5)]
+                : const [Color(0xFFFFF1F2), Color(0xFFFFE4E6)],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFFFCDD3)),
+          border: Border.all(
+            color: isTable ? const Color(0xFFA7F3D0) : const Color(0xFFFFCDD3),
+          ),
           boxShadow: const [
             BoxShadow(
               color: Color(0x06000000),
@@ -1135,16 +1274,22 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
         ),
         child: Row(
           children: [
-            const Icon(Icons.notifications_active_rounded, color: Color(0xFFE11D48), size: 17),
+            Icon(
+              isTable ? Icons.table_restaurant_rounded : Icons.notifications_active_rounded,
+              color: isTable ? const Color(0xFF059669) : const Color(0xFFE11D48),
+              size: 17,
+            ),
             const SizedBox(width: 6),
-            const Expanded(
+            Expanded(
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Incoming order requires your action',
+                  isTable
+                      ? 'Table ${tblNum ?? "Dine-In"} QR order requires your action'
+                      : 'Incoming order requires your action',
                   style: TextStyle(
-                    color: Color(0xFFB91C1C),
+                    color: isTable ? const Color(0xFF065F46) : const Color(0xFFB91C1C),
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                   ),
@@ -1156,19 +1301,26 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF1F2),
+                color: isTable ? const Color(0xFFECFDF5) : const Color(0xFFFFF1F2),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDA4AF), width: 1.0),
+                border: Border.all(
+                  color: isTable ? const Color(0xFF6EE7B7) : const Color(0xFFFDA4AF),
+                  width: 1.0,
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.alarm_rounded, color: Color(0xFFE11D48), size: 12),
+                  Icon(
+                    Icons.alarm_rounded,
+                    color: isTable ? const Color(0xFF059669) : const Color(0xFFE11D48),
+                    size: 12,
+                  ),
                   const SizedBox(width: 3),
                   Text(
                     '${_secondsRemaining}s',
-                    style: const TextStyle(
-                      color: Color(0xFFB91C1C),
+                    style: TextStyle(
+                      color: isTable ? const Color(0xFF065F46) : const Color(0xFFB91C1C),
                       fontWeight: FontWeight.w900,
                       fontSize: 11.5,
                     ),
@@ -1186,6 +1338,8 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     final orderNumDisplay = widget.orderNumber.startsWith('#')
         ? widget.orderNumber
         : '#${widget.orderNumber}';
+    final isTable = _isTableOrder;
+    final tblNum = _resolvedTableNumber;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1201,37 +1355,45 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // WhatsApp Logo Container
+          // Order Type / Channel Emblem
           Container(
-            width: 38,
-            height: 38,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF25D366), Color(0xFF1EBE5D)],
+              gradient: LinearGradient(
+                colors: isTable
+                    ? const [Color(0xFF0D9488), Color(0xFF059669)]
+                    : const [Color(0xFF25D366), Color(0xFF1EBE5D)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [
+              boxShadow: [
                 BoxShadow(
-                  color: Color(0x2825D366),
+                  color: isTable ? const Color(0x330D9488) : const Color(0x2825D366),
                   blurRadius: 8,
-                  offset: Offset(0, 3),
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
             child: Center(
-              child: Image.asset(
-                'assets/images/whatsapp_logo.png',
-                width: 22,
-                height: 22,
-                fit: BoxFit.contain,
-                errorBuilder: (ctx, err, st) => const Icon(
-                  Icons.chat_bubble_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
+              child: isTable
+                  ? const Icon(
+                      Icons.table_restaurant_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    )
+                  : Image.asset(
+                      'assets/images/whatsapp_logo.png',
+                      width: 22,
+                      height: 22,
+                      fit: BoxFit.contain,
+                      errorBuilder: (ctx, err, st) => const Icon(
+                        Icons.chat_bubble_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(width: 10),
@@ -1239,15 +1401,32 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.source.toUpperCase(),
-                  style: const TextStyle(
-                    color: _textMuted,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8,
+                if (isTable)
+                  Row(
+                    children: [
+                      const Icon(Icons.qr_code_scanner_rounded, size: 12, color: Color(0xFF0D9488)),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'TABLE QR DINE-IN',
+                        style: TextStyle(
+                          color: Color(0xFF0D9488),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    widget.source.toUpperCase(),
+                    style: const TextStyle(
+                      color: _textMuted,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
                   ),
-                ),
                 const SizedBox(height: 2),
                 Wrap(
                   spacing: 6,
@@ -1279,26 +1458,56 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
                         ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: widget.orderType.toLowerCase() == 'delivery'
-                            ? const Color(0xFFEFF6FF)
-                            : const Color(0xFFF3E8FF),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        widget.orderType.toUpperCase(),
-                        style: TextStyle(
+                    if (isTable)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF059669), Color(0xFF047857)],
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x22059669), blurRadius: 4, offset: Offset(0, 1)),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.table_bar_rounded, size: 11, color: Colors.white),
+                            const SizedBox(width: 3),
+                            Text(
+                              'TABLE ${tblNum ?? "DINE-IN"}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
                           color: widget.orderType.toLowerCase() == 'delivery'
-                              ? const Color(0xFF2563EB)
-                              : const Color(0xFF7E22CE),
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.3,
+                              ? const Color(0xFFEFF6FF)
+                              : const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          widget.orderType.toUpperCase(),
+                          style: TextStyle(
+                            color: widget.orderType.toLowerCase() == 'delivery'
+                                ? const Color(0xFF2563EB)
+                                : const Color(0xFF7E22CE),
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
@@ -1319,12 +1528,21 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
   }
 
   Widget _buildCustomerCard(bool isDelivery) {
-    final customerInitial = widget.customerName.isNotEmpty
-        ? widget.customerName[0].toUpperCase()
-        : 'U';
-    final displayName = widget.customerName.isNotEmpty && widget.customerName != 'Customer'
+    final isTable = _isTableOrder;
+    final tblNum = _resolvedTableNumber;
+
+    String displayName = widget.customerName.isNotEmpty && widget.customerName != 'Customer'
         ? widget.customerName
-        : 'unknown';
+        : (isTable ? 'Guest Customer' : 'unknown');
+
+    if (isTable && displayName.contains('(')) {
+      displayName = displayName.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+      if (displayName.isEmpty) displayName = 'Guest Customer';
+    }
+
+    final customerInitial = displayName.isNotEmpty
+        ? displayName[0].toUpperCase()
+        : 'G';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1340,6 +1558,77 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Table QR Highlight Banner
+          if (isTable) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF16A34A), size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'DINING AT TABLE ${tblNum ?? "DINE-IN"}',
+                              style: const TextStyle(
+                                color: Color(0xFF15803D),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12.5,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: const Color(0xFF86EFAC)),
+                              ),
+                              child: const Text(
+                                'QR SCAN',
+                                style: TextStyle(
+                                  color: Color(0xFF166534),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Customer scanned table QR code & ordered live',
+                          style: TextStyle(
+                            color: Color(0xFF4B5563),
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Row(
             children: [
               // Avatar circle with mint/cyan background
@@ -1390,7 +1679,9 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _formatPhone(widget.customerPhone),
+                      widget.customerPhone.isNotEmpty
+                          ? _formatPhone(widget.customerPhone)
+                          : (isTable ? 'Self-Service Table Customer' : 'No Phone Provided'),
                       style: const TextStyle(
                         color: _textMuted,
                         fontSize: 11.5,
@@ -1401,46 +1692,48 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
                 ),
               ),
               // Call Button
-              InkWell(
-                onTap: _callCustomer,
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _borderSubtle),
-                    boxShadow: const [
-                      BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 1)),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.call_rounded, color: Color(0xFF2563EB), size: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // WhatsApp Chat Button
-              InkWell(
-                onTap: _openWhatsAppChat,
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _borderSubtle),
-                    boxShadow: const [
-                      BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 1)),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.chat_outlined, color: Color(0xFF16A34A), size: 16),
+              if (widget.customerPhone.isNotEmpty) ...[
+                InkWell(
+                  onTap: _callCustomer,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _borderSubtle),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 1)),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.call_rounded, color: Color(0xFF2563EB), size: 16),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                // WhatsApp Chat Button
+                InkWell(
+                  onTap: _openWhatsAppChat,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _borderSubtle),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 1)),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.chat_outlined, color: Color(0xFF16A34A), size: 16),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           if (isDelivery && widget.deliveryAddress.isNotEmpty) ...[
@@ -1639,6 +1932,33 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
               );
             },
           ),
+          if (_isTableOrder) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.soup_kitchen_rounded, size: 16, color: Color(0xFF059669)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Table order items will be auto-routed to Kitchen Display (KOT) upon acceptance',
+                      style: TextStyle(
+                        color: Color(0xFF065F46),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1704,6 +2024,28 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
               ],
             ),
           ],
+          if (_isTableOrder) ...[
+            const SizedBox(height: 5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.table_restaurant_outlined, size: 13, color: _textMuted),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'Dining Table Service',
+                      style: TextStyle(color: _textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                const Text(
+                  'FREE',
+                  style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           // Grand Total Container in Mint Green
           Container(
@@ -1735,6 +2077,21 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
               ],
             ),
           ),
+          if (_isTableOrder) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF64748B)),
+                const SizedBox(width: 5),
+                const Expanded(
+                  child: Text(
+                    'Payment Mode: Pay at Counter / Table after dining',
+                    style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1870,7 +2227,7 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
             ),
           ),
           const SizedBox(width: 8),
-          // Right: ACCEPT ORDER Button
+          // Right: ACCEPT ORDER / ACCEPT & SEND TO KOT Button
           Expanded(
             flex: 2,
             child: InkWell(
@@ -1879,17 +2236,21 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
               child: Container(
                 height: 42,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF00B050), Color(0xFF009640)],
+                  gradient: LinearGradient(
+                    colors: _isTableOrder
+                        ? const [Color(0xFF059669), Color(0xFF047857)]
+                        : const [Color(0xFF00B050), Color(0xFF009640)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(21),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: Color(0x3500A859),
+                      color: _isTableOrder
+                          ? const Color(0x35059669)
+                          : const Color(0x3500A859),
                       blurRadius: 10,
-                      offset: Offset(0, 3),
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
@@ -1900,14 +2261,18 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
                           height: 18,
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.0),
                         )
-                      : const Row(
+                      : Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.check_circle_rounded, color: Colors.white, size: 17),
-                            SizedBox(width: 6),
+                            Icon(
+                              _isTableOrder ? Icons.soup_kitchen_rounded : Icons.check_circle_rounded,
+                              color: Colors.white,
+                              size: 17,
+                            ),
+                            const SizedBox(width: 6),
                             Text(
-                              'ACCEPT ORDER',
-                              style: TextStyle(
+                              _isTableOrder ? 'ACCEPT & SEND TO KOT' : 'ACCEPT ORDER',
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
                                 fontSize: 13,

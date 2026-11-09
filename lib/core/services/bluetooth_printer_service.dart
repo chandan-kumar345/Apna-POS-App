@@ -941,6 +941,17 @@ class BluetoothPrinterService {
       ),
     );
 
+    // Customer Name & Phone for Table Orders if available
+    if (order.customerName != null && order.customerName!.trim().isNotEmpty && !order.customerName!.toLowerCase().startsWith('guest')) {
+      final phonePart = (order.customerPhone != null && order.customerPhone!.trim().isNotEmpty)
+          ? ' (\)'
+          : '';
+      bytes += generator.text(
+        'Cust: \',
+        styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
+      );
+    }
+
     // 5. Order Number & Date Time
     if (order.orderNumber.isNotEmpty) {
       bytes += generator.text(

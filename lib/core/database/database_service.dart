@@ -113,10 +113,14 @@ class DatabaseService extends ChangeNotifier {
         final bool isExternal = match.isWhatsAppOrder ||
             match.isProfileOrder ||
             match.isExternalOnlineOrder ||
+            match.isExplicitExternal ||
+            (match.tableNumber != null && match.tableNumber!.trim().isNotEmpty && src != 'pos' && src != 'counter' && src != 'local') ||
             src == 'whatsapp' ||
             src == 'online' ||
             src == 'storefront' ||
             src == 'profile' ||
+            src.contains('qr') ||
+            src.contains('table') ||
             src == 'qr';
         if (isExternal) {
           return false;
@@ -1225,6 +1229,9 @@ class DatabaseService extends ChangeNotifier {
 
     // Asynchronously sync user's isolated notification & ringtone settings from cloud backend
     fetchNotificationSettings().catchError((_) {});
+
+    // Start real-time Firestore listener for incoming table QR / storefront orders
+    startFirestorePendingOrdersListener();
   }
 
   // Initialize DB and load or seed data
@@ -1346,6 +1353,10 @@ class DatabaseService extends ChangeNotifier {
       _socketService.connect(businessId: biz);
     }
 
+    if (restaurant != null && restaurant!.id.isNotEmpty) {
+      startListeningToCloudOrders(restaurant!.id);
+    }
+
     // Start real-time background auto-sync across devices
     startAutoSync();
 
@@ -1359,6 +1370,29 @@ class DatabaseService extends ChangeNotifier {
   Timer? _autoSyncTimer;
   bool _isSilentSyncing = false;
   int _subSyncTick = 0;
+  StreamSubscription<List<OrderModel>>? _cloudStorefrontOrdersSub;
+
+  /// Start real-time Firestore listener for incoming table QR / storefront customer orders
+  void startListeningToCloudOrders(String restaurantId) {
+    if (restaurantId.trim().isEmpty) return;
+    _cloudStorefrontOrdersSub?.cancel();
+    try {
+      _cloudStorefrontOrdersSub = _firestoreService.streamPendingStorefrontOrders(restaurantId).listen((cloudOrders) {
+        for (final cloudOrder in cloudOrders) {
+          final isDismissed = isOrderDismissed(cloudOrder.id, cloudOrder.orderNumber);
+          final diffSec = DateTime.now().difference(cloudOrder.createdDateTime).inSeconds.abs();
+          if (!isDismissed && cloudOrder.status == OrderStatus.pending && diffSec < 900) {
+            debugPrint('[DatabaseService] ⚡ Incoming real-time cloud/storefront order received: #${cloudOrder.orderNumber}');
+            placeOnlineStorefrontOrder(cloudOrder, skipFirestoreSync: true);
+          }
+        }
+      }, onError: (e) {
+        debugPrint('[DatabaseService] Cloud orders stream error: $e');
+      });
+    } catch (e) {
+      debugPrint('[DatabaseService] Error starting cloud orders stream: $e');
+    }
+  }
 
   void _initSocketListeners() {
     _socketService.onOrderCreated = (newOrder) {
@@ -1958,6 +1992,10 @@ class DatabaseService extends ChangeNotifier {
 
       _isSyncing = true;
       notifyListeners();
+
+      if (restaurant != null && restaurant!.id.isNotEmpty) {
+        startListeningToCloudOrders(restaurant!.id);
+      }
 
       // 1. Sync User Profile & Business Details
       try {
@@ -3213,20 +3251,35 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
-  /// Place and register an incoming online storefront order (Takeaway or Delivery)
-  Future<bool> placeOnlineStorefrontOrder(OrderModel order) async {
+  /// Place and register an incoming online storefront order (Takeaway, Delivery, or Table QR)
+  Future<bool> placeOnlineStorefrontOrder(OrderModel order, {bool skipFirestoreSync = false}) async {
     try {
-      // 1. Add order to memory and local storage
-      orders.insert(0, order);
+      // 1. Add or update order in memory and local storage
+      final existingIndex = orders.indexWhere((o) =>
+          (order.id.isNotEmpty && o.id == order.id) ||
+          (order.orderNumber.isNotEmpty && o.orderNumber == order.orderNumber));
+      if (existingIndex >= 0) {
+        orders[existingIndex] = order;
+      } else {
+        orders.insert(0, order);
+      }
       await _saveOrdersToPrefs();
+
+      final bool isTable = order.tableNumber != null && order.tableNumber!.trim().isNotEmpty;
+      final notifTitle = isTable
+          ? '🔔 Table ${order.tableNumber} • #${order.orderNumber} • ₹${order.totalAmount.toStringAsFixed(0)}'
+          : '🔔 #${order.orderNumber} • ₹${order.totalAmount.toStringAsFixed(0)}';
+      final notifBody = isTable
+          ? 'Table Dine-In Order: ${order.customerName ?? "Customer"}'
+          : '${order.customerName ?? "Customer"} • ${order.orderType.name.toUpperCase()}';
 
       // 2. Play audible order chime and trigger instant order accept notification & popup
       try {
         SoundService.playOrderRingtone();
         LocalNotificationService().showPushNotification(
           id: order.id.isNotEmpty ? order.id.hashCode.abs().remainder(100000) : 0,
-          title: '🔔 #${order.orderNumber} • ₹${order.totalAmount.toStringAsFixed(0)}',
-          body: '${order.customerName ?? "Customer"} • ${order.orderType.name.toUpperCase()}',
+          title: notifTitle,
+          body: notifBody,
           payload: jsonEncode({
             'type': 'whatsapp_order_request',
             'orderId': order.id,
@@ -3235,8 +3288,9 @@ class DatabaseService extends ChangeNotifier {
             'customerName': order.customerName,
             'totalAmount': order.totalAmount.toString(),
             'orderType': order.orderType.name,
-            'orderSource': order.orderSource ?? 'profile',
+            'orderSource': order.orderSource ?? (isTable ? 'storefront' : 'profile'),
             'deliveryAddress': order.deliveryAddress,
+            'tableNumber': order.tableNumber,
             'items': order.items.map((i) => i.toJson()).toList(),
           }),
           type: NotificationType.whatsappOrderRequest,
@@ -3252,16 +3306,17 @@ class DatabaseService extends ChangeNotifier {
           'customerName': order.customerName,
           'totalAmount': order.totalAmount.toString(),
           'orderType': order.orderType.name,
-          'orderSource': order.orderSource ?? 'profile',
+          'orderSource': order.orderSource ?? (isTable ? 'storefront' : 'profile'),
           'deliveryAddress': order.deliveryAddress,
+          'tableNumber': order.tableNumber,
           'items': order.items.map((i) => i.toJson()).toList(),
         };
         SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);
         LocalNotificationService.handlePayloadDirectly(orderMap);
       } catch (_) {}
 
-      // 3. Sync to Firestore
-      if (restaurant != null) {
+      // 3. Sync to Firestore if not already originating from Firestore
+      if (!skipFirestoreSync && restaurant != null) {
         await _firestoreService.submitStorefrontOrder(order, restaurantId: restaurant!.id);
       }
 
@@ -3271,6 +3326,60 @@ class DatabaseService extends ChangeNotifier {
       debugPrint('[DatabaseService.placeOnlineStorefrontOrder] error: $e');
       return false;
     }
+  }
+
+  StreamSubscription<List<OrderModel>>? _pendingStorefrontOrdersSub;
+  final Set<String> _notifiedPendingOrderIds = {};
+
+  /// Listen to real-time incoming pending storefront / table QR orders from Cloud Firestore
+  void startFirestorePendingOrdersListener() {
+    final restId = restaurant?.id;
+    if (restId == null || restId.trim().isEmpty) return;
+    for (final o in orders) {
+      if (o.id.isNotEmpty) _notifiedPendingOrderIds.add(o.id);
+      if (o.orderNumber.isNotEmpty) _notifiedPendingOrderIds.add(o.orderNumber);
+    }
+    _pendingStorefrontOrdersSub?.cancel();
+    _pendingStorefrontOrdersSub = _firestoreService
+        .streamPendingStorefrontOrders(restId.trim())
+        .listen((pendingOrders) {
+      for (final order in pendingOrders) {
+        final orderKey = order.id.isNotEmpty ? order.id : order.orderNumber;
+        if (orderKey.isEmpty || _notifiedPendingOrderIds.contains(orderKey)) {
+          continue;
+        }
+        if (DatabaseService.isOrderDismissed(order.id, order.orderNumber)) {
+          continue;
+        }
+        _notifiedPendingOrderIds.add(orderKey);
+        debugPrint('[DatabaseService] 🔔 Real-time pending storefront/table order detected from Firestore: #${order.orderNumber}');
+
+        if (!orders.any((o) => o.id == order.id || o.orderNumber == order.orderNumber)) {
+          orders.insert(0, order);
+          _saveOrdersToPrefs();
+          notifyListeners();
+        }
+
+        final orderMap = {
+          'type': 'whatsapp_order_request',
+          'orderId': order.id,
+          'orderNumber': order.orderNumber,
+          'customerPhone': order.customerPhone,
+          'customerName': order.customerName,
+          'totalAmount': order.totalAmount.toString(),
+          'orderType': order.orderType.name,
+          'orderSource': order.orderSource ?? 'storefront',
+          'deliveryAddress': order.deliveryAddress,
+          'tableNumber': order.tableNumber,
+          'items': order.items.map((i) => i.toJson()).toList(),
+        };
+
+        SoundService.playOrderRingtone();
+        SoundService.boostHardwareVolume();
+        SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);
+        LocalNotificationService.handlePayloadDirectly(orderMap);
+      }
+    });
   }
 
   List<StorefrontBanner> _defaultStorefrontBanners() {
@@ -5006,9 +5115,12 @@ class DatabaseService extends ChangeNotifier {
         final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
             r.status == OrderStatus.preparing;
 
+        final bool isTable = (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty &&
+            r.orderSource != 'pos' && r.orderSource != 'counter' && r.orderSource != 'local');
         final bool isExplicitExternal = r.isWhatsAppOrder ||
             r.isProfileOrder ||
             r.isExternalOnlineOrder ||
+            isTable ||
             r.orderSource == 'whatsapp' ||
             r.orderSource == 'online' ||
             r.orderSource == 'storefront' ||
@@ -5035,7 +5147,9 @@ class DatabaseService extends ChangeNotifier {
               'customerName': r.customerName,
               'totalAmount': r.totalAmount.toString(),
               'orderType': r.orderType.name,
+              'orderSource': r.orderSource ?? (isTable ? 'storefront' : 'whatsapp'),
               'deliveryAddress': r.deliveryAddress,
+              'tableNumber': r.tableNumber,
               'items': r.items.map((i) => i.toJson()).toList(),
               'createdAt': r.createdDateTime.toIso8601String(),
             };
@@ -5074,9 +5188,12 @@ class DatabaseService extends ChangeNotifier {
         final bool isKot = r.paymentMethod.toLowerCase().contains('kot') ||
               r.status == OrderStatus.preparing;
 
+        final bool isTable = (r.tableNumber != null && r.tableNumber!.trim().isNotEmpty &&
+            r.orderSource != 'pos' && r.orderSource != 'counter' && r.orderSource != 'local');
         final bool isExplicitExternal = r.isWhatsAppOrder ||
             r.isProfileOrder ||
             r.isExternalOnlineOrder ||
+            isTable ||
             r.orderSource == 'whatsapp' ||
             r.orderSource == 'online' ||
             r.orderSource == 'storefront' ||
@@ -5104,7 +5221,9 @@ class DatabaseService extends ChangeNotifier {
               'customerName': r.customerName,
               'totalAmount': r.totalAmount.toString(),
               'orderType': r.orderType.name,
+              'orderSource': r.orderSource ?? (isTable ? 'storefront' : 'whatsapp'),
               'deliveryAddress': r.deliveryAddress,
+              'tableNumber': r.tableNumber,
               'items': r.items.map((i) => i.toJson()).toList(),
               'createdAt': r.createdDateTime.toIso8601String(),
             });

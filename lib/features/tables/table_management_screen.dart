@@ -2180,12 +2180,19 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
     final activeOrder = validStatus == TableStatus.free
         ? null
         : db.orders.where((o) =>
-            (isSameTable(o.tableNumber, table.name) || (table.currentOrderId != null && o.id == table.currentOrderId)) &&
+            (isSameTable(o.tableNumber, table.name) ||
+             isSameTable(o.tableNumber, table.tableNumber.toString()) ||
+             isSameTable(o.tableNumber, 'T-${table.tableNumber}') ||
+             (table.currentOrderId != null && (o.id == table.currentOrderId || o.orderNumber == table.currentOrderId))) &&
             (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)).firstOrNull;
     final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
     final liveAmount = db.getLiveCartTotal(table.name);
     final activeAmount = confirmedAmount > 0 ? confirmedAmount : (liveAmount > 0 ? liveAmount : table.activeOrderTotal);
     final hasCartValue = activeAmount > 0;
+    final custInfo = db.getLiveCustomerInfo(table.name) ??
+        (activeOrder != null && activeOrder.customerName != null && activeOrder.customerName!.isNotEmpty && !activeOrder.customerName!.toLowerCase().startsWith('guest')
+            ? {'name': activeOrder.customerName, 'phone': activeOrder.customerPhone}
+            : null);
 
     final cardContent = Container(
       decoration: BoxDecoration(
@@ -2374,6 +2381,28 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                             ),
                           ],
                         ),
+                      ),
+                    ],
+                    if (custInfo != null && (custInfo['name']?.toString().isNotEmpty == true || custInfo['phone']?.toString().isNotEmpty == true)) ...[
+                      const SizedBox(height: 1.5),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.person_rounded, size: 8, color: statusColor),
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              '${custInfo['name'] ?? ""}${custInfo['phone'] != null && custInfo['phone'].toString().isNotEmpty ? " • ${custInfo['phone'].toString().replaceAll("+91", "").trim()}" : ""}',
+                              style: const TextStyle(
+                                color: Color(0xFF475569),
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],

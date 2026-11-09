@@ -379,12 +379,19 @@ class SocketService {
         final oSource = (orderModel.orderSource ?? rawMap['orderSource'] ?? '').toString().toLowerCase();
         final rawOrderType = '${orderModel.orderType.name} ${rawMap['orderType'] ?? ''}'.toLowerCase();
         final cleanType = rawOrderType.replaceAll(RegExp(r'[-_\s]'), '');
+        final tblNum = orderModel.tableNumber ?? rawMap['tableNumber']?.toString() ?? rawMap['table']?.toString();
+        final bool isTable = (tblNum != null && tblNum.trim().isNotEmpty) ||
+            oSource.contains('qr') ||
+            oSource.contains('table') ||
+            cleanType.contains('table') ||
+            cleanType.contains('dine');
         final bool isKot = orderModel.paymentMethod.toLowerCase().contains('kot') ||
             orderModel.status == OrderStatus.preparing ||
             rawMap['isKot'] == true;
         final bool isExplicitExternal = orderModel.isExternalOnlineOrder ||
             orderModel.isWhatsAppOrder ||
             orderModel.isProfileOrder ||
+            isTable ||
             oSource == 'whatsapp' ||
             oSource == 'profile' ||
             oSource == 'online' ||
@@ -392,18 +399,18 @@ class SocketService {
             oSource == 'qr' ||
             cleanType.contains('whatsapp') ||
             cleanType.contains('profile');
-        final bool isPosOrder = orderModel.isPosOrder ||
-            !isExplicitExternal ||
+        final bool isPosOrder = !isExplicitExternal && (
+            orderModel.isPosOrder ||
             oSource == 'pos' ||
             oSource == 'counter' ||
             oSource == 'local' ||
             DatabaseService.isKnownPosOrder(orderId) ||
             DatabaseService.isKnownPosOrder(orderNum) ||
-            DatabaseService.isOrderDismissed(orderId, orderNum);
+            DatabaseService.isOrderDismissed(orderId, orderNum));
 
-        final bool isExternalIncomingOrder = isExplicitExternal && !isKot && !isPosOrder;
+        final bool isExternalIncomingOrder = isExplicitExternal && !isPosOrder;
 
-        if (isPosOrder || isKot || !isExternalIncomingOrder) {
+        if (isPosOrder || (!isTable && isKot) || !isExternalIncomingOrder) {
           debugPrint('[SocketService] Suppressing incoming alert for local POS / KOT order: #${orderModel.orderNumber}');
           return;
         }
@@ -427,42 +434,13 @@ class SocketService {
           // 1. Play incoming order ringtone
           SoundService.playOrderRingtone();
 
-          // 2. High priority notification in native notification bar
-          LocalNotificationService().showPushNotification(
-            id: orderModel.id.isNotEmpty ? orderModel.id.hashCode.abs().remainder(100000) : 0,
-            tag: 'order_${orderModel.id.isNotEmpty ? orderModel.id : orderModel.orderNumber}',
-            title: '🔔 #${orderModel.orderNumber} • ₹${orderModel.totalAmount.toStringAsFixed(0)}',
-            body: '${orderModel.customerName ?? "Customer"} • ${orderModel.orderType.name.toUpperCase()}',
-            payload: jsonEncode({
-              'type': 'whatsapp_order_request',
-              'orderId': orderModel.id,
-              'orderNumber': orderModel.orderNumber,
-              'customerPhone': orderModel.customerPhone,
-              'customerName': orderModel.customerName,
-              'totalAmount': orderModel.totalAmount.toString(),
-              'orderType': orderModel.orderType.name,
-              'orderSource': oSource.isNotEmpty ? oSource : 'whatsapp',
-              'deliveryAddress': orderModel.deliveryAddress,
-              'items': orderModel.items.map((i) => i.toJson()).toList(),
-            }),
-            type: NotificationType.whatsappOrderRequest,
-            channelId: 'apna_pos_whatsapp_orders_v2',
-            metadata: {
-              'orderId': orderModel.id,
-              'orderNumber': orderModel.orderNumber,
-              'type': 'whatsapp_order_request',
-              'orderSource': oSource.isNotEmpty ? oSource : 'whatsapp',
-              'orderType': orderModel.orderType.name,
-              'customerName': orderModel.customerName,
-              'customerPhone': orderModel.customerPhone,
-              'totalAmount': orderModel.totalAmount.toString(),
-            },
-            playSound: true,
-            skipDedupe: true,
-          );
+          final notifTitle = isTable
+              ? '🔔 Table $tblNum • #${orderModel.orderNumber} • ₹${orderModel.totalAmount.toStringAsFixed(0)}'
+              : '🔔 #${orderModel.orderNumber} • ₹${orderModel.totalAmount.toStringAsFixed(0)}';
+          final notifBody = isTable
+              ? 'Table Dine-In Order: ${orderModel.customerName ?? "Customer"}'
+              : '${orderModel.customerName ?? "Customer"} • ${orderModel.orderType.name.toUpperCase()}';
 
-          // 3. Trigger interactive Accept / Reject screen modal
-          SoundService.boostHardwareVolume();
           final orderPayload = {
             'type': 'whatsapp_order_request',
             'orderId': orderModel.id,
@@ -471,10 +449,38 @@ class SocketService {
             'customerName': orderModel.customerName,
             'totalAmount': orderModel.totalAmount.toString(),
             'orderType': orderModel.orderType.name,
-            'orderSource': oSource.isNotEmpty ? oSource : 'whatsapp',
+            'orderSource': oSource.isNotEmpty ? oSource : (isTable ? 'storefront' : 'whatsapp'),
             'deliveryAddress': orderModel.deliveryAddress,
+            'tableNumber': tblNum,
             'items': orderModel.items.map((i) => i.toJson()).toList(),
           };
+
+          // 2. High priority notification in native notification bar
+          LocalNotificationService().showPushNotification(
+            id: orderModel.id.isNotEmpty ? orderModel.id.hashCode.abs().remainder(100000) : 0,
+            tag: 'order_${orderModel.id.isNotEmpty ? orderModel.id : orderModel.orderNumber}',
+            title: notifTitle,
+            body: notifBody,
+            payload: jsonEncode(orderPayload),
+            type: NotificationType.whatsappOrderRequest,
+            channelId: 'apna_pos_whatsapp_orders_v2',
+            metadata: {
+              'orderId': orderModel.id,
+              'orderNumber': orderModel.orderNumber,
+              'type': 'whatsapp_order_request',
+              'orderSource': oSource.isNotEmpty ? oSource : (isTable ? 'storefront' : 'whatsapp'),
+              'orderType': orderModel.orderType.name,
+              'customerName': orderModel.customerName,
+              'customerPhone': orderModel.customerPhone,
+              'totalAmount': orderModel.totalAmount.toString(),
+              'tableNumber': tblNum,
+            },
+            playSound: true,
+            skipDedupe: true,
+          );
+
+          // 3. Trigger interactive Accept / Reject screen modal
+          SoundService.boostHardwareVolume();
           SoundService.bringAppToFront(payload: jsonEncode(orderPayload), isUrgent: true);
           LocalNotificationService.handlePayloadDirectly(orderPayload);
         }
@@ -711,12 +717,20 @@ class SocketService {
       final items = orderData['items'];
 
       final cleanType = orderType.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+      final tblNum = (rawMap['tableNumber'] ?? orderData['tableNumber'] ?? rawMap['table'] ?? orderData['table'])?.toString().trim();
       final oSource = (orderData['orderSource'] ?? rawMap['orderSource'] ?? rawMap['source'] ?? data['orderSource'] ?? 'whatsapp').toString().toLowerCase();
+      final bool isTable = (tblNum != null && tblNum.isNotEmpty) ||
+          oSource.contains('qr') ||
+          oSource.contains('table') ||
+          cleanType.contains('table') ||
+          cleanType.contains('dine');
+
       final bool isExplicitExternal = oSource == 'whatsapp' ||
           oSource == 'profile' ||
           oSource == 'storefront' ||
           oSource == 'online' ||
           oSource == 'qr' ||
+          isTable ||
           rawMap['type'] == 'whatsapp_order_request' ||
           cleanType.contains('whatsapp') ||
           cleanType.contains('profile');
@@ -795,8 +809,9 @@ class SocketService {
         'customerName': customerName,
         'totalAmount': totalAmount.toString(),
         'orderType': orderType,
-        'orderSource': (data['orderSource'] ?? 'whatsapp').toString(),
+        'orderSource': (data['orderSource'] ?? (isTable ? 'storefront' : 'whatsapp')).toString(),
         'deliveryAddress': deliveryAddress,
+        'tableNumber': tblNum,
         'items': items,
       };
       SoundService.bringAppToFront(payload: jsonEncode(orderPayload), isUrgent: true);

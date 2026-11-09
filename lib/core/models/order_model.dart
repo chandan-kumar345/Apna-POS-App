@@ -492,7 +492,7 @@ class OrderModel {
     return _cachedDateTime!;
   }
 
-  /// Whether this order explicitly originated from an external remote channel (WhatsApp, Profile, Storefront, QR, Online)
+  /// Whether this order explicitly originated from an external remote channel (WhatsApp, Profile, Storefront, QR, Online, Table QR)
   bool get isExplicitExternal {
     final src = orderSource?.toLowerCase() ?? '';
     return src == 'whatsapp' ||
@@ -500,6 +500,9 @@ class OrderModel {
         src == 'storefront' ||
         src == 'online' ||
         src == 'qr' ||
+        src.contains('table') ||
+        src.contains('qr') ||
+        (tableNumber != null && tableNumber!.trim().isNotEmpty && src != 'pos' && src != 'counter' && src != 'local') ||
         whatsappAcceptanceStatus != null;
   }
 
@@ -510,7 +513,7 @@ class OrderModel {
           orderSource?.toLowerCase() == 'counter' ||
           orderSource?.toLowerCase() == 'local' ||
           paymentMethod.toLowerCase().contains('kot') ||
-          orderNumber.contains('-T') ||
+          (orderNumber.contains('-T') && !isExplicitExternal) ||
           orderNumber.contains('-TK'));
 
   /// Whether this order originated from WhatsApp
@@ -526,10 +529,12 @@ class OrderModel {
       isExplicitExternal ||
       isWhatsAppOrder ||
       isProfileOrder ||
+      (tableNumber != null && tableNumber!.trim().isNotEmpty) ||
       orderSource?.toLowerCase() == 'online' ||
       orderSource?.toLowerCase() == 'qr' ||
       orderSource?.toLowerCase() == 'storefront' ||
-      orderSource?.toLowerCase() == 'profile';
+      orderSource?.toLowerCase() == 'profile' ||
+      (orderSource?.toLowerCase().contains('table') ?? false);
 
   /// Whether this order is a WhatsApp or external online order awaiting merchant acceptance/rejection
   bool get isWhatsAppPendingReview =>

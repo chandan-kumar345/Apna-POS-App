@@ -578,4 +578,37 @@ class FirestoreService {
       debugPrint('[FirestoreService] Error updating order status: $e');
     }
   }
+
+  /// Real-time stream of incoming pending storefront / table QR orders for this restaurant
+  Stream<List<OrderModel>> streamPendingStorefrontOrders(String restaurantId) {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) {
+      return const Stream.empty();
+    }
+    try {
+      final db = _db;
+      if (db == null) return const Stream.empty();
+      return db
+          .collection('orders')
+          .where('restaurantId', isEqualTo: restaurantId.trim())
+          .where('status', isEqualTo: 'pending')
+          .snapshots()
+          .map((snap) {
+        return snap.docs
+            .map((d) {
+              try {
+                final map = d.data();
+                return OrderModel.fromJson(map);
+              } catch (e) {
+                debugPrint('[FirestoreService] OrderModel parse notice: $e');
+                return null;
+              }
+            })
+            .whereType<OrderModel>()
+            .toList();
+      });
+    } catch (e) {
+      debugPrint('[FirestoreService] streamPendingStorefrontOrders error: $e');
+      return const Stream.empty();
+    }
+  }
 }

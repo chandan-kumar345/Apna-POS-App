@@ -221,28 +221,41 @@ class LocalNotificationService with WidgetsBindingObserver {
         final pm = (decoded['paymentMethod'] ?? metadata['paymentMethod'] ?? '').toString().toLowerCase();
         final isKot = pm.contains('kot') || decoded['isKot'] == true || metadata['isKot'] == true || (decoded['status'] ?? '').toString().toLowerCase() == 'preparing';
 
+        final tblNum = (decoded['tableNumber'] ?? metadata['tableNumber'] ?? decoded['table'] ?? metadata['table'])?.toString().trim();
+        final bool isTableOrder = (tblNum != null && tblNum.isNotEmpty) ||
+            rawSource.contains('qr') ||
+            rawSource.contains('table') ||
+            cleanType.contains('table') ||
+            (decoded['deliveryAddress'] ?? metadata['deliveryAddress'] ?? '').toString().toLowerCase().contains('table');
+
         final bool isExplicitExternal = rawSource == 'whatsapp' ||
             rawSource == 'profile' ||
             rawSource == 'storefront' ||
             rawSource == 'online' ||
             rawSource == 'qr' ||
+            isTableOrder ||
             cleanType.contains('whatsapp') ||
             cleanType.contains('profile') ||
+            cleanType.contains('table') ||
             type == 'whatsapp_order_request' ||
-            type == 'whatsapp_order';
+            type == 'whatsapp_order' ||
+            type == 'table_order' ||
+            type == 'qr_order';
 
-        final bool isDineInOrLocalPos = isKot ||
-            (!isExplicitExternal && (
-              rawSource == 'pos' ||
-              rawSource == 'counter' ||
-              rawSource == 'local' ||
-              DatabaseService.isKnownPosOrder(orderId) ||
-              DatabaseService.isKnownPosOrder(orderNum)
-            ));
+        final bool isDineInOrLocalPos = !isExplicitExternal && (
+            isKot ||
+            rawSource == 'pos' ||
+            rawSource == 'counter' ||
+            rawSource == 'local' ||
+            DatabaseService.isKnownPosOrder(orderId) ||
+            DatabaseService.isKnownPosOrder(orderNum)
+        );
 
         if (isOrder && !isDineInOrLocalPos) {
-          if (IncomingOrderAcceptScreen.isShowing) {
-            debugPrint('[LocalNotificationService] Incoming order screen already showing. Suppressing duplicate open.');
+          if (IncomingOrderAcceptScreen.isShowing &&
+              (IncomingOrderAcceptScreen.currentShowingOrderId == orderId ||
+               IncomingOrderAcceptScreen.currentShowingOrderNumber == orderNum)) {
+            debugPrint('[LocalNotificationService] Incoming order screen already showing for order  / . Suppressing duplicate open.');
             return;
           }
 

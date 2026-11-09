@@ -34,51 +34,46 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final orderNum = (data['orderNumber'] ?? '').toString().trim();
     final bool hasOrderIdentifiers = orderId.isNotEmpty || orderNum.isNotEmpty;
 
+    final tblNum = (data['tableNumber'] ?? data['table'] ?? '').toString().trim();
+    final bool isTableOrder = tblNum.isNotEmpty ||
+        rawSource.contains('qr') ||
+        rawSource.contains('table') ||
+        cleanType.contains('table') ||
+        cleanType.contains('dine');
+
+    final tblNumFg = (data['tableNumber'] ?? data['table'] ?? '').toString().trim();
+    final bool isTableOrderFg = tblNumFg.isNotEmpty ||
+        rawSource.contains('qr') ||
+        rawSource.contains('table') ||
+        cleanType.contains('table') ||
+        cleanType.contains('dine');
+
     final bool isExplicitExternal = !isChatMessage && (
         rawSource == 'whatsapp' ||
         rawSource == 'profile' ||
         rawSource == 'storefront' ||
         rawSource == 'online' ||
         rawSource == 'qr' ||
+        isTableOrderFg ||
         cleanType == 'whatsapporder' ||
         cleanType == 'profileorder' ||
         cleanType == 'storefrontorder' ||
-        typeStr == 'whatsapp_order_request'
-    );
-
-    final isOrder = !isChatMessage && (
         typeStr == 'whatsapp_order_request' ||
-        typeStr == 'whatsapp_new_order' ||
-        typeStr == 'whatsapp_order' ||
-        typeStr == 'new_order' ||
-        typeStr == 'newOrder' ||
-        typeStr == 'order_created' ||
-        typeStr == 'order' ||
-        data['entityType'] == 'whatsapp_order' ||
-        data['entityType'] == 'order' ||
-        (hasOrderIdentifiers && isExplicitExternal)
+        typeStr == 'table_order' ||
+        typeStr == 'qr_order'
     );
 
-    final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
-    final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
-
-    final prefs = await SharedPreferences.getInstance();
-    final recentPosList = prefs.getStringList('recent_pos_order_ids') ?? [];
-    final bool isKnownPos = recentPosList.contains(orderId) ||
-        recentPosList.contains(orderNum) ||
+    final bool isDineInOrLocalPos = !isExplicitExternal && (
+        isKot ||
+        rawSource == 'pos' ||
+        rawSource == 'counter' ||
+        rawSource == 'local' ||
         DatabaseService.isKnownPosOrder(orderId) ||
-        DatabaseService.isKnownPosOrder(orderNum);
-
-    final bool isDineInOrLocalPos = isKot ||
-        (!isExplicitExternal && (
-          rawSource == 'pos' ||
-          rawSource == 'counter' ||
-          rawSource == 'local' ||
-          isKnownPos
-        ));
+        DatabaseService.isKnownPosOrder(orderNum)
+    );
 
     if (isDineInOrLocalPos) {
-      debugPrint('[FCM Background] Suppressing background push & popup for in-store POS order: $orderNum / $orderId');
+      debugPrint('[FcmService] Suppressing notification for in-store POS order: $orderNum / $orderId');
       return;
     }
 
