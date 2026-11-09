@@ -4700,8 +4700,8 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [themeColor, themeColor.withValues(alpha: 0.8)],
@@ -4711,18 +4711,19 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: themeColor.withValues(alpha: 0.3),
-                      blurRadius: 6,
+                      color: themeColor.withValues(alpha: 0.25),
+                      blurRadius: 5,
                       offset: const Offset(0, 2),
                     )
                   ],
                 ),
-                child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 20),
+                child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 18),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       children: [
@@ -4730,7 +4731,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           child: Text(
                             'Customer Web Storefront',
                             style: TextStyle(
-                              fontSize: isMobile ? 14 : 15,
+                              fontSize: isMobile ? 13 : 14.5,
                               fontWeight: FontWeight.w800,
                               color: _NeumorphicTheme.textDark,
                             ),
@@ -4741,10 +4742,10 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         const SizedBox(width: 6),
                         // Live / Offline Status Pill
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                           decoration: BoxDecoration(
                             color: isOnline ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(6),
                             border: Border.all(color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5)),
                           ),
                           child: Row(
@@ -4763,7 +4764,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                 isOnline ? 'ONLINE' : 'OFFLINE',
                                 style: TextStyle(
                                   color: isOnline ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
-                                  fontSize: 9.5,
+                                  fontSize: 8.5,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -4772,11 +4773,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 2),
                     Text(
-                      'Live ordering page for takeaway & delivery customers',
+                      'Live ordering page for takeaway & delivery',
                       style: TextStyle(
-                        fontSize: isMobile ? 10.5 : 11.5,
+                        fontSize: isMobile ? 10 : 11,
                         color: _NeumorphicTheme.textMuted,
                       ),
                       maxLines: 1,
@@ -4785,14 +4786,14 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   ],
                 ),
               ),
-
+              const SizedBox(width: 6),
               // Online / Offline Switch
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Transform.scale(
-                    scale: 0.75,
+                    scale: 0.72,
                     child: Switch.adaptive(
                       value: isOnline,
                       activeTrackColor: const Color(0xFF86EFAC),
@@ -4806,8 +4807,8 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(val
-                                ? 'Storefront is now ONLINE — Customers can place orders!'
-                                : 'Storefront is now OFFLINE — Online orders paused.'),
+                                ? 'Storefront is now ONLINE • Customers can place orders!'
+                                : 'Storefront is now OFFLINE • Online orders paused.'),
                             backgroundColor: val ? const Color(0xFF15803D) : const Color(0xFF991B1B),
                             behavior: SnackBarBehavior.floating,
                             duration: const Duration(seconds: 2),
@@ -4819,8 +4820,8 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   Text(
                     isOnline ? 'Taking Orders' : 'Store Offline',
                     style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w700,
                       color: isOnline ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
                     ),
                   ),
@@ -4831,18 +4832,19 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
 
           const SizedBox(height: 10),
 
-          // 2. URL Display Box: Visible fully and properly without truncation
+          // 2. URL Display Box: Guaranteed SINGLE LINE with overflow ellipsis
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
               color: _NeumorphicTheme.sunkenSurface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Icon(Icons.link_rounded, size: 16, color: themeColor),
+                Icon(Icons.link_rounded, size: 15, color: themeColor),
                 const SizedBox(width: 6),
                 Expanded(
                   child: InkWell(
@@ -4856,25 +4858,23 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     },
                     child: Text(
                       displayUrl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
                       style: TextStyle(
-                        fontSize: 11.5,
+                        fontSize: isMobile ? 11 : 12,
                         fontWeight: FontWeight.w700,
                         color: themeColor,
                         decoration: TextDecoration.underline,
                         decorationColor: themeColor,
                       ),
-                      softWrap: true,
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
                 // Copy Link Icon Button
-                IconButton(
-                  tooltip: 'Copy Store Link',
-                  icon: const Icon(Icons.copy_rounded, size: 15, color: Color(0xFF64748B)),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                  onPressed: () {
+                InkWell(
+                  onTap: () {
                     Clipboard.setData(ClipboardData(text: storeUrl));
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -4885,15 +4885,21 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       ),
                     );
                   },
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.copy_rounded, size: 15, color: Color(0xFF64748B)),
+                  ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 2),
                 // Edit Slug Icon Button
-                IconButton(
-                  tooltip: 'Edit Store Slug',
-                  icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF64748B)),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                  onPressed: () => _showEditStorefrontSlugModal(slug),
+                InkWell(
+                  onTap: () => _showEditStorefrontSlugModal(slug),
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.edit_outlined, size: 15, color: Color(0xFF64748B)),
+                  ),
                 ),
               ],
             ),
@@ -4901,120 +4907,176 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
 
           const SizedBox(height: 10),
 
-          // 3. Compact, Cleanly Arranged Action Buttons
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
+          // 3. Structured & Properly Aligned Action Buttons (2 Rows with full edge-to-edge alignment)
+          // Row 1: Primary Actions (Customer Preview & Theme Color)
+          Row(
             children: [
               // 1. Customer Preview (Filled with Theme Color)
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CustomerStorefrontScreen(slug: slug, isPreviewMode: true),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.remove_red_eye_rounded, size: 14),
-                label: const Text('Customer Preview', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: themeColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  elevation: 0,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-
-              // 2. Theme Color Picker Button
-              OutlinedButton.icon(
-                onPressed: () => _showStorefrontThemeColorPickerModal(themeColorHex),
-                icon: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: themeColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: themeColor.withValues(alpha: 0.4),
-                        blurRadius: 3,
-                      )
-                    ],
-                  ),
-                ),
-                label: const Text('Theme Color', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _NeumorphicTheme.textDark,
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-
-              // 3. Open Website
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final uri = Uri.parse(storeUrl);
-                  try {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  } catch (_) {
-                    if (mounted) {
+              Expanded(
+                child: SizedBox(
+                  height: 38,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => CustomerStorefrontScreen(slug: slug, isPreviewMode: true),
                         ),
                       );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.open_in_new_rounded, size: 13),
-                label: const Text('Open Web', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _NeumorphicTheme.textDark,
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  visualDensity: VisualDensity.compact,
+                    },
+                    icon: const Icon(Icons.remove_red_eye_rounded, size: 14),
+                    label: const Text(
+                      'Customer Preview',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: themeColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
+                  ),
                 ),
               ),
+              const SizedBox(width: 8),
+              // 2. Theme Color Picker Button
+              Expanded(
+                child: SizedBox(
+                  height: 38,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showStorefrontThemeColorPickerModal(themeColorHex),
+                    icon: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: themeColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: themeColor.withValues(alpha: 0.4),
+                            blurRadius: 3,
+                          )
+                        ],
+                      ),
+                    ),
+                    label: const Text(
+                      'Theme Color',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _NeumorphicTheme.textDark,
+                      backgroundColor: Colors.white.withValues(alpha: 0.6),
+                      side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
 
+          const SizedBox(height: 8),
+
+          // Row 2: Secondary Quick Links (Open Web, Share, QR Code)
+          Row(
+            children: [
+              // 3. Open Website
+              Expanded(
+                child: SizedBox(
+                  height: 34,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.parse(storeUrl);
+                      try {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      } catch (_) {
+                        if (mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CustomerStorefrontScreen(slug: slug, isPreviewMode: true),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new_rounded, size: 12),
+                    label: const Text(
+                      'Open Web',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _NeumorphicTheme.textDark,
+                      backgroundColor: Colors.white.withValues(alpha: 0.6),
+                      side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               // 4. Share Link
-              OutlinedButton.icon(
-                onPressed: () {
-                  final shareMsg = 'Order delicious food directly from ${restaurant?.name ?? "our outlet"} online for takeaway & delivery!\n\n👉 $storeUrl';
-                  SharePlus.instance.share(ShareParams(text: shareMsg));
-                },
-                icon: const Icon(Icons.share_rounded, size: 13),
-                label: const Text('Share', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _NeumorphicTheme.textDark,
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  visualDensity: VisualDensity.compact,
+              Expanded(
+                child: SizedBox(
+                  height: 34,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      final shareMsg = 'Order delicious food directly from ${restaurant?.name ?? "our outlet"} online for takeaway & delivery!
+
+👉 $storeUrl';
+                      SharePlus.instance.share(ShareParams(text: shareMsg));
+                    },
+                    icon: const Icon(Icons.share_rounded, size: 12),
+                    label: const Text(
+                      'Share',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _NeumorphicTheme.textDark,
+                      backgroundColor: Colors.white.withValues(alpha: 0.6),
+                      side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
                 ),
               ),
-
+              const SizedBox(width: 6),
               // 5. QR Code
-              OutlinedButton.icon(
-                onPressed: () => _showStorefrontQrCodeDialog(storeUrl, restaurant?.name ?? 'Store'),
-                icon: const Icon(Icons.qr_code_2_rounded, size: 13),
-                label: const Text('QR Code', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _NeumorphicTheme.textDark,
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  visualDensity: VisualDensity.compact,
+              Expanded(
+                child: SizedBox(
+                  height: 34,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showStorefrontQrCodeDialog(storeUrl, restaurant?.name ?? 'Store'),
+                    icon: const Icon(Icons.qr_code_2_rounded, size: 12),
+                    label: const Text(
+                      'QR Code',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _NeumorphicTheme.textDark,
+                      backgroundColor: Colors.white.withValues(alpha: 0.6),
+                      side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
                 ),
               ),
-
             ],
           ),
         ],
@@ -5946,12 +6008,16 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     required bool isMobile,
     required VoidCallback onEdit,
   }) {
+    final String likesDisplay = likesCount >= 1000
+        ? '${(likesCount / 1000).toStringAsFixed(1)}k Likes'
+        : '$likesCount Likes';
+
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(isMobile ? 14 : 20),
+      padding: EdgeInsets.all(isMobile ? 12 : 18),
       decoration: BoxDecoration(
         color: _NeumorphicTheme.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: _NeumorphicTheme.raisedShadows,
         border: Border.all(color: Colors.white, width: 1.8),
       ),
@@ -5960,24 +6026,24 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
         children: [
           // Business Logo / Avatar Badge
           Container(
-            width: isMobile ? 50 : 58,
-            height: isMobile ? 50 : 58,
+            width: isMobile ? 48 : 56,
+            height: isMobile ? 48 : 56,
             decoration: BoxDecoration(
               color: _NeumorphicTheme.surface,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               boxShadow: _NeumorphicTheme.softRaisedShadows,
               border: Border.all(color: Colors.white, width: 1.5),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               child: _buildLogoImageWidget(
                 logoUrl,
                 fallbackName: outletName,
-                size: isMobile ? 50 : 58,
+                size: isMobile ? 48 : 56,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
 
           // Outlet & Business Details Column
           Expanded(
@@ -5987,62 +6053,62 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               children: [
                 Wrap(
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
+                  spacing: 6,
                   runSpacing: 4,
                   children: [
                     Text(
                       outletName,
                       softWrap: true,
                       style: TextStyle(
-                        fontSize: isMobile ? 16 : 19,
+                        fontSize: isMobile ? 15 : 17,
                         fontWeight: FontWeight.w900,
                         color: _NeumorphicTheme.textDark,
                         letterSpacing: -0.2,
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFF86EFAC), width: 1),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
-                          CircleAvatar(radius: 3, backgroundColor: Color(0xFF16A34A)),
-                          SizedBox(width: 5),
+                          CircleAvatar(radius: 2.5, backgroundColor: Color(0xFF16A34A)),
+                          SizedBox(width: 4),
                           Text(
                             'ONLINE',
                             style: TextStyle(
                               color: Color(0xFF15803D),
-                              fontSize: 10,
+                              fontSize: 9,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
+                              letterSpacing: 0.4,
                             ),
                           ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFEE2E2),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFFCA5A5), width: 1),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(Icons.favorite_rounded, color: Color(0xFFDC2626), size: 10),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 3),
                           Text(
-                            likesCount >= 1000 ? 'k+ Likes' : ' Likes',
+                            likesDisplay,
                             style: const TextStyle(
                               color: Color(0xFFB91C1C),
-                              fontSize: 10,
+                              fontSize: 9,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 0.3,
+                              letterSpacing: 0.2,
                             ),
                           ),
                         ],
@@ -6054,7 +6120,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      const Icon(Icons.business_rounded, size: 13, color: Color(0xFF64748B)),
+                      const Icon(Icons.business_rounded, size: 12, color: Color(0xFF64748B)),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -6062,7 +6128,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: isMobile ? 11.5 : 12.5,
+                            fontSize: isMobile ? 11 : 12,
                             fontWeight: FontWeight.w700,
                             color: const Color(0xFF475569),
                           ),
@@ -6075,7 +6141,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      const Icon(Icons.phone_rounded, size: 12, color: Color(0xFF64748B)),
+                      const Icon(Icons.phone_rounded, size: 11, color: Color(0xFF64748B)),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -6083,7 +6149,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: isMobile ? 11 : 12,
+                            fontSize: isMobile ? 10.5 : 11.5,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF64748B),
                           ),
@@ -6096,7 +6162,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined, size: 12, color: Color(0xFF94A3B8)),
+                      const Icon(Icons.location_on_outlined, size: 11, color: Color(0xFF94A3B8)),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -6104,7 +6170,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: isMobile ? 11 : 12,
+                            fontSize: isMobile ? 10 : 11,
                             color: _NeumorphicTheme.textMuted,
                           ),
                         ),
@@ -6115,35 +6181,35 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
 
           // NEUMORPHIC EDIT BUTTON ON THE RIGHT
           Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: onEdit,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               child: Container(
                 padding: EdgeInsets.symmetric(
-                  horizontal: isMobile ? 12 : 16,
-                  vertical: isMobile ? 8 : 10,
+                  horizontal: isMobile ? 10 : 14,
+                  vertical: isMobile ? 7 : 9,
                 ),
                 decoration: BoxDecoration(
                   color: _NeumorphicTheme.surface,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: _NeumorphicTheme.softRaisedShadows,
                   border: Border.all(color: Colors.white, width: 1.5),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.edit_rounded, color: _NeumorphicTheme.navyBrand, size: 16),
-                    SizedBox(width: 6),
+                  children: [
+                    const Icon(Icons.edit_rounded, color: _NeumorphicTheme.navyBrand, size: 14),
+                    const SizedBox(width: 5),
                     Text(
                       'Edit',
                       style: TextStyle(
                         color: _NeumorphicTheme.navyBrand,
-                        fontSize: 13,
+                        fontSize: isMobile ? 11.5 : 12.5,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -6157,7 +6223,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     );
   }
 
-  /// Neumorphic Section Header Pill
   Widget _buildNeumorphicSectionHeader({
     required String title,
     required IconData icon,
