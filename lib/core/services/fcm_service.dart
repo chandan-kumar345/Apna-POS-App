@@ -63,6 +63,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         typeStr == 'qr_order'
     );
 
+    final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
+    final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
+
+    final bool isOrder = !isChatMessage && (
+        typeStr == 'whatsapp_order_request' ||
+        typeStr == 'whatsapp_new_order' ||
+        typeStr == 'whatsapp_order' ||
+        typeStr == 'new_order' ||
+        typeStr == 'newOrder' ||
+        typeStr == 'order_created' ||
+        typeStr == 'order' ||
+        typeStr == 'table_order' ||
+        typeStr == 'qr_order' ||
+        data['entityType'] == 'whatsapp_order' ||
+        data['entityType'] == 'order' ||
+        isTableOrderFg ||
+        isExplicitExternal ||
+        (hasOrderIdentifiers && isExplicitExternal)
+    );
+
     final bool isDineInOrLocalPos = !isExplicitExternal && (
         isKot ||
         rawSource == 'pos' ||

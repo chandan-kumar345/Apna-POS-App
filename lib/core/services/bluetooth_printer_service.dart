@@ -944,10 +944,10 @@ class BluetoothPrinterService {
     // Customer Name & Phone for Table Orders if available
     if (order.customerName != null && order.customerName!.trim().isNotEmpty && !order.customerName!.toLowerCase().startsWith('guest')) {
       final phonePart = (order.customerPhone != null && order.customerPhone!.trim().isNotEmpty)
-          ? ' (\)'
+          ? ' (${_toAscii(order.customerPhone!)})'
           : '';
       bytes += generator.text(
-        'Cust: \',
+        'Cust: ${_toAscii(order.customerName!)}$phonePart',
         styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
       );
     }

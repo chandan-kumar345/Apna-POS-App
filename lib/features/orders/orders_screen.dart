@@ -1445,9 +1445,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
           // Effective status resolution with O(1) table lookup
           final OrderStatus effectiveStatus;
+          final bool isDineInTable = o.orderType == OrderType.dineIn || (o.tableNumber != null && o.tableNumber!.trim().isNotEmpty);
           if (o.status == OrderStatus.cancelled) {
             effectiveStatus = OrderStatus.cancelled;
-          } else if (o.status == OrderStatus.completed) {
+          } else if (o.status == OrderStatus.completed && (!isDineInTable || o.isPaid)) {
             effectiveStatus = OrderStatus.completed;
           } else if (o.status == OrderStatus.ready) {
             effectiveStatus = OrderStatus.ready;
@@ -1458,8 +1459,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
             final tKey = (o.tableNumber ?? '').trim().toLowerCase();
             final isRunningKot = tKey.isNotEmpty && runningKotTables.contains(tKey);
 
-            if (o.status == OrderStatus.pending) {
-              if (o.orderType == OrderType.dineIn && isRunningKot) {
+            if (o.status == OrderStatus.pending || (isDineInTable && !o.isPaid)) {
+              if (isDineInTable && isRunningKot) {
                 effectiveStatus = OrderStatus.preparing;
               } else {
                 effectiveStatus = OrderStatus.pending;

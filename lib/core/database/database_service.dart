@@ -98,6 +98,13 @@ class DatabaseService extends ChangeNotifier {
     if (cleanNum.isNotEmpty) _dismissedOrPromptedOrderIds.add(cleanNum);
   }
 
+  static void unmarkOrderDismissed(String? id, [String? orderNumber]) {
+    final cleanId = (id ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+    final cleanNum = (orderNumber ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+    if (cleanId.isNotEmpty) _dismissedOrPromptedOrderIds.remove(cleanId);
+    if (cleanNum.isNotEmpty) _dismissedOrPromptedOrderIds.remove(cleanNum);
+  }
+
   static bool isKnownPosOrder(String? idOrNumber) {
     if (idOrNumber == null || idOrNumber.trim().isEmpty) return false;
     final clean = idOrNumber.replaceAll(RegExp(r'^#'), '').trim();
@@ -1383,7 +1390,17 @@ class DatabaseService extends ChangeNotifier {
           final diffSec = DateTime.now().difference(cloudOrder.createdDateTime).inSeconds.abs();
           if (!isDismissed && cloudOrder.status == OrderStatus.pending && diffSec < 900) {
             debugPrint('[DatabaseService] ⚡ Incoming real-time cloud/storefront order received: #${cloudOrder.orderNumber}');
-            placeOnlineStorefrontOrder(cloudOrder, skipFirestoreSync: true);
+            final bool isTable = (cloudOrder.tableNumber != null && cloudOrder.tableNumber!.trim().isNotEmpty);
+            final cleanOrder = isTable
+                ? cloudOrder.copyWith(
+                    status: OrderStatus.pending,
+                    orderType: OrderType.dineIn,
+                    isPaid: false,
+                    paymentStatus: 'pending',
+                    paymentMethod: 'Pay at Counter / Table',
+                  )
+                : cloudOrder;
+            placeOnlineStorefrontOrder(cleanOrder, skipFirestoreSync: true);
           }
         }
       }, onError: (e) {
@@ -1440,12 +1457,13 @@ class DatabaseService extends ChangeNotifier {
         } catch (_) {}
       }
 
-      // Also resolve any stale preparing/pending orders for this table
+      // Also resolve any stale preparing/ready orders for this table (NEVER touch newly placed pending orders!)
       if (tableRef.isNotEmpty) {
         for (int i = 0; i < orders.length; i++) {
           final o = orders[i];
+          if (o.status == OrderStatus.pending) continue;
           if (isSameTable(o.tableNumber, tableRef) &&
-              (o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready)) {
+              (o.status == OrderStatus.preparing || o.status == OrderStatus.ready)) {
             orders[i] = o.copyWith(
               status: OrderStatus.completed,
               paymentStatus: 'paid',
@@ -1534,34 +1552,15 @@ class DatabaseService extends ChangeNotifier {
 
         if (updatedTable.status == TableStatus.free) {
           final isServerClean = updatedTable.activeOrderId == null && updatedTable.activeOrderNumber == null;
-          final hasCompletedOrder = orders.any((o) =>
+          final hasLocalActiveOrder = orders.any((o) =>
               isSameTable(o.tableNumber, existingTbl.name) &&
-              (o.status == OrderStatus.completed || o.isPaid));
-          final hasUnsyncedActiveOrder = orders.any((o) =>
-              isSameTable(o.tableNumber, existingTbl.name) &&
-              !o.isSynced &&
               (o.status == OrderStatus.pending || o.status == OrderStatus.preparing));
 
-          if (hasUnsyncedActiveOrder) {
-            // Local cashier actively working with an un-synced offline order
+          if (hasLocalActiveOrder || hasLocalDraftCart) {
+            // Active pending or preparing order exists for this table! Protect it!
             return;
-          } else if (hasCompletedOrder) {
-            // Dining session was completed/settled! Purge stale leftover cart and free table
-            _liveCartTotals.remove(existingTbl.name);
-            _liveTableCarts.remove(existingTbl.name);
-            _liveCartTotals.remove('T-${existingTbl.tableNumber}');
-            _liveTableCarts.remove('T-${existingTbl.tableNumber}');
-            for (int i = 0; i < orders.length; i++) {
-              if (isSameTable(orders[i].tableNumber, existingTbl.name) &&
-                  (orders[i].status == OrderStatus.pending || orders[i].status == OrderStatus.preparing)) {
-                orders[i] = orders[i].copyWith(status: OrderStatus.completed, isPaid: true, paymentStatus: 'paid');
-              }
-            }
-            _saveOrdersToPrefs();
-          } else if (hasLocalDraftCart || hasLocalActiveOrder) {
-            // Local cashier actively adding items to cart or preparing an order - protect it from stale socket
-            return;
-          } else if (isServerClean) {
+          }
+          if (isServerClean) {
             _liveCartTotals.remove(existingTbl.name);
             _liveTableCarts.remove(existingTbl.name);
             _liveCartTotals.remove('T-${existingTbl.tableNumber}');
@@ -1630,31 +1629,14 @@ class DatabaseService extends ChangeNotifier {
 
           if (updatedTable.status == TableStatus.free) {
             final isServerClean = updatedTable.activeOrderId == null && updatedTable.activeOrderNumber == null;
-            final hasCompletedOrder = orders.any((o) =>
+            final hasLocalActiveOrder = orders.any((o) =>
                 isSameTable(o.tableNumber, existingTbl.name) &&
-                (o.status == OrderStatus.completed || o.isPaid));
-            final hasUnsyncedActiveOrder = orders.any((o) =>
-                isSameTable(o.tableNumber, existingTbl.name) &&
-                !o.isSynced &&
                 (o.status == OrderStatus.pending || o.status == OrderStatus.preparing));
 
-            if (hasUnsyncedActiveOrder) {
+            if (hasLocalActiveOrder || hasLocalDraftCart) {
               continue;
-            } else if (hasCompletedOrder) {
-              _liveCartTotals.remove(existingTbl.name);
-              _liveTableCarts.remove(existingTbl.name);
-              _liveCartTotals.remove('T-${existingTbl.tableNumber}');
-              _liveTableCarts.remove('T-${existingTbl.tableNumber}');
-              for (int i = 0; i < orders.length; i++) {
-                if (isSameTable(orders[i].tableNumber, existingTbl.name) &&
-                    (orders[i].status == OrderStatus.pending || orders[i].status == OrderStatus.preparing)) {
-                  orders[i] = orders[i].copyWith(status: OrderStatus.completed, isPaid: true, paymentStatus: 'paid');
-                }
-              }
-              _saveOrdersToPrefs();
-            } else if (hasLocalDraftCart || hasLocalActiveOrder) {
-              continue;
-            } else if (isServerClean) {
+            }
+            if (isServerClean) {
               _liveCartTotals.remove(existingTbl.name);
               _liveTableCarts.remove(existingTbl.name);
               _liveCartTotals.remove('T-${existingTbl.tableNumber}');
@@ -3254,70 +3236,76 @@ class DatabaseService extends ChangeNotifier {
   /// Place and register an incoming online storefront order (Takeaway, Delivery, or Table QR)
   Future<bool> placeOnlineStorefrontOrder(OrderModel order, {bool skipFirestoreSync = false}) async {
     try {
+      final bool isTable = (order.tableNumber != null && order.tableNumber!.trim().isNotEmpty) ||
+          order.orderType == OrderType.dineIn ||
+          (order.deliveryAddress != null && order.deliveryAddress!.toLowerCase().contains('table'));
+
+      // Table QR orders are physical dining table orders: strictly UNPAID and PENDING until accepted and settled!
+      final cleanOrder = isTable
+          ? order.copyWith(
+              status: OrderStatus.pending,
+              orderType: OrderType.dineIn,
+              isPaid: false,
+              paymentStatus: 'pending',
+              paymentMethod: 'Pay at Counter / Table',
+            )
+          : order;
+
       // 1. Add or update order in memory and local storage
       final existingIndex = orders.indexWhere((o) =>
-          (order.id.isNotEmpty && o.id == order.id) ||
-          (order.orderNumber.isNotEmpty && o.orderNumber == order.orderNumber));
+          (cleanOrder.id.isNotEmpty && o.id == cleanOrder.id) ||
+          (cleanOrder.orderNumber.isNotEmpty && o.orderNumber == cleanOrder.orderNumber));
       if (existingIndex >= 0) {
-        orders[existingIndex] = order;
+        orders[existingIndex] = cleanOrder;
       } else {
-        orders.insert(0, order);
+        orders.insert(0, cleanOrder);
       }
       await _saveOrdersToPrefs();
 
-      final bool isTable = order.tableNumber != null && order.tableNumber!.trim().isNotEmpty;
+      // Ensure newly placed order is NOT marked dismissed so the Accept screen will always open
+      DatabaseService.unmarkOrderDismissed(cleanOrder.id, cleanOrder.orderNumber);
+
       final notifTitle = isTable
-          ? '🔔 Table ${order.tableNumber} • #${order.orderNumber} • ₹${order.totalAmount.toStringAsFixed(0)}'
-          : '🔔 #${order.orderNumber} • ₹${order.totalAmount.toStringAsFixed(0)}';
+          ? '🔔 Table ${cleanOrder.tableNumber} • #${cleanOrder.orderNumber} • ₹${cleanOrder.totalAmount.toStringAsFixed(0)}'
+          : '🔔 #${cleanOrder.orderNumber} • ₹${cleanOrder.totalAmount.toStringAsFixed(0)}';
       final notifBody = isTable
-          ? 'Table Dine-In Order: ${order.customerName ?? "Customer"}'
-          : '${order.customerName ?? "Customer"} • ${order.orderType.name.toUpperCase()}';
+          ? 'Table Dine-In Order: ${cleanOrder.customerName ?? "Customer"}'
+          : '${cleanOrder.customerName ?? "Customer"} • ${cleanOrder.orderType.name.toUpperCase()}';
 
       // 2. Play audible order chime and trigger instant order accept notification & popup
       try {
         SoundService.playOrderRingtone();
+        final orderMap = {
+          'type': 'whatsapp_order_request',
+          'orderId': cleanOrder.id,
+          'orderNumber': cleanOrder.orderNumber,
+          'customerPhone': cleanOrder.customerPhone,
+          'customerName': cleanOrder.customerName,
+          'totalAmount': cleanOrder.totalAmount.toString(),
+          'orderType': cleanOrder.orderType.name,
+          'orderSource': cleanOrder.orderSource ?? (isTable ? 'storefront' : 'profile'),
+          'deliveryAddress': cleanOrder.deliveryAddress,
+          'tableNumber': cleanOrder.tableNumber,
+          'items': cleanOrder.items.map((i) => i.toJson()).toList(),
+        };
+
         LocalNotificationService().showPushNotification(
-          id: order.id.isNotEmpty ? order.id.hashCode.abs().remainder(100000) : 0,
+          id: cleanOrder.id.isNotEmpty ? cleanOrder.id.hashCode.abs().remainder(100000) : 0,
           title: notifTitle,
           body: notifBody,
-          payload: jsonEncode({
-            'type': 'whatsapp_order_request',
-            'orderId': order.id,
-            'orderNumber': order.orderNumber,
-            'customerPhone': order.customerPhone,
-            'customerName': order.customerName,
-            'totalAmount': order.totalAmount.toString(),
-            'orderType': order.orderType.name,
-            'orderSource': order.orderSource ?? (isTable ? 'storefront' : 'profile'),
-            'deliveryAddress': order.deliveryAddress,
-            'tableNumber': order.tableNumber,
-            'items': order.items.map((i) => i.toJson()).toList(),
-          }),
+          payload: jsonEncode(orderMap),
           type: NotificationType.whatsappOrderRequest,
           channelId: 'apna_pos_whatsapp_orders_v2',
           playSound: true,
         );
         SoundService.boostHardwareVolume();
-        final orderMap = {
-          'type': 'whatsapp_order_request',
-          'orderId': order.id,
-          'orderNumber': order.orderNumber,
-          'customerPhone': order.customerPhone,
-          'customerName': order.customerName,
-          'totalAmount': order.totalAmount.toString(),
-          'orderType': order.orderType.name,
-          'orderSource': order.orderSource ?? (isTable ? 'storefront' : 'profile'),
-          'deliveryAddress': order.deliveryAddress,
-          'tableNumber': order.tableNumber,
-          'items': order.items.map((i) => i.toJson()).toList(),
-        };
         SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);
         LocalNotificationService.handlePayloadDirectly(orderMap);
       } catch (_) {}
 
       // 3. Sync to Firestore if not already originating from Firestore
       if (!skipFirestoreSync && restaurant != null) {
-        await _firestoreService.submitStorefrontOrder(order, restaurantId: restaurant!.id);
+        await _firestoreService.submitStorefrontOrder(cleanOrder, restaurantId: restaurant!.id);
       }
 
       notifyListeners();
@@ -4767,6 +4755,8 @@ class DatabaseService extends ChangeNotifier {
       return a.name.compareTo(b.name);
     });
   }
+
+  Future<void> saveTablesToPrefs() => _saveTablesToPrefs();
 
   Future<void> _saveTablesToPrefs() async {
     _sortTablesSequentially();

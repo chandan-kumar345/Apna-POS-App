@@ -253,46 +253,73 @@ class OrderModel {
     final String rawId = json['id']?.toString() ?? json['_id']?.toString() ?? '';
     final bool rawIsSynced = json['isSynced'] == true || (rawId.isNotEmpty && rawId.length == 24 && !rawId.startsWith('ORD-') && !rawId.startsWith('LOCAL_'));
 
-    // Status normalization (case-insensitive & synonym-aware)
-    final String rawStatusStr = (json['status'] ?? json['orderStatus'] ?? '').toString().toLowerCase().trim();
-    final OrderStatus parsedStatus;
-    if (rawStatusStr == 'completed' ||
-        rawStatusStr == 'settled' ||
-        rawStatusStr == 'paid' ||
-        rawStatusStr == 'closed' ||
-        rawStatusStr == 'delivered' ||
-        rawStatusStr == 'done' ||
-        rawStatusStr == 'success' ||
-        rawStatusStr == 'served') {
-      parsedStatus = OrderStatus.completed;
-    } else if (rawStatusStr == 'cancelled' || rawStatusStr == 'canceled' || rawStatusStr == 'void' || rawStatusStr == 'voided' || rawStatusStr == 'rejected') {
-      parsedStatus = OrderStatus.cancelled;
-    } else if (rawStatusStr == 'preparing' || rawStatusStr == 'cooking' || rawStatusStr == 'in_kitchen' || rawStatusStr == 'running_kot' || rawStatusStr == 'kot') {
-      parsedStatus = OrderStatus.preparing;
-    } else if (rawStatusStr == 'ready' || rawStatusStr == 'prepared') {
-      parsedStatus = OrderStatus.ready;
-    } else {
-      parsedStatus = OrderStatus.pending;
-    }
-
-    final bool rawIsPaid = json['isPaid'] == true ||
-        rawPs == 'paid' ||
-        rawPs == 'success' ||
-        rawPs == 'settled' ||
-        parsedStatus == OrderStatus.completed;
-
     // Order Type normalization
     final String rawTypeStr = (json['orderType'] ?? json['type'] ?? json['order_type'] ?? '').toString().toLowerCase().trim();
     final String rawTableStr = (json['tableNumber'] ?? json['table'] ?? json['T'] ?? '').toString().trim();
+    final String rawAddress = (json['deliveryAddress'] ?? json['address'] ?? '').toString().toLowerCase();
     final OrderType parsedType;
     if (rawTypeStr.contains('takeaway') || rawTypeStr.contains('take_away') || rawTypeStr.contains('pickup') || rawTypeStr.contains('parcel')) {
       parsedType = OrderType.takeaway;
     } else if (rawTypeStr.contains('delivery') || rawTypeStr.contains('deliv')) {
       parsedType = OrderType.delivery;
-    } else if (rawTypeStr.contains('dine') || rawTableStr.isNotEmpty) {
+    } else if (rawTypeStr.contains('dine') || rawTableStr.isNotEmpty || rawAddress.contains('table')) {
       parsedType = OrderType.dineIn;
     } else {
       parsedType = OrderType.takeaway;
+    }
+
+    final bool isTableDineIn = rawTableStr.isNotEmpty || parsedType == OrderType.dineIn || rawAddress.contains('table');
+
+    // Status normalization (case-insensitive & synonym-aware)
+    final String rawStatusStr = (json['status'] ?? json['orderStatus'] ?? '').toString().toLowerCase().trim();
+    final bool isTableSettled = rawStatusStr == 'completed' || rawStatusStr == 'settled' || rawStatusStr == 'closed';
+
+    final OrderStatus parsedStatus;
+    if (isTableDineIn) {
+      // Table QR orders are physical dining table orders. They can only be completed when explicitly settled / closed by merchant!
+      // 'paid' from storefront does NOT mean the table order is completed or paid!
+      if (isTableSettled) {
+        parsedStatus = OrderStatus.completed;
+      } else if (rawStatusStr == 'cancelled' || rawStatusStr == 'canceled' || rawStatusStr == 'void' || rawStatusStr == 'voided' || rawStatusStr == 'rejected') {
+        parsedStatus = OrderStatus.cancelled;
+      } else if (rawStatusStr == 'preparing' || rawStatusStr == 'cooking' || rawStatusStr == 'in_kitchen' || rawStatusStr == 'running_kot' || rawStatusStr == 'kot') {
+        parsedStatus = OrderStatus.preparing;
+      } else if (rawStatusStr == 'ready' || rawStatusStr == 'prepared') {
+        parsedStatus = OrderStatus.ready;
+      } else {
+        parsedStatus = OrderStatus.pending;
+      }
+    } else {
+      if (rawStatusStr == 'completed' ||
+          rawStatusStr == 'settled' ||
+          rawStatusStr == 'paid' ||
+          rawStatusStr == 'closed' ||
+          rawStatusStr == 'delivered' ||
+          rawStatusStr == 'done' ||
+          rawStatusStr == 'success' ||
+          rawStatusStr == 'served') {
+        parsedStatus = OrderStatus.completed;
+      } else if (rawStatusStr == 'cancelled' || rawStatusStr == 'canceled' || rawStatusStr == 'void' || rawStatusStr == 'voided' || rawStatusStr == 'rejected') {
+        parsedStatus = OrderStatus.cancelled;
+      } else if (rawStatusStr == 'preparing' || rawStatusStr == 'cooking' || rawStatusStr == 'in_kitchen' || rawStatusStr == 'running_kot' || rawStatusStr == 'kot') {
+        parsedStatus = OrderStatus.preparing;
+      } else if (rawStatusStr == 'ready' || rawStatusStr == 'prepared') {
+        parsedStatus = OrderStatus.ready;
+      } else {
+        parsedStatus = OrderStatus.pending;
+      }
+    }
+
+    final bool rawIsPaid;
+    if (isTableDineIn) {
+      // Table QR orders are strictly UNPAID until settled by the merchant
+      rawIsPaid = isTableSettled;
+    } else {
+      rawIsPaid = json['isPaid'] == true ||
+          rawPs == 'paid' ||
+          rawPs == 'success' ||
+          rawPs == 'settled' ||
+          parsedStatus == OrderStatus.completed;
     }
 
     // Order Number resolution
@@ -402,8 +429,8 @@ class OrderModel {
       deliveryCharge: delVal,
       roundOff: roundVal,
       totalAmount: finalTotal,
-      paymentMethod: rawPm,
-      paymentStatus: rawPs.isNotEmpty ? rawPs : (rawIsPaid ? 'paid' : 'pending'),
+      paymentMethod: (isTableDineIn && !rawIsPaid) ? 'Pay at Counter / Table' : rawPm,
+      paymentStatus: (isTableDineIn && !rawIsPaid) ? 'pending' : (rawPs.isNotEmpty ? rawPs : (rawIsPaid ? 'paid' : 'pending')),
       isPaid: rawIsPaid,
       isSynced: rawIsSynced,
       deliveryAddress: resolvedDeliveryAddress,

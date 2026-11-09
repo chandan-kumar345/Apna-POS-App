@@ -289,6 +289,9 @@ class StorefrontService {
     final orderNumber = 'ONL-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
     final nowIso = DateTime.now().toIso8601String();
     final bool isDineIn = orderType == OrderType.dineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+    final bool resolvedIsPaid = isDineIn ? false : (paymentMethod == 'UPI');
+    final String resolvedPaymentStatus = isDineIn ? 'pending' : (resolvedIsPaid ? 'paid' : 'pending');
+    final String resolvedPaymentMethod = isDineIn ? 'Pay at Counter / Table' : paymentMethod;
 
     final order = OrderModel(
       id: 'ord_onl_${DateTime.now().millisecondsSinceEpoch}',
@@ -301,9 +304,9 @@ class StorefrontService {
       taxAmount: taxAmount,
       deliveryCharge: isDineIn ? 0.0 : deliveryFee,
       totalAmount: totalAmount,
-      paymentMethod: paymentMethod,
-      paymentStatus: paymentMethod == 'UPI' ? 'paid' : 'pending',
-      isPaid: paymentMethod == 'UPI',
+      paymentMethod: resolvedPaymentMethod,
+      paymentStatus: resolvedPaymentStatus,
+      isPaid: resolvedIsPaid,
       deliveryAddress: orderType == OrderType.delivery ? deliveryAddress : (isDineIn ? 'Table ${tableNumber?.trim() ?? "Dine-In"}' : null),
       createdAt: nowIso,
       customerName: customerName,

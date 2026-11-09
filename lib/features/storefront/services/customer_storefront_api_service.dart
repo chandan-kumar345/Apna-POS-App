@@ -234,8 +234,8 @@ class CustomerStorefrontApiService {
       tax: tax,
       discount: discount,
       grandTotal: grandTotal,
-      paymentMethod: paymentMethod,
-      paymentStatus: paymentMethod == 'Cash on Delivery' ? 'Pending' : 'Paid',
+      paymentMethod: (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty)) ? 'Pay at Counter / Table' : paymentMethod,
+      paymentStatus: (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty)) ? 'Pending' : (paymentMethod == 'Cash on Delivery' ? 'Pending' : 'Paid'),
       deliveryAddress: resolvedAddress,
       deliveryInstructions: deliveryInstructions,
       createdAt: now,
@@ -244,6 +244,11 @@ class CustomerStorefrontApiService {
     // 3. Save to local POS DatabaseService
     try {
       final cartModelItems = cartItems.map((c) => c.toCartItemModel()).toList();
+      final bool isTableDineIn = isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+      final bool resolvedIsPaid = isTableDineIn ? false : (paymentMethod != 'Cash on Delivery');
+      final String resolvedPaymentStatus = isTableDineIn ? 'pending' : (resolvedIsPaid ? 'paid' : 'pending');
+      final String resolvedPaymentMethod = isTableDineIn ? 'Pay at Counter / Table' : (paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI');
+
       final posOrder = OrderModel(
         id: orderId,
         orderNumber: orderNumber,
@@ -256,8 +261,9 @@ class CustomerStorefrontApiService {
         taxAmount: tax,
         deliveryCharge: deliveryFee,
         totalAmount: grandTotal,
-        paymentMethod: paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI',
-        isPaid: paymentMethod != 'Cash on Delivery',
+        paymentMethod: resolvedPaymentMethod,
+        paymentStatus: resolvedPaymentStatus,
+        isPaid: resolvedIsPaid,
         customerName: customer.name,
         customerPhone: customer.phone,
         deliveryAddress: resolvedAddress,
@@ -285,8 +291,9 @@ class CustomerStorefrontApiService {
         taxAmount: tax,
         deliveryCharge: deliveryFee,
         totalAmount: grandTotal,
-        paymentMethod: paymentMethod,
-        isPaid: paymentMethod != 'Cash on Delivery',
+        paymentMethod: resolvedPaymentMethod,
+        paymentStatus: resolvedPaymentStatus,
+        isPaid: resolvedIsPaid,
         customerName: customer.name,
         customerPhone: customer.phone,
         deliveryAddress: resolvedAddress,

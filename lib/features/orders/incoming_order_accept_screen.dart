@@ -13,6 +13,7 @@ import '../../core/services/sound_service.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/local_notification_service.dart';
 import '../../core/services/bluetooth_printer_service.dart';
+import '../../core/services/firestore_service.dart';
 import '../chat/meta_whatsapp_chat_screen.dart';
 
 /// Full-screen high-priority Incoming Order Acceptance Screen.
@@ -485,6 +486,9 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen>
     _pulseController.dispose();
     _countdownTimer?.cancel();
     SoundService.stopOrderRingtone();
+    IncomingOrderAcceptScreen._isShowing = false;
+    IncomingOrderAcceptScreen._currentShowingOrderId = null;
+    IncomingOrderAcceptScreen._currentShowingOrderNumber = null;
     if (IncomingOrderAcceptScreen._currentScreenContext == context) {
       IncomingOrderAcceptScreen._currentScreenContext = null;
     }
