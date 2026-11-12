@@ -66,6 +66,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Apna POS uses the camera to take profile and product photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Apna POS uses your photo library to choose profile and product images.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Apna POS uses the microphone for the Chotu voice assistant.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Apna POS uses speech recognition to understand voice commands for the Chotu assistant.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Apna POS requires location access to autofill your store's business address accurately.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

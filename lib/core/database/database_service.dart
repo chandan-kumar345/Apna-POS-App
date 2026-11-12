@@ -389,6 +389,7 @@ class DatabaseService extends ChangeNotifier {
   // Live in-cart totals per table (before KOT is sent)
   final Map<String, double> _liveCartTotals = {};
   final Map<String, List<CartItemModel>> _liveTableCarts = {};
+  final Map<String, String> _chotuDraftOrderBaselines = {};
   final Map<String, Map<String, dynamic>> _liveTableDiscounts = {};
   final Map<String, Map<String, dynamic>> _liveDraftCustomerInfo = {};
   final Map<String, Map<String, dynamic>> _liveDraftDeliveryInfo = {};
@@ -566,6 +567,8 @@ class DatabaseService extends ChangeNotifier {
     ).firstOrNull;
 
     if (activeOrder != null && activeOrder.items.isNotEmpty) {
+      final agentDraft = _chotuDraftForOrder(tbl?.name ?? tableName, activeOrder);
+      if (agentDraft != null) return agentDraft.map((item) => item.clone()).toList();
       return List.from(activeOrder.items);
     }
 
@@ -585,6 +588,68 @@ class DatabaseService extends ChangeNotifier {
     }
 
     return [];
+  }
+
+  /// Install an authoritative agent receipt without dispatching POS mutations.
+  String _chotuOrderSignature(OrderModel order) => jsonEncode({
+    'id': order.id,
+    'items': order.items.map((item) => [item.item.productId, item.quantity, item.item.effectivePrice, item.note]).toList(),
+  });
+
+  List<CartItemModel>? _chotuDraftForOrder(String tableName, OrderModel order) {
+    final baseline = _chotuDraftOrderBaselines[tableName];
+    if (baseline == null || baseline != _chotuOrderSignature(order)) return null;
+    return _liveTableCarts[tableName];
+  }
+
+  List<CartItemModel> getChotuDraftCart(String tableName) {
+    for (final entry in _liveTableCarts.entries) {
+      if (isSameTable(entry.key, tableName)) {
+        return entry.value.map((item) => item.clone()).toList();
+      }
+    }
+    return getLiveTableCart(tableName).map((item) => item.clone()).toList();
+  }
+
+  /// Cache only: never resend KOT, billing or settlement through local listeners.
+  Future<void> applyChotuAutomationSnapshot(Map<String, dynamic> snapshot) async {
+    final tableData = Map<String, dynamic>.from(snapshot['table'] as Map);
+    final table = TableModel.fromJson(tableData);
+    final cartData = Map<String, dynamic>.from(snapshot['cart'] as Map);
+    final items = (cartData['items'] as List? ?? const [])
+        .map((item) => CartItemModel.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
+    _liveTableCarts.removeWhere((key, _) => isSameTable(key, table.name));
+    _liveCartTotals.removeWhere((key, _) => isSameTable(key, table.name));
+    if (items.isNotEmpty) {
+      _liveTableCarts[table.name] = items;
+      _liveCartTotals[table.name] = items.fold<double>(0, (sum, item) => sum + item.totalPrice);
+    }
+    final tableIndex = tables.indexWhere((item) => item.id == table.id || isSameTable(item.name, table.name));
+    if (tableIndex >= 0) {
+      tables[tableIndex] = table;
+    } else {
+      tables.add(table);
+    }
+    if (snapshot['order'] is Map) {
+      final orderData = Map<String, dynamic>.from(snapshot['order'] as Map);
+      final order = OrderModel.fromJson(orderData).copyWith(isSynced: true);
+      if (order.status != OrderStatus.completed && order.status != OrderStatus.cancelled && items.isNotEmpty) {
+        _chotuDraftOrderBaselines[table.name] = _chotuOrderSignature(order);
+      } else {
+        _chotuDraftOrderBaselines.remove(table.name);
+      }
+      final index = orders.indexWhere((item) => item.id == order.id || item.orderNumber == order.orderNumber);
+      if (index >= 0) {
+        orders[index] = order;
+      } else {
+        orders.insert(0, order);
+      }
+    } else {
+      _chotuDraftOrderBaselines.remove(table.name);
+    }
+    await Future.wait([_saveOrdersToPrefs(), _saveTablesToPrefs(), _saveLiveTableCartsToPrefs()]);
+    notifyListeners();
   }
 
   void setLiveTableCart(String tableName, List<CartItemModel> items) {
@@ -746,6 +811,7 @@ class DatabaseService extends ChangeNotifier {
       final deliveryInfoEncoded = jsonEncode(_liveDraftDeliveryInfo);
 
       await _prefs?.setString(_businessKey('live_table_carts'), cartsEncoded);
+      await _prefs?.setString(_businessKey('chotu_draft_order_baselines'), jsonEncode(_chotuDraftOrderBaselines));
       await _prefs?.setString(_businessKey('live_cart_totals'), totalsEncoded);
       await _prefs?.setString(_businessKey('live_table_discounts'), discountsEncoded);
       await _prefs?.setString(_businessKey('live_draft_customer_info'), customerInfoEncoded);
@@ -761,6 +827,11 @@ class DatabaseService extends ChangeNotifier {
 
   void _loadLiveTableCartsFromPrefs() {
     try {
+      _chotuDraftOrderBaselines.clear();
+      final baselineJson = _prefs?.getString(_businessKey('chotu_draft_order_baselines'));
+      if (baselineJson != null) {
+        _chotuDraftOrderBaselines.addAll(Map<String, String>.from(jsonDecode(baselineJson) as Map));
+      }
       final cartsJson = _prefs?.getString(_businessKey('live_table_carts')) ??
           _prefs?.getString(_userKey('live_table_carts'));
       if (cartsJson != null && cartsJson.isNotEmpty) {
@@ -909,6 +980,7 @@ class DatabaseService extends ChangeNotifier {
       ).firstOrNull;
 
       if (activeOrder != null) {
+        final agentDraft = _chotuDraftForOrder(tbl.name, activeOrder);
         final mappedStatus = (activeOrder.status == OrderStatus.preparing || tbl.status == TableStatus.runningKot)
             ? TableStatus.runningKot
             : TableStatus.occupied;
@@ -922,13 +994,17 @@ class DatabaseService extends ChangeNotifier {
           status: mappedStatus,
           currentOrderId: activeOrder.id,
           activeOrderNumber: activeOrder.orderNumber,
-          activeOrderTotal: activeOrder.totalAmount,
-          activeItemCount: activeOrder.items.length,
+          activeOrderTotal: agentDraft != null ? (_liveCartTotals[tbl.name] ?? activeOrder.totalAmount) : activeOrder.totalAmount,
+          activeItemCount: agentDraft?.length ?? activeOrder.items.length,
           occupiedSince: earliestStart,
         );
-        _liveCartTotals[tbl.name] = activeOrder.totalAmount;
-        _liveTableCarts[tbl.name] = activeOrder.items.map((i) => i.clone()).toList();
+        if (agentDraft == null) {
+          _liveCartTotals[tbl.name] = activeOrder.totalAmount;
+          _liveTableCarts[tbl.name] = activeOrder.items.map((i) => i.clone()).toList();
+          _chotuDraftOrderBaselines.remove(tbl.name);
+        }
       } else {
+        _chotuDraftOrderBaselines.remove(tbl.name);
         // No active pending/preparing/ready order exists for this table
         final hasDraftCart = (_liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty) ||
             (_liveTableCarts.containsKey('T-${tbl.tableNumber}') && _liveTableCarts['T-${tbl.tableNumber}']!.isNotEmpty);
@@ -7948,6 +8024,17 @@ class DatabaseService extends ChangeNotifier {
 
     final localKey = _businessKey('user_notif_settings_');
 
+    // Retry an offline save before fetching remote preferences, otherwise a
+    // stale cloud response would silently replace the user's local selection.
+    if (_prefs?.getBool('${localKey}_pending') == true) {
+      final raw = _prefs?.getString(localKey);
+      if (raw != null) {
+        final pending = NotificationSettingModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        await updateNotificationSettings(pending);
+        return pending;
+      }
+    }
+
     // 1. Try remote API first if authenticated
     try {
       final isAuth = await _authService.isAuthenticated();
@@ -8022,6 +8109,7 @@ class DatabaseService extends ChangeNotifier {
 
       // Persist locally
       await _prefs?.setString(localKey, jsonEncode(setting.toJson()));
+      await _prefs?.setBool('${localKey}_pending', true);
       await _prefs?.setString('apna_pos_notification_settings', jsonEncode(setting.toJson()));
 
       // Apply immediately to SoundService
@@ -8047,6 +8135,7 @@ class DatabaseService extends ChangeNotifier {
           ApiEndpoints.notificationSettings,
           data: setting.toJson(),
         );
+        await _prefs?.remove('${localKey}_pending');
       }
       return true;
     } catch (e) {
@@ -8088,12 +8177,20 @@ class DatabaseService extends ChangeNotifier {
         );
       }
 
-      if (result != null && result['success'] == true && result['ringtone'] != null) {
+      if (result != null && result['ringtone'] != null) {
         final ringtone = CustomRingtone.fromJson(result['ringtone'] as Map<String, dynamic>);
 
-        // Associate local file in audio cache map immediately
-        if (!kIsWeb && fileOrBytes is File && fileOrBytes.existsSync()) {
-          SoundService.cacheLocalFile(ringtone.url, fileOrBytes.path);
+        // Retain picker data in durable storage for offline alerts.
+        if (!kIsWeb) {
+          try {
+            final bytes = fileOrBytes is File
+                ? await fileOrBytes.readAsBytes()
+                : Uint8List.fromList(fileOrBytes as List<int>);
+            await SoundService.cacheAudioBytes(ringtone.url, bytes);
+          } catch (error) {
+            // The server upload succeeded; a cache failure must not lose its entry.
+            debugPrint('[DatabaseService] Could not cache uploaded ringtone: $error');
+          }
         }
 
         // Update local cached model
@@ -8119,37 +8216,7 @@ class DatabaseService extends ChangeNotifier {
       await client.delete(ApiEndpoints.deleteCustomRingtone(ringtoneId));
 
       final current = notificationSetting;
-      final updatedList = current.customRingtones.where((r) => r.id != ringtoneId).toList();
-
-      // If active order ringtone was deleted, fallback to default
-      String orderUrl = current.orderRingtoneUrl;
-      String orderName = current.orderRingtoneName;
-      String orderType = current.orderRingtoneType;
-      if (current.orderRingtoneUrl.contains(ringtoneId) || current.orderRingtoneType == 'custom_' + ringtoneId) {
-        orderUrl = '';
-        orderName = 'Apna POS Default';
-        orderType = 'default';
-      }
-
-      // If active notification sound was deleted, fallback to default
-      String notifUrl = current.notificationSoundUrl;
-      String notifName = current.notificationSoundName;
-      String notifType = current.notificationSoundType;
-      if (current.notificationSoundUrl.contains(ringtoneId) || current.notificationSoundType == 'custom_' + ringtoneId) {
-        notifUrl = '';
-        notifName = 'Apna POS Alert';
-        notifType = 'default';
-      }
-
-      final updated = current.copyWith(
-        customRingtones: updatedList,
-        orderRingtoneUrl: orderUrl,
-        orderRingtoneName: orderName,
-        orderRingtoneType: orderType,
-        notificationSoundUrl: notifUrl,
-        notificationSoundName: notifName,
-        notificationSoundType: notifType,
-      );
+      final updated = current.withoutRingtone(ringtoneId);
 
       await updateNotificationSettings(updated);
       return true;

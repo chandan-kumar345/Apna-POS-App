@@ -1,0 +1,8 @@
+The transparent launcher asset was edited with the built-in imagegen tool.
+Edit target: `assets/images/android_launcher_logo.png` (the original white tile).
+Output: `assets/images/android_launcher_logo.png` (transparent logo).
+Transparent background: enabled.
+
+Prompt:
+
+Use case: background-extraction. Asset type: transparent Android launcher logo foreground. Image 1 is the exact edit target. Remove the entire white rounded-square tile/badge, all its bevels, outer border, and all gray background and background shadows. Keep ONLY the complete original Apna POS logo: the navy-blue 3D word 'Apna' above the bright royal-blue 3D word 'POS', plus the attached blue receipt/pipeline emblem above and to the right. Preserve the exact original lettering, colors, glossy 3D highlights, proportions, arrangement, outlines and silhouette without redesigning, adding text, or changing spelling. Text verbatim: 'Apna' and 'POS'. The white paper INSIDE the blue-bordered receipt is part of the logo and must remain white with the original three navy receipt lines. Make everything outside the logo genuinely transparent, including all gaps and holes within A, p, a, P, O and other lettering. Remove all white square tile material from between and behind the letters, and remove cast shadows left behind on that tile. Keep clean antialiased edges without white halo or stray pixels. Center the whole full logo including the entire right-hand blue pipe on a square canvas with only about 4% transparent margin; do not crop any letter or emblem. Output a clean transparent PNG, no checkerboard, no new background, no rounded-square container, no new frame, no watermark.

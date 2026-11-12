@@ -196,16 +196,8 @@ class FcmService {
       // Register background handler
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      // Request permissions
-      final settings = await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        announcement: false,
-        badge: true,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-        sound: true,
-      );
+      // Startup may inspect authorization, but permission prompts wait for login.
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
 
       debugPrint('[FcmService] Notification permission status: ${settings.authorizationStatus}');
 
@@ -213,7 +205,7 @@ class FcmService {
       await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
         alert: true,
         badge: true,
-        sound: true,
+        sound: false, // Local playback applies the user's selected sound once.
       );
 
       // Obtain current device push token and register with retries
@@ -390,7 +382,7 @@ class FcmService {
       entityId: resolvedEntityId.isNotEmpty ? resolvedEntityId : null,
       metadata: data,
       playSound: true,
-      skipDedupe: false,
+      skipDedupe: true, // Already deduplicated above.
       channelId: isDailySummary
           ? 'apna_pos_sales_v2'
           : (isWhatsAppOrder
@@ -421,16 +413,35 @@ class FcmService {
     }
   }
 
+  /// Used for the browser notification prompt after an authenticated navigation.
+  Future<void> requestNotificationPermissionAfterLogin() async {
+    if (!isSupported || DatabaseService().currentUser == null) return;
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    unawaited(registerTokenWithBackend());
+  }
+
   /// Register FCM push token with backend with automatic retries and endpoint check
   Future<bool> registerTokenWithBackend([String? explicitToken]) async {
     if (!isSupported) return false;
 
     try {
       final storage = SecureStorageService();
+      final accessToken = await storage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) return false;
       String? token = explicitToken;
 
       // 1. Fetch token from Firebase if not passed
       if (token == null || token.isEmpty) {
+        // getToken can itself prompt in browsers; only fetch after authorization.
+        final settings = await FirebaseMessaging.instance.getNotificationSettings();
+        if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+            settings.authorizationStatus != AuthorizationStatus.provisional) {
+          return false;
+        }
         try {
           token = await FirebaseMessaging.instance.getToken();
         } catch (e) {
@@ -449,14 +460,7 @@ class FcmService {
       // Cache token locally so it persists across restarts
       await storage.savePushToken(token);
 
-      // 2. Check if user is authenticated
-      final accessToken = await storage.getAccessToken();
-      if (accessToken == null || accessToken.isEmpty) {
-        debugPrint('[FcmService] User not logged in yet; push token cached locally');
-        return false;
-      }
-
-      // 3. Retry loop (up to 3 attempts with exponential backoff)
+      // 2. Retry loop (up to 3 attempts with exponential backoff)
       for (int attempt = 1; attempt <= 3; attempt++) {
         try {
           // If baseUrl is not yet resolved, wait for it

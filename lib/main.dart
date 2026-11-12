@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/glass_theme.dart';
@@ -11,7 +13,7 @@ import 'features/auth/splash_screen.dart';
 import 'features/auth/get_started_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/dashboard/main_layout.dart';
-import 'features/notifications/services/notification_permission_helper.dart';
+import 'features/auth/post_login_permission_observer.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:flutter/foundation.dart';
@@ -36,10 +38,12 @@ StorefrontRouteParams? _extractStorefrontParams() {
   if (!kIsWeb) return null;
 
   String? slug;
-  String? rCode = Uri.base.queryParameters['R'] ??
+  String? rCode =
+      Uri.base.queryParameters['R'] ??
       Uri.base.queryParameters['r'] ??
       Uri.base.queryParameters['restaurant'];
-  String? tCode = Uri.base.queryParameters['T'] ??
+  String? tCode =
+      Uri.base.queryParameters['T'] ??
       Uri.base.queryParameters['t'] ??
       Uri.base.queryParameters['table'] ??
       Uri.base.queryParameters['tableNumber'];
@@ -63,16 +67,27 @@ StorefrontRouteParams? _extractStorefrontParams() {
   }
 
   // 1. Query parameter: ?store=company-name or ?slug=company-name
-  final querySlug = Uri.base.queryParameters['store'] ?? Uri.base.queryParameters['slug'];
+  final querySlug =
+      Uri.base.queryParameters['store'] ?? Uri.base.queryParameters['slug'];
   if (querySlug != null && querySlug.trim().isNotEmpty) {
     slug = querySlug.trim().toLowerCase();
   }
 
   // 2. Direct Path: /company-name or /company-name/R=R1&T=T01
-  final pathSegments = Uri.base.pathSegments.where((s) => s.trim().isNotEmpty).toList();
+  final pathSegments = Uri.base.pathSegments
+      .where((s) => s.trim().isNotEmpty)
+      .toList();
   if (pathSegments.isNotEmpty) {
     final first = pathSegments.first.toLowerCase();
-    if (!['admin', 'super', 'login', 'splash', 'dashboard', 'get-started', 'index.html'].contains(first)) {
+    if (![
+      'admin',
+      'super',
+      'login',
+      'splash',
+      'dashboard',
+      'get-started',
+      'index.html',
+    ].contains(first)) {
       if (first == 'store' && pathSegments.length > 1) {
         slug = pathSegments[1].toLowerCase();
         if (pathSegments.length > 2) {
@@ -104,10 +119,20 @@ StorefrontRouteParams? _extractStorefrontParams() {
         }
       }
     }
-    final fragSegments = fragPath.split('/').where((s) => s.trim().isNotEmpty).toList();
+    final fragSegments = fragPath
+        .split('/')
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
     if (fragSegments.isNotEmpty) {
       final first = fragSegments.first.toLowerCase();
-      if (!['admin', 'super', 'login', 'splash', 'dashboard', 'get-started'].contains(first)) {
+      if (![
+        'admin',
+        'super',
+        'login',
+        'splash',
+        'dashboard',
+        'get-started',
+      ].contains(first)) {
         if (first == 'store' && fragSegments.length > 1) {
           slug ??= fragSegments[1].toLowerCase();
           if (fragSegments.length > 2) {
@@ -132,6 +157,44 @@ StorefrontRouteParams? _extractStorefrontParams() {
   );
 }
 
+/// Restore the local session behind the already visible splash. Server probing,
+/// audio and notifications do not hold up entry into an offline-ready POS.
+Future<void> _initializeAppServices({bool waitForEndpoint = false}) async {
+  final endpointReady = ApiEndpoints.initialize().catchError((e) {
+    debugPrint('ApiEndpoints init error: $e');
+  });
+  unawaited(endpointReady);
+  unawaited(
+    SoundService().init().catchError((e) {
+      debugPrint('SoundService init error: $e');
+    }),
+  );
+  unawaited(
+    LocalNotificationService().init().catchError((e) {
+      debugPrint('LocalNotificationService init error: $e');
+    }),
+  );
+
+  // The database's cloud listeners need Firebase configured, but no remote
+  // session validation or server response is required to restore local data.
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase.initializeApp warning/info: $e');
+  }
+  await DatabaseService().init().catchError((e) {
+    debugPrint('DatabaseService init error: $e');
+  });
+  unawaited(
+    FcmService().init().catchError((e) {
+      debugPrint('FcmService init error: $e');
+    }),
+  );
+  if (waitForEndpoint) await endpointReady;
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
@@ -142,76 +205,53 @@ void main() async {
     }
   }
 
-  // Request permissions on startup
-  NotificationPermissionHelper.requestAllAppPermissionsOnStartup().catchError((e) {
-    debugPrint('Permission helper error: $e');
-  });
-
-  // Parallel asynchronous service startup
-  await Future.wait([
-    Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    ).then((_) {
-      FcmService().init().catchError((e) {
-        debugPrint('FcmService init error: $e');
-      });
-    }).catchError((e) {
-      debugPrint('Firebase.initializeApp warning/info: $e');
-    }),
-    ApiEndpoints.initialize().catchError((e) {
-      debugPrint('ApiEndpoints init error: $e');
-    }),
-    DatabaseService().init().catchError((e) {
-      debugPrint('DatabaseService init error: $e');
-    }),
-    SoundService().init().catchError((e) {
-      debugPrint('SoundService init error: $e');
-    }),
-    LocalNotificationService().init().catchError((e) {
-      debugPrint('LocalNotificationService init error: $e');
-    }),
-  ]);
-
   // Launch via Customer Storefront (if web store URL), SuperAdmin on web, or fast animated SplashScreen
   Widget initialHome;
   final webStoreParams = _extractStorefrontParams();
   if (kIsWeb && webStoreParams != null && webStoreParams.slug.isNotEmpty) {
+    await _initializeAppServices(waitForEndpoint: true);
     initialHome = CustomerStorefrontScreen(
       slug: webStoreParams.slug,
       tableCode: webStoreParams.tableCode,
       restaurantCode: webStoreParams.restaurantCode,
     );
-  } else if (kIsWeb && (Uri.base.path.toLowerCase().contains('admin') || Uri.base.path.toLowerCase().contains('super'))) {
+  } else if (kIsWeb &&
+      (Uri.base.path.toLowerCase().contains('admin') ||
+          Uri.base.path.toLowerCase().contains('super'))) {
+    await _initializeAppServices(waitForEndpoint: true);
     initialHome = const SuperAdminLoginScreen();
   } else {
-    initialHome = const SplashScreen();
+    // Paint the branded first frame before any asynchronous service setup.
+    initialHome = const SplashScreen(initialize: _initializeAppServices);
   }
 
-  runApp(
-    ProviderScope(
-      child: ApnaPosApp(initialHome: initialHome),
-    ),
-  );
+  runApp(ProviderScope(child: ApnaPosApp(initialHome: initialHome)));
 }
 
-class ApnaPosApp extends StatelessWidget {
+class ApnaPosApp extends StatefulWidget {
   final Widget initialHome;
 
   const ApnaPosApp({super.key, required this.initialHome});
 
   @override
+  State<ApnaPosApp> createState() => _ApnaPosAppState();
+}
+
+class _ApnaPosAppState extends State<ApnaPosApp> {
+  final _permissionObserver = PostLoginPermissionObserver();
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: LocalNotificationService.navigatorKey,
+      navigatorObservers: [_permissionObserver],
       title: 'Apna POS - Smart Restaurant Billing',
       debugShowCheckedModeBanner: false,
       theme: GlassTheme.themeData,
       builder: (context, child) {
-        return SoundFeedbackWrapper(
-          child: child ?? const SizedBox.shrink(),
-        );
+        return SoundFeedbackWrapper(child: child ?? const SizedBox.shrink());
       },
-      home: initialHome,
+      home: widget.initialHome,
       routes: {
         '/splash': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),
@@ -224,11 +264,23 @@ class ApnaPosApp extends StatelessWidget {
         final rawName = settings.name ?? '';
         final uri = Uri.tryParse(rawName);
         if (uri != null) {
-          final segments = uri.pathSegments.where((s) => s.trim().isNotEmpty).toList();
+          final segments = uri.pathSegments
+              .where((s) => s.trim().isNotEmpty)
+              .toList();
           if (segments.isNotEmpty) {
             final first = segments.first.toLowerCase();
-            if (!['admin', 'super', 'login', 'splash', 'dashboard', 'get-started', 'index.html'].contains(first)) {
-              final slug = (first == 'store' && segments.length > 1) ? segments[1] : first;
+            if (![
+              'admin',
+              'super',
+              'login',
+              'splash',
+              'dashboard',
+              'get-started',
+              'index.html',
+            ].contains(first)) {
+              final slug = (first == 'store' && segments.length > 1)
+                  ? segments[1]
+                  : first;
               return MaterialPageRoute(
                 builder: (_) => CustomerStorefrontScreen(slug: slug),
                 settings: settings,

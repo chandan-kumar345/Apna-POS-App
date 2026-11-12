@@ -2097,7 +2097,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       borderRadius: BorderRadius.circular(12),
                       showDots: false,
                       autoSlide: false,
-                      autoPlayVideo: false,
+                      autoPlayVideo: true,
                       onTap: () => _openCustomizationModal(item),
                     ),
                   ),

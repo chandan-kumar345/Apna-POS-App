@@ -1,5 +1,9 @@
 # Apna POS Backend API
 
+Chotu AI order automation: see the [agent setup and API guide](../docs/chotu-ai/README.md).
+Use `npm run start:chotu` to check Python 3.11+ and start the existing backend
+with the agent enabled.
+
 Production-ready REST API backend for **Apna POS — Smart Restaurant Billing, KDS & Analytics**, built with **Node.js**, **Express.js**, **MongoDB**, and **JWT Authentication**.
 
 ---

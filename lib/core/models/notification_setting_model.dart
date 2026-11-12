@@ -41,6 +41,16 @@ class CustomRingtone {
 }
 
 class NotificationSettingModel {
+  static String _soundType(dynamic value) {
+    final type = value?.toString() ?? 'default';
+    return type.startsWith('custom_') ? 'custom' : type;
+  }
+
+  static double _volume(dynamic value) {
+    final parsed = double.tryParse(value?.toString() ?? '');
+    return parsed == null || !parsed.isFinite ? 1.0 : parsed.clamp(0.0, 1.0);
+  }
+
   final String? id;
   final String? businessId;
   final String? userId;
@@ -86,7 +96,10 @@ class NotificationSettingModel {
     this.customRingtones = const [],
   });
 
-  factory NotificationSettingModel.defaults({String? businessId, String? userId}) {
+  factory NotificationSettingModel.defaults({
+    String? businessId,
+    String? userId,
+  }) {
     return NotificationSettingModel(
       businessId: businessId,
       userId: userId,
@@ -112,7 +125,9 @@ class NotificationSettingModel {
     if (json['customRingtones'] is List) {
       for (final item in json['customRingtones']) {
         if (item is Map) {
-          customList.add(CustomRingtone.fromJson(Map<String, dynamic>.from(item)));
+          customList.add(
+            CustomRingtone.fromJson(Map<String, dynamic>.from(item)),
+          );
         }
       }
     }
@@ -122,16 +137,25 @@ class NotificationSettingModel {
       businessId: json['businessId']?.toString(),
       userId: json['userId']?.toString(),
       notificationSound: json['notificationSound']?.toString() ?? 'default',
-      notificationSoundName: json['notificationSoundName']?.toString() ?? 'Default Apna POS (Chime)',
-      notificationSoundUrl: json['notificationSoundUrl']?.toString() ?? 'sounds/Notification_sound.mp3',
-      notificationSoundType: json['notificationSoundType']?.toString() ?? 'default',
+      notificationSoundName:
+          json['notificationSoundName']?.toString() ??
+          'Default Apna POS (Chime)',
+      notificationSoundUrl:
+          json['notificationSoundUrl']?.toString() ??
+          'sounds/Notification_sound.mp3',
+      notificationSoundType:
+          _soundType(json['notificationSoundType']),
       orderRingtone: json['orderRingtone']?.toString() ?? 'default',
-      orderRingtoneName: json['orderRingtoneName']?.toString() ?? 'Default Apna POS (Looping Alarm)',
-      orderRingtoneUrl: json['orderRingtoneUrl']?.toString() ?? 'sounds/order_recieve_ringtone.mp3',
-      orderRingtoneType: json['orderRingtoneType']?.toString() ?? 'default',
+      orderRingtoneName:
+          json['orderRingtoneName']?.toString() ??
+          'Default Apna POS (Looping Alarm)',
+      orderRingtoneUrl:
+          json['orderRingtoneUrl']?.toString() ??
+          'sounds/order_recieve_ringtone.mp3',
+      orderRingtoneType: _soundType(json['orderRingtoneType']),
       soundEnabled: json['soundEnabled'] != false,
-      orderVolume: double.tryParse(json['orderVolume']?.toString() ?? '1.0') ?? 1.0,
-      notificationVolume: double.tryParse(json['notificationVolume']?.toString() ?? '1.0') ?? 1.0,
+      orderVolume: _volume(json['orderVolume']),
+      notificationVolume: _volume(json['notificationVolume']),
       vibrationEnabled: json['vibrationEnabled'] != false,
       autoOpenOrderScreen: json['autoOpenOrderScreen'] != false,
       customRingtones: customList,
@@ -160,6 +184,40 @@ class NotificationSettingModel {
     };
   }
 
+  /// Restore playable defaults for all selections referencing a removed file.
+  NotificationSettingModel withoutRingtone(String ringtoneId) {
+    final urls = customRingtones
+        .where((r) => r.id == ringtoneId)
+        .map((r) => r.url)
+        .toSet();
+    final resetOrder =
+        urls.contains(orderRingtoneUrl) ||
+        orderRingtoneType == 'custom_$ringtoneId';
+    final resetNotification =
+        urls.contains(notificationSoundUrl) ||
+        notificationSoundType == 'custom_$ringtoneId';
+    const defaults = NotificationSettingModel();
+    return copyWith(
+      customRingtones: customRingtones
+          .where((r) => r.id != ringtoneId)
+          .toList(),
+      orderRingtone: resetOrder ? defaults.orderRingtone : null,
+      orderRingtoneUrl: resetOrder ? defaults.orderRingtoneUrl : null,
+      orderRingtoneName: resetOrder ? defaults.orderRingtoneName : null,
+      orderRingtoneType: resetOrder ? defaults.orderRingtoneType : null,
+      notificationSound: resetNotification ? defaults.notificationSound : null,
+      notificationSoundUrl: resetNotification
+          ? defaults.notificationSoundUrl
+          : null,
+      notificationSoundName: resetNotification
+          ? defaults.notificationSoundName
+          : null,
+      notificationSoundType: resetNotification
+          ? defaults.notificationSoundType
+          : null,
+    );
+  }
+
   NotificationSettingModel copyWith({
     String? id,
     String? businessId,
@@ -184,9 +242,11 @@ class NotificationSettingModel {
       businessId: businessId ?? this.businessId,
       userId: userId ?? this.userId,
       notificationSound: notificationSound ?? this.notificationSound,
-      notificationSoundName: notificationSoundName ?? this.notificationSoundName,
+      notificationSoundName:
+          notificationSoundName ?? this.notificationSoundName,
       notificationSoundUrl: notificationSoundUrl ?? this.notificationSoundUrl,
-      notificationSoundType: notificationSoundType ?? this.notificationSoundType,
+      notificationSoundType:
+          notificationSoundType ?? this.notificationSoundType,
       orderRingtone: orderRingtone ?? this.orderRingtone,
       orderRingtoneName: orderRingtoneName ?? this.orderRingtoneName,
       orderRingtoneUrl: orderRingtoneUrl ?? this.orderRingtoneUrl,

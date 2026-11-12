@@ -6,9 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
 import android.media.AudioManager
-import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
@@ -19,7 +17,7 @@ import org.json.JSONObject
 
 class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
     companion object {
-        const val ORDER_CHANNEL_ID = "apna_pos_whatsapp_orders_v2"
+        const val ORDER_CHANNEL_ID = "apna_pos_whatsapp_orders_v2_app_audio_v1"
         const val ORDER_CHANNEL_NAME = "WhatsApp Orders & Alerts"
     }
 
@@ -106,15 +104,10 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
 
                 // 5. Ensure high-priority Notification Channel with sound exists on Android 8+
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                val soundUri = Uri.parse("android.resource://" + packageName + "/raw/notification_sound")
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     val existingChannel = notificationManager.getNotificationChannel(ORDER_CHANNEL_ID)
                     if (existingChannel == null) {
-                        val audioAttributes = AudioAttributes.Builder()
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .build()
                         val channel = NotificationChannel(
                             ORDER_CHANNEL_ID,
                             ORDER_CHANNEL_NAME,
@@ -124,7 +117,7 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                             enableLights(true)
                             enableVibration(true)
                             vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
-                            setSound(soundUri, audioAttributes)
+                            setSound(null, null) // Flutter plays the selected cached ringtone.
                             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
                             setBypassDnd(true)
                         }
@@ -221,7 +214,7 @@ class ApnaPosFirebaseMessagingService : FlutterFirebaseMessagingService() {
                     .setContentText(notifBody)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_CALL)
-                    .setSound(soundUri)
+                    .setSilent(true)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                     .setFullScreenIntent(fullScreenPendingIntent, true)
                     .setContentIntent(fullScreenPendingIntent)

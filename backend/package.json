@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "start:chotu": "node src/scripts/startChotuAgent.js",
     "dev": "npx nodemon src/server.js",
     "seed": "node src/scripts/seedDatabase.js",
     "tunnel": "npx cloudflared tunnel --url http://localhost:5000",

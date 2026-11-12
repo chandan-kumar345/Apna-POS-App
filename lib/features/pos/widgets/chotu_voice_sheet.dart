@@ -48,6 +48,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   ChotuCommandItem? _unmatchedItem;
   String _lastUserQuery = '';
   String? _statusFeedback;
+  bool _automationNeedsAttention = false;
   Timer? _autoCloseTimer;
   final TextEditingController _textInputCtrl = TextEditingController();
   bool _isTextMode = false;
@@ -81,6 +82,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
       duration: const Duration(milliseconds: 1400),
     )..repeat();
 
+    _chotuService.startConversation(tableNumber: widget.tableNumber);
     _speechService.addListener(_onSpeechStateChanged);
     _chotuService.addListener(_onChotuStateChanged);
     _chotuService.checkBackendHealth();
@@ -175,9 +177,30 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     setState(() {
       _lastUserQuery = clean;
       _sheetState = ChotuSheetState.processing;
+      _automationNeedsAttention = false;
     });
 
-    // Hybrid Edge + Cloud parsing (Gemini AI direct/backend, with instant local fallback)
+    // The agent owns execution when enabled. Keep the existing surface and
+    // display its receipt without replaying actions through the local POS.
+    final automation = await _chotuService.processAutomationTurn(
+      speechText: clean,
+      tableNumber: widget.tableNumber,
+    );
+    if (automation != null) {
+      final reply = automation['chotuMessage']?.toString() ?? 'Please repeat the instruction.';
+      if (!mounted) return;
+      setState(() {
+        _sheetState = ChotuSheetState.executed;
+        _statusFeedback = reply;
+        _automationNeedsAttention = automation['status'] != 'completed' && automation['status'] != 'answered';
+      });
+      _ttsService.speak(reply).catchError((_) {});
+      widget.onTranscriptionUpdated?.call();
+      _resetAutoCloseTimer(14);
+      return;
+    }
+
+    // Hybrid Edge + Cloud parsing for backends without the Python agent.
     final parsed = await _chotuService.parseCommand(
       speechText: clean,
       tableNumber: widget.tableNumber,
@@ -427,7 +450,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                             await db.saveChotuGeminiApiKey(newKey);
                             if (mounted) setState(() {});
                             if (ctx.mounted) Navigator.pop(ctx);
-                            if (mounted) {
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
@@ -465,7 +488,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   @override
   Widget build(BuildContext context) {
     final isListening = _sheetState == ChotuSheetState.listening || _sheetState == ChotuSheetState.greeting;
-    final isExecuted = _sheetState == ChotuSheetState.executed;
+    final isExecuted = _sheetState == ChotuSheetState.executed && !_automationNeedsAttention;
     final hasGeminiKey = DatabaseService().chotuGeminiApiKey.isNotEmpty || _chotuService.isGeminiActive;
 
     return Material(
@@ -887,14 +910,15 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.check_circle_rounded, color: Color(0xFF34D399), size: 20),
+                Icon(_automationNeedsAttention ? Icons.info_outline_rounded : Icons.check_circle_rounded,
+                    color: _automationNeedsAttention ? const Color(0xFFFBBF24) : const Color(0xFF34D399), size: 20),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     _statusFeedback ?? 'Done!',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFF34D399),
+                    style: TextStyle(
+                      color: _automationNeedsAttention ? const Color(0xFFFBBF24) : const Color(0xFF34D399),
                       fontSize: 15.5,
                       fontWeight: FontWeight.bold,
                       height: 1.35,
@@ -1364,10 +1388,10 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         const SizedBox(width: 12),
         OutlinedButton.icon(
           onPressed: _closeOverlay,
-          icon: const Icon(Icons.check_rounded, color: Colors.white70, size: 18),
-          label: const Text(
-            'Done',
-            style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13),
+          icon: Icon(_automationNeedsAttention ? Icons.close_rounded : Icons.check_rounded, color: Colors.white70, size: 18),
+          label: Text(
+            _automationNeedsAttention ? 'Close' : 'Done',
+            style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13),
           ),
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: Color(0xFF475569)),

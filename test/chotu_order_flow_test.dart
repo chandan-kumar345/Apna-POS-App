@@ -125,7 +125,7 @@ void main() {
       expect(parsed.items[1].productName, contains('dal makhani'));
     });
 
-    testWidgets('ChotuVoiceSheet displays big robot character and Start button', (WidgetTester tester) async {
+    testWidgets('ChotuVoiceSheet opens directly in listening state', (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -140,13 +140,8 @@ void main() {
 
       expect(find.byType(BackdropFilter), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
-      expect(find.text('Start'), findsOneWidget);
-
-      // Tap Start to begin listening
-      await tester.tap(find.text('Start'));
-      await tester.pump();
-
-      expect(find.textContaining('Listening... Boliye sir'), findsOneWidget);
+      expect(find.text('Start'), findsNothing);
+      expect(find.text('Boliye sir, main sun raha hoon...'), findsOneWidget);
     });
 
     test('ChotuService handles permanent and temporary missing product addition', () async {

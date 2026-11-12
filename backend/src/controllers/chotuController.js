@@ -1,8 +1,38 @@
 const chotuService = require('../services/chotu/chotuService');
 const productService = require('../services/productService');
 const ApiResponse = require('../utils/ApiResponse');
+const automationAgent = require('../services/chotu/automationAgentService');
+const pythonAgent = require('../services/chotu/pythonAgentBridge');
 
 class ChotuController {
+  _agentActor(req) {
+    return {
+      businessId: req.businessId,
+      userId: req.user._id,
+      role: (req.staff?.role || req.user.role || '').toLowerCase(),
+      name: req.staff?.name || req.user.name || '',
+    };
+  }
+
+  async agentTurn(req, res, next) {
+    try {
+      const result = await automationAgent.runTurn(
+        this._agentActor(req), req.body, req.headers['x-gemini-api-key'] || null,
+      );
+      return ApiResponse.success(res, result, result.chotuMessage);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async agentSession(req, res, next) {
+    try {
+      const result = await automationAgent.getSession(this._agentActor(req), req.params.sessionId);
+      return ApiResponse.success(res, result, 'Chotu session receipt');
+    } catch (error) {
+      next(error);
+    }
+  }
   /**
    * Transcribe spoken audio or speech text
    */
@@ -85,6 +115,7 @@ class ChotuController {
         orderFlowAutomationEnabled: true,
         posMutationsEnabled: true,
         geminiConfigured: chotuService.isGeminiConfigured(),
+        automationAgent: await pythonAgent.health(),
         geminiModel: 'gemini-3.5-flash-lite',
       }, 'Chotu AI Voice Assistant is online');
     } catch (error) {

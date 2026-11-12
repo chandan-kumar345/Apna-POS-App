@@ -325,6 +325,27 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   void _onChotuCommandReceived(ChotuParsedCommand cmd) {
     if (!mounted) return;
 
+    if (cmd.intent == 'AUTOMATION_SYNC') {
+      final table = cmd.tableNumber;
+      if (table == null || table.isEmpty) return;
+      final activeOrder = db.orders.where((order) =>
+          isSameTable(order.tableNumber, table) &&
+          order.status != OrderStatus.completed &&
+          order.status != OrderStatus.cancelled).firstOrNull;
+      setState(() {
+        _selectedTable = table;
+        _selectedOrderType = OrderType.dineIn;
+        _cartItems.clear();
+        _cartItems.addAll(db.getChotuDraftCart(table).map((item) => item.clone()));
+        _activeRunningOrderId = activeOrder?.id;
+        _activeRunningOrderNumber = activeOrder?.orderNumber;
+        _customerName = activeOrder?.customerName ?? '';
+        _customerPhone = activeOrder?.customerPhone ?? '';
+        _resetDiscountAndPromoState();
+      });
+      return;
+    }
+
     final targetTable = cmd.tableNumber;
     if (targetTable != null && targetTable.isNotEmpty && !isSameTable(_selectedTable, targetTable)) {
       _loadCartForTable(targetTable);
@@ -467,7 +488,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       ).firstOrNull;
 
       if (activeOrder != null && activeOrder.items.isNotEmpty) {
-        _cartItems.addAll(activeOrder.items.map((i) => i.clone()));
+        _cartItems.addAll(db.getLiveTableCart(tableName).map((i) => i.clone()));
         _activeRunningOrderId = activeOrder.id;
         _activeRunningOrderNumber = activeOrder.orderNumber;
         _customerName = activeOrder.customerName ?? '';
@@ -2601,6 +2622,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       fit: BoxFit.cover,
       showDots: false,
       autoSlide: false,
+      autoPlayVideo: !priorityPlayback,
       priorityPlayback: priorityPlayback,
       borderRadius: BorderRadius.circular(12),
     );
@@ -8303,10 +8325,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         children: [
                           const Icon(Icons.payment_rounded, color: Colors.white, size: 18),
                           const SizedBox(width: 8),
-                          Text(
+                          Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(
                             'Proceed payment ($currency${cartTotal.toStringAsFixed(2)})',
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14.5),
-                          ),
+                          ))),
                         ],
                       ),
                     ),
@@ -8539,7 +8561,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       onPressed: (_cartItems.isEmpty || _isProcessingCheckout)
                           ? null
                           : () {
-                              _checkoutOrder(cartContext: context);
+                              _checkoutOrder(cartContext: context, refreshCart: setStateCart);
                             },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
@@ -8870,7 +8892,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
   }
 
-  Future<void> _checkoutOrder({BuildContext? cartContext}) async {
+  Future<void> _checkoutOrder({BuildContext? cartContext, StateSetter? refreshCart}) async {
     if (_isProcessingCheckout || _cartItems.isEmpty) return;
     _isProcessingCheckout = true;
 
@@ -9041,6 +9063,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
     } finally {
       _isProcessingCheckout = false;
+      if (mounted) setState(() {});
+      if (cartContext != null && cartContext.mounted && refreshCart != null) {
+        refreshCart(() {});
+      }
     }
   }
 

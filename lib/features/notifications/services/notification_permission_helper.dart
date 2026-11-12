@@ -1,54 +1,98 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/database/database_service.dart';
+import '../../../core/services/fcm_service.dart';
 import '../../../core/services/order_alert_permission_service.dart';
 
 class NotificationPermissionHelper {
-  static const String _prefKeyInitialRequested = 'has_requested_initial_app_permissions';
+  static const String _prefKeyPostLoginRequested =
+      'has_requested_post_login_permissions';
+  static Future<void>? _requestInProgress;
 
-  /// Request all required app permissions on initial install/launch
-  /// directly via native Android system permission popups (no custom UI)
-  static Future<void> requestAllAppPermissionsOnStartup() async {
+  /// Ask once after login, using only system permission screens.
+  static Future<void> requestAllAppPermissionsAfterLogin() {
+    if (DatabaseService().currentUser == null ||
+        (!kIsWeb &&
+            defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      return Future<void>.value();
+    }
+
+    return _requestInProgress ??= _requestPostLoginPermissions().whenComplete(
+      () {
+        _requestInProgress = null;
+      },
+    );
+  }
+
+  static Future<void> _requestPostLoginPermissions() async {
     try {
-      if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) return;
-
       final prefs = await SharedPreferences.getInstance();
-      final alreadyRequested = prefs.getBool(_prefKeyInitialRequested) ?? false;
-      if (alreadyRequested) {
-        // Also ensure notification permission is checked on Android 13+
-        if (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS) {
-          final notifStatus = await Permission.notification.status;
-          if (notifStatus.isDenied) {
-            await Permission.notification.request();
-          }
-        }
+      if (prefs.getBool(_prefKeyPostLoginRequested) == true ||
+          DatabaseService().currentUser == null) {
         return;
       }
 
-      await prefs.setBool(_prefKeyInitialRequested, true);
+      if (kIsWeb) {
+        await FcmService().requestNotificationPermissionAfterLogin();
+        await prefs.setBool(_prefKeyPostLoginRequested, true);
+        return;
+      }
 
-      // Directly invoke system-level permission popups
-      final permissionsToRequest = <Permission>[
+      final permissions = <Permission>[
         Permission.notification,
         Permission.camera,
+        Permission.microphone,
         Permission.location,
+        Permission.photos,
         if (defaultTargetPlatform == TargetPlatform.android) ...[
+          Permission.storage,
+          Permission.videos,
           Permission.bluetoothScan,
           Permission.bluetoothConnect,
+        ] else ...[
+          Permission.speech,
+          Permission.bluetooth,
         ],
       ];
 
-      await permissionsToRequest.request();
+      final pending = <Permission>[];
+      for (final permission in permissions) {
+        if ((await permission.status).isDenied) pending.add(permission);
+      }
+      if (DatabaseService().currentUser == null) return;
+      if (pending.isNotEmpty) await pending.request();
+      if (DatabaseService().currentUser == null) return;
 
-      // On Android, also check and request background battery optimization exemption
       if (defaultTargetPlatform == TargetPlatform.android) {
-        final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
-        if (!batteryStatus.isGranted) {
+        final batteryStatus =
+            await Permission.ignoreBatteryOptimizations.status;
+        if (batteryStatus.isDenied) {
           await Permission.ignoreBatteryOptimizations.request();
         }
+        if (DatabaseService().currentUser == null) return;
+
+        // Open Android's permission section directly, after other prompts finish.
+        final orderPermissions =
+            await OrderAlertPermissionService.checkPermissions(
+              forceRefresh: true,
+            );
+        if (DatabaseService().currentUser == null) return;
+        if (orderPermissions['overlayGranted'] != true) {
+          await OrderAlertPermissionService.requestOverlayPermission();
+        }
       }
+
+      // Record denials too; normal navigation must not repeat the setup sequence.
+      await prefs.setBool(_prefKeyPostLoginRequested, true);
+      unawaited(FcmService().registerTokenWithBackend());
     } catch (e) {
-      debugPrint('[NotificationPermissionHelper] Error requesting initial permissions: $e');
+      debugPrint(
+        '[NotificationPermissionHelper] Error requesting post-login permissions: $e',
+      );
     }
   }
 
@@ -66,7 +110,9 @@ class NotificationPermissionHelper {
   /// Check if 'Display over other apps' (SYSTEM_ALERT_WINDOW) is granted
   static Future<bool> isSystemAlertWindowGranted() async {
     try {
-      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+        return true;
+      }
       final perms = await OrderAlertPermissionService.checkPermissions();
       return perms['overlayGranted'] == true;
     } catch (_) {
@@ -82,7 +128,9 @@ class NotificationPermissionHelper {
   /// Check if battery optimizations are ignored (to prevent OEM background freezing)
   static Future<bool> isBatteryOptimizationsIgnored() async {
     try {
-      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+        return true;
+      }
       final status = await Permission.ignoreBatteryOptimizations.status;
       return status.isGranted;
     } catch (_) {
@@ -93,11 +141,15 @@ class NotificationPermissionHelper {
   /// Request ignore battery optimizations
   static Future<bool> requestIgnoreBatteryOptimizations() async {
     try {
-      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+        return true;
+      }
       final status = await Permission.ignoreBatteryOptimizations.request();
       return status.isGranted;
     } catch (e) {
-      debugPrint('[NotificationPermissionHelper] Error requesting ignoreBatteryOptimizations: $e');
+      debugPrint(
+        '[NotificationPermissionHelper] Error requesting ignoreBatteryOptimizations: $e',
+      );
       return false;
     }
   }
@@ -112,7 +164,9 @@ class NotificationPermissionHelper {
       }
       return status.isGranted;
     } catch (e) {
-      debugPrint('[NotificationPermissionHelper] Error requesting notification permission: $e');
+      debugPrint(
+        '[NotificationPermissionHelper] Error requesting notification permission: $e',
+      );
       return false;
     }
   }

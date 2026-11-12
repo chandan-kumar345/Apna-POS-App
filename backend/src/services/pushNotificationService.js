@@ -291,6 +291,13 @@ class PushNotificationService {
         data: sanitizedData,
       };
 
+      // Android must execute the background handler to use device-local sound
+      // preferences. A notification block bypasses it while the app is sleeping.
+      if (platform === 'android') {
+        delete fcmPayload.notification;
+        delete fcmPayload.android.notification;
+      }
+
       // 1. Try FCM HTTP v1 using Service Account JSON (recommended by Firebase)
       const serviceAccount = this._getServiceAccount();
       let dispatched = false;
@@ -339,6 +346,11 @@ class PushNotificationService {
                 data: sanitizedData,
               },
             };
+
+            if (platform === 'android') {
+              delete v1Payload.message.notification;
+              delete v1Payload.message.android.notification;
+            }
 
             const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
               method: 'POST',

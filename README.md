@@ -2,6 +2,9 @@
 
 A new Flutter project.
 
+Chotu AI: [Python order agent setup](docs/chotu-ai/README.md),
+[PRD](docs/chotu-ai/PRD.md), and [TRD](docs/chotu-ai/TRD.md).
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.

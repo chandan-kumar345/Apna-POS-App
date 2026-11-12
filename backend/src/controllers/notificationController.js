@@ -246,7 +246,7 @@ class NotificationController {
       }
 
       const type = req.body.type === 'notification' ? 'notification' : 'order';
-      const ringtoneName = (req.body.name || req.file.originalname.replace(/\.[^/.]+$/, '')).trim();
+      const ringtoneName = String(req.body.name || req.file.originalname.replace(/\.[^/.]+$/, '')).trim().slice(0, 100) || 'Custom Audio';
 
       const storageService = require('../utils/storageService');
       let audioUrl = await storageService.uploadMedia(
@@ -315,12 +315,29 @@ class NotificationController {
       }
 
       const NotificationSetting = require('../models/NotificationSetting');
+      // Reset selections on the server too, so another device never fetches a
+      // deleted sound even if the client disconnects immediately after DELETE.
+      const current = await NotificationSetting.findOne({ businessId, userId }).lean();
+      const removed = current?.customRingtones?.find((r) => r.id === id);
+      const reset = {};
+      if (removed && (current.orderRingtoneUrl === removed.url || current.orderRingtoneType === `custom_${id}`)) {
+        Object.assign(reset, {
+          orderRingtone: 'default', orderRingtoneType: 'default',
+          orderRingtoneName: 'Default Apna POS (Looping Alarm)',
+          orderRingtoneUrl: 'sounds/order_recieve_ringtone.mp3',
+        });
+      }
+      if (removed && (current.notificationSoundUrl === removed.url || current.notificationSoundType === `custom_${id}`)) {
+        Object.assign(reset, {
+          notificationSound: 'default', notificationSoundType: 'default',
+          notificationSoundName: 'Default Apna POS (Chime)',
+          notificationSoundUrl: 'sounds/Notification_sound.mp3',
+        });
+      }
       const setting = await NotificationSetting.findOneAndUpdate(
         { businessId, userId },
-        {
-          $pull: { customRingtones: { id } },
-        },
-        { new: true }
+        { $pull: { customRingtones: { id } }, ...(Object.keys(reset).length ? { $set: reset } : {}) },
+        { new: true, runValidators: true }
       );
 
       return ApiResponse.success(res, setting, 'Custom ringtone deleted successfully');

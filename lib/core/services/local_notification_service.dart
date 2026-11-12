@@ -374,9 +374,9 @@ class LocalNotificationService with WidgetsBindingObserver {
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
       const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
       );
 
       const InitializationSettings initSettings = InitializationSettings(
@@ -890,6 +890,7 @@ class LocalNotificationService with WidgetsBindingObserver {
       }
     }
 
+    await SoundService().init();
     final bool isAppForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
     if (!_isSupportedPlatform) {
@@ -1044,15 +1045,15 @@ class LocalNotificationService with WidgetsBindingObserver {
                           (orderId.isNotEmpty ? 'order_$orderId' : null)))));
 
       final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        effectiveChannelId,
+        '${effectiveChannelId}_app_audio_v1',
         effectiveChannelName,
         channelDescription: effectiveChannelDesc,
         importance: (isWhatsApp || isWhatsAppOrder) ? Importance.max : importance,
         priority: (isWhatsApp || isWhatsAppOrder) ? Priority.max : priority,
         showWhen: true,
         enableVibration: true,
-        playSound: true,
-        sound: const RawResourceAndroidNotificationSound('notification_sound'),
+        // SoundService owns audio so custom selections and volume apply once.
+        playSound: false,
         styleInformation: effectiveStyle,
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         actions: actions ?? defaultActions,
@@ -1071,8 +1072,7 @@ class LocalNotificationService with WidgetsBindingObserver {
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
-        presentSound: true,
-        sound: 'Notification_sound.mp3',
+        presentSound: false,
       );
 
       final NotificationDetails platformDetails = NotificationDetails(

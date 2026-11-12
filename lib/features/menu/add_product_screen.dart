@@ -995,7 +995,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           final file = File(_selectedVideoPath!);
           if (file.existsSync()) {
             final uploadedVideo = await UploadService().uploadVideo(file, folder: 'products/videos').timeout(
-              const Duration(seconds: 12),
+              const Duration(minutes: 3),
               onTimeout: () => null,
             );
             if (uploadedVideo != null && uploadedVideo.isNotEmpty) {
@@ -1012,7 +1012,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
             fileName: _selectedVideoFileName ?? 'video_${DateTime.now().millisecondsSinceEpoch}.mp4',
             folder: 'products/videos',
           ).timeout(
-            const Duration(seconds: 12),
+            const Duration(minutes: 3),
             onTimeout: () => null,
           );
           if (uploadedVideo != null && uploadedVideo.isNotEmpty) {

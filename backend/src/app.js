@@ -34,6 +34,7 @@ const allowedCorsHeaders = [
   'Accept',
   'Origin',
   'X-Requested-With',
+  'x-gemini-api-key',
   'Access-Control-Request-Method',
   'Access-Control-Request-Headers',
 ];

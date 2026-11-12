@@ -9,6 +9,8 @@ import '../models/table_model.dart';
 import 'product_service.dart';
 import 'speech_recognition_service.dart';
 import 'chotu_gemini_client.dart';
+import 'chotu_automation_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChotuCommandItem {
   final String? productId;
@@ -205,6 +207,7 @@ class ChotuService extends ChangeNotifier {
   ChotuService._internal();
 
   final ApiClient _apiClient = ApiClient();
+  final ChotuAutomationClient _automationClient = ChotuAutomationClient();
   final SpeechRecognitionService speech = SpeechRecognitionService();
 
   bool _isProcessing = false;
@@ -226,24 +229,153 @@ class ChotuService extends ChangeNotifier {
   String get activeSessionId => _activeSessionId ??= 'chotu_sess_${DateTime.now().millisecondsSinceEpoch}';
 
   bool _backendGeminiConfigured = false;
+  bool _automationAgentEnabled = false;
+  String? _automationHealthScope;
+  String get _automationScope {
+    final db = DatabaseService();
+    return '${ApiEndpoints.baseUrl}|${db.currentBusinessId}|${db.currentUser?.id ?? ''}';
+  }
   bool get isBackendGeminiConfigured => _backendGeminiConfigured;
   bool get isGeminiActive => DatabaseService().chotuGeminiApiKey.isNotEmpty || _backendGeminiConfigured;
 
   Future<bool> checkBackendHealth() async {
+    final scope = _automationScope;
     try {
       final res = await _apiClient.get(ApiEndpoints.chotuHealth);
       if (res != null && res['data'] != null) {
         _backendGeminiConfigured = res['data']['geminiConfigured'] == true;
+        _automationAgentEnabled = res['data']['automationAgent']?['enabled'] == true;
+        _automationHealthScope = scope;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('chotu_agent_enabled_$scope', _automationAgentEnabled);
         notifyListeners();
         return _backendGeminiConfigured;
       }
-    } catch (_) {}
+    } catch (_) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        _automationAgentEnabled = prefs.getBool('chotu_agent_enabled_$scope') ?? false;
+      } catch (_) {}
+      _automationHealthScope = scope;
+    }
     return false;
+  }
+
+  /// Returns null only when this backend has not enabled the Python agent.
+  /// Once dispatched, every outcome comes from the server or an explicit error.
+  Future<Map<String, dynamic>?> processAutomationTurn({
+    required String speechText,
+    String? tableNumber,
+  }) async {
+    final scope = _automationScope;
+    if (_automationHealthScope != scope) await checkBackendHealth();
+    if (_automationScope != scope) {
+      return {
+        'status': 'unconfirmed',
+        'chotuMessage': 'Backend ya account change hua. Chotu dobara open kijiye; order dispatch nahi hua.',
+      };
+    }
+    if (!_automationAgentEnabled && !await _automationClient.hasPending(scope)) {
+      return null;
+    }
+    if (_automationScope != scope) {
+      return {'status': 'unconfirmed', 'chotuMessage': 'Account/backend change hua. Chotu dobara open kijiye.'};
+    }
+    _isProcessing = true;
+    notifyListeners();
+    try {
+      final db = DatabaseService();
+      final expectedDrafts = <Map<String, dynamic>>[];
+      for (final table in db.tables) {
+        final draft = db.getChotuDraftCart(table.name);
+        if (draft.isNotEmpty) {
+          expectedDrafts.add({
+            'tableNumber': table.name,
+            'items': draft.map((item) => {
+              'productId': item.item.productId.isNotEmpty ? item.item.productId : item.item.id,
+              'quantity': item.quantity,
+              'note': item.note ?? '',
+              'price': item.item.effectivePrice,
+              'gstPercent': item.effectiveGstRate,
+            }).toList(),
+          });
+        }
+      }
+      // UI identity may be a Firebase UID; only Mongo IDs can be compared with
+      // the Node token's subject/business. Tenant and actor still come from JWT.
+      final mongoId = RegExp(r'^[a-fA-F0-9]{24}$');
+      final localUserId = db.currentUser?.id ?? '';
+      final result = await _automationClient.runTurn(
+        scope: scope, sessionId: activeSessionId, text: speechText,
+        tableNumber: tableNumber ?? _currentTableContext,
+        apiKey: DatabaseService().chotuGeminiApiKey.trim(),
+        expectedDrafts: expectedDrafts,
+        apiBaseUrl: ApiEndpoints.baseUrl,
+        businessId: mongoId.hasMatch(db.currentBusinessId) ? db.currentBusinessId : null,
+        userId: mongoId.hasMatch(localUserId) ? localUserId : null,
+      );
+      if (_automationScope == scope) {
+        // A duplicate receipt may contain an older snapshot. Only install the
+        // current read snapshot supplied by the server for a replay.
+        final snapshot = result['isDuplicate'] == true
+            ? result['currentSnapshot'] as Map?
+            : result;
+        if (snapshot != null && snapshot['table'] is Map && snapshot['cart'] is Map) {
+          final target = snapshot['tableNumber']?.toString() ?? '';
+          final current = db.getChotuDraftCart(target);
+          final incoming = (snapshot['cart']['items'] as List? ?? const [])
+              .map((item) => CartItemModel.fromJson(Map<String, dynamic>.from(item as Map))).toList();
+          final before = expectedDrafts.where((draft) => isSameTable(draft['tableNumber'] as String, target)).firstOrNull;
+          final original = (result['requestDrafts'] as List? ?? const []).whereType<Map>()
+              .where((draft) => isSameTable(draft['tableNumber']?.toString(), target)).firstOrNull;
+          List<Map<String, dynamic>> draftLines(List<CartItemModel> lines) => lines.map((item) => {
+            'productId': item.item.productId.isEmpty ? item.item.id : item.item.productId,
+            'quantity': item.quantity,
+            'note': item.note ?? '', 'price': item.item.effectivePrice,
+            'gstPercent': item.effectiveGstRate,
+          }).toList();
+          if (!ChotuAutomationClient.canInstallSnapshot(
+            current: draftLines(current), incoming: draftLines(incoming),
+            before: (before?['items'] as List? ?? const []).map((line) => Map<String, dynamic>.from(line as Map)).toList(),
+            original: (original?['items'] as List? ?? const []).map((line) => Map<String, dynamic>.from(line as Map)).toList(),
+            recoveredPending: result['recoveredPending'] == true,
+          )) {
+            return {
+              ...result,
+              'status': 'needs_review',
+              'chotuMessage': '${result['chotuMessage'] ?? ''} Local draft changes preserve kiye hain. POS se reconcile kijiye before next instruction.',
+            };
+          }
+          await DatabaseService().applyChotuAutomationSnapshot(Map<String, dynamic>.from(snapshot));
+          _currentTableContext = snapshot['tableNumber']?.toString();
+          dispatchAction(ChotuParsedCommand(
+            intent: 'AUTOMATION_SYNC', tableNumber: _currentTableContext,
+            confidence: 1, chotuResponse: result['chotuMessage']?.toString() ?? '',
+          ));
+        }
+      }
+      return result;
+    } catch (_) {
+      return {
+        'status': 'unconfirmed',
+        'chotuMessage': 'Order receipt display confirm nahi hua. POS records check kijiye before repeating.',
+      };
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
   }
 
   void setTableContext(String? table) {
     _currentTableContext = table;
     notifyListeners();
+  }
+
+  /// A fresh overlay follows the currently selected table. Memory remains
+  /// scoped to this conversation; pending transport retries retain their own ID.
+  void startConversation({String? tableNumber}) {
+    _activeSessionId = 'chotu_sess_${DateTime.now().microsecondsSinceEpoch}';
+    _currentTableContext = tableNumber;
   }
 
   /// Sends speech transcription payload to backend Chotu API
