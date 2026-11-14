@@ -9,6 +9,26 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../network/api_endpoints.dart';
 
+/// Brief UI feedback is best-effort: skip overlapping playback requests rather
+/// than building a native audio queue behind fast input.
+class ShortFeedbackPlayback {
+  final Future<void> Function() resume;
+  bool _pending = false;
+  ShortFeedbackPlayback(this.resume);
+
+  Future<void> play() async {
+    if (_pending) return;
+    _pending = true;
+    try {
+      await resume().timeout(const Duration(seconds: 1));
+    } catch (_) {
+      // Audio failure must never escape a button handler or delay a cart edit.
+    } finally {
+      _pending = false;
+    }
+  }
+}
+
 class SoundService {
   static final SoundService _instance = SoundService._internal();
   factory SoundService() => _instance;
@@ -48,13 +68,26 @@ class SoundService {
   StreamSubscription? _previewCompleteSub;
 
   bool _isInitialized = false;
+  Future<void>? _initializing;
+  late final _buttonFeedback = ShortFeedbackPlayback(
+    () async => _buttonPlayer?.resume(),
+  );
+  late final _keyFeedback = ShortFeedbackPlayback(
+    () async => _keyPlayer?.resume(),
+  );
   int _lastButtonClickTime = 0;
   int _lastKeyPressTime = 0;
   int _lastNotificationSoundTime = 0;
 
   /// Initialize sound service and preload audio sources lazily
-  Future<void> init() async {
-    if (_isInitialized) return;
+  Future<void> init() {
+    if (_isInitialized) return Future<void>.value();
+    return _initializing ??= _initializeAudio().whenComplete(
+      () => _initializing = null,
+    );
+  }
+
+  Future<void> _initializeAudio() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       soundEnabled = prefs.getBool(_prefKeySoundEnabled) ?? true;
@@ -727,7 +760,7 @@ class SoundService {
 
     // 1. Hardware haptic feedback
     try {
-      HapticFeedback.selectionClick();
+      unawaited(HapticFeedback.selectionClick().catchError((_) {}));
     } catch (_) {}
 
     // 2. Audio asset playback (fallback to native system sound while initializing)
@@ -735,7 +768,7 @@ class SoundService {
       _instance._playButtonAsset();
     } else {
       try {
-        SystemSound.play(SystemSoundType.click);
+        unawaited(SystemSound.play(SystemSoundType.click).catchError((_) {}));
       } catch (_) {}
       _instance
           .init()
@@ -744,11 +777,9 @@ class SoundService {
     }
   }
 
-  void _playButtonAsset() {
-    try {
-      _buttonPlayer?.play(AssetSource('sounds/ios_click.wav'));
-    } catch (_) {}
-  }
+  // Sources are prepared once in init; play(source) would reload/re-prepare them
+  // on every tap and can queue 30-second preparation timeouts on Android.
+  Future<void> _playButtonAsset() => _buttonFeedback.play();
 
   /// Play light keypress sound on text field tap or typing with safe debouncing
   static void playKeyPress() {
@@ -765,14 +796,14 @@ class SoundService {
     }
 
     try {
-      HapticFeedback.selectionClick();
+      unawaited(HapticFeedback.selectionClick().catchError((_) {}));
     } catch (_) {}
 
     if (_instance._isInitialized) {
       _instance._playKeyAsset();
     } else {
       try {
-        SystemSound.play(SystemSoundType.click);
+        unawaited(SystemSound.play(SystemSoundType.click).catchError((_) {}));
       } catch (_) {}
       _instance
           .init()
@@ -781,10 +812,5 @@ class SoundService {
     }
   }
 
-  void _playKeyAsset() {
-    try {
-      _keyPlayer?.stop();
-      _keyPlayer?.play(AssetSource('sounds/ios_keypress.wav'));
-    } catch (_) {}
-  }
+  Future<void> _playKeyAsset() => _keyFeedback.play();
 }

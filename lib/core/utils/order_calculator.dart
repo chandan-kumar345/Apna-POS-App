@@ -324,7 +324,7 @@ class OrderCalculator {
       roundOff = finalTotal - unroundedTotal;
     }
 
-    if (kDebugMode) {
+    if (kDebugMode && const bool.fromEnvironment('POS_CALCULATION_LOGS')) {
       debugPrint('[OrderCalculator] Subtotal: ₹$grossSubtotal | PromoDisc: ₹$orderDiscount (${appliedCouponPercent > 0 ? "$appliedCouponPercent%" : "custom"}) | TaxableBase: ₹$taxableAmount | GST: ₹$taxAmount (Taxable: ₹$taxableSubtotal, Non-Taxable: ₹$nonTaxableSubtotal) | Tip: ₹$cleanTip | Total: ₹$finalTotal');
     }
 

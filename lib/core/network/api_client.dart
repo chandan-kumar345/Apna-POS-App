@@ -109,6 +109,17 @@ class ApiClient {
     }
   }
 
+  /// Do not replay a delta mutation after a lost response; it may have committed.
+  Future<dynamic> postOnce(String path, {dynamic data}) async {
+    _syncBaseUrl();
+    try {
+      final response = await _dio.post(path, data: data);
+      return response.data;
+    } on DioException catch (error) {
+      throw ApiException.fromDioException(error);
+    }
+  }
+
   Future<dynamic> patch(
     String path, {
     dynamic data,

@@ -75,7 +75,8 @@ class PaymentController {
         });
       }
 
-      const result = await razorpayService.handleWebhook(req.body);
+      const result = await require('../services/subscriptionRenewalService').webhook(req.body)
+        || await razorpayService.handleWebhook(req.body);
 
       return res.status(200).json({
         success: true,

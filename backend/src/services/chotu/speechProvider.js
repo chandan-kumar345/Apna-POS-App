@@ -321,6 +321,7 @@ class DefaultSpeechProvider extends SpeechProvider {
 }
 
 module.exports = {
+  transliterateDevanagari,
   SpeechProvider,
   DefaultSpeechProvider,
   normalizeSpokenText,

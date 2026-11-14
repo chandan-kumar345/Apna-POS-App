@@ -5,6 +5,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.use(authMiddleware);
+router.use(require('../middleware/entitlementMiddleware').rejectControlUpdates);
 
 router.get('/', (req, res, next) => profileController.getProfile(req, res, next));
 router.put('/', (req, res, next) => profileController.updateProfile(req, res, next));

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/startup_ink">
+<target android:name="ink_0_0" android:animation="@animator/startup_ink_0_0"/>
+<target android:name="ink_0_1" android:animation="@animator/startup_ink_0_1"/>
+<target android:name="ink_1_0" android:animation="@animator/startup_ink_1_0"/>
+<target android:name="ink_2_0" android:animation="@animator/startup_ink_2_0"/>
+<target android:name="ink_3_0" android:animation="@animator/startup_ink_3_0"/>
+<target android:name="ink_3_1" android:animation="@animator/startup_ink_3_1"/>
+<target android:name="ink_4_0" android:animation="@animator/startup_ink_4_0"/>
+<target android:name="ink_5_0" android:animation="@animator/startup_ink_5_0"/>
+<target android:name="ink_6_0" android:animation="@animator/startup_ink_6_0"/>
+<target android:name="ink_7_0" android:animation="@animator/startup_ink_7_0"/>
+</animated-vector>

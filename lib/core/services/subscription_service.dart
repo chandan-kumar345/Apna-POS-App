@@ -93,6 +93,40 @@ class SubscriptionService {
   final DatabaseService _db = DatabaseService();
 
   SubscriptionDataModel? _cachedData;
+  int _statusRequestId = 0;
+  Future<Map<String, dynamic>>? _pendingStatus;
+  String? _pendingStatusScope;
+
+  /// Effective flags from the server take precedence over legacy status text.
+  static bool isActiveStatus(Map<dynamic, dynamic> data) {
+    if (data.containsKey('isSubscription') && data['isSubscription'] != true) return false;
+    for (final key in ['isSubscriptionActive', 'isActive', 'isSubscribed']) {
+      if (data.containsKey(key)) {
+        // The backend calculates expiry using server time, not a device clock.
+        return data[key] == true;
+      }
+    }
+    if (data.containsKey('isSubscription')) {
+      final expiry = DateTime.tryParse(data['subscriptionExpiresAt']?.toString() ?? '');
+      return expiry != null && expiry.isAfter(DateTime.now().toUtc());
+    }
+    return data['status'] == 'active';
+  }
+
+  String get _accessScope => '${ApiEndpoints.baseUrl}|${_db.currentUser?.id}|${_db.currentBusinessId}';
+
+  Map<String, dynamic> _localStatus() => {
+    'isActive': _db.isSubscribed,
+    'isSubscribed': _db.isSubscribed,
+    'status': _db.isSubscribed ? 'active' : 'inactive',
+    'amount': 300,
+    'upiId': '9709593705@ybl',
+  };
+
+  Future<bool> refreshAccess() async {
+    await getStatus();
+    return _db.isSubscribed;
+  }
 
   /// Default rich fallback plans
   SubscriptionDataModel getDefaultPlans() {
@@ -288,42 +322,32 @@ class SubscriptionService {
   }
 
   /// Get Live Subscription Status from Backend API
-  Future<Map<String, dynamic>> getStatus() async {
+  Future<Map<String, dynamic>> getStatus() {
+    final scope = _accessScope;
+    if (_pendingStatus != null && _pendingStatusScope == scope) return _pendingStatus!;
+    final requestId = ++_statusRequestId;
+    final pending = _fetchStatus(scope, requestId);
+    _pendingStatus = pending;
+    _pendingStatusScope = scope;
+    pending.whenComplete(() {
+      if (identical(_pendingStatus, pending)) _pendingStatus = null;
+    });
+    return pending;
+  }
+
+  Future<Map<String, dynamic>> _fetchStatus(String scope, int requestId) async {
     try {
       final response = await _api.get(ApiEndpoints.subscriptionStatus);
       if (response != null && response is Map<String, dynamic>) {
-        final data = response['data'] ?? response;
-          bool isSub = false;
-          if (data['isSubscriptionActive'] != null) {
-            isSub = data['isSubscriptionActive'] == true;
-          } else if (data['isActive'] != null) {
-            isSub = data['isActive'] == true;
-          } else if (data['isSubscribed'] != null) {
-            isSub = data['isSubscribed'] == true;
-          } else if (data['status'] != null) {
-            isSub = data['status'] == 'active';
-          }
-
-          final statusStr = data['status']?.toString().toLowerCase();
-          final isExplicitlyInactive = statusStr == 'cancelled' || statusStr == 'expired';
-
-          if (isSub) {
-            await _db.updateSubscriptionStatus(true);
-          } else if (isExplicitlyInactive) {
-            await _db.updateSubscriptionStatus(false);
-          }
-          return data;
+        if (scope != _accessScope || requestId != _statusRequestId) return _localStatus();
+        final data = Map<String, dynamic>.from(response['data'] ?? response);
+        await _db.updateSubscriptionStatus(isActiveStatus(data));
+        return data;
       }
     } catch (e) {
       debugPrint('[SubscriptionService.getStatus] error: $e');
     }
-    return {
-      'isActive': _db.isSubscribed,
-      'isSubscribed': _db.isSubscribed,
-      'status': _db.isSubscribed ? 'active' : 'inactive',
-      'amount': 300,
-      'upiId': '9709593705@ybl',
-    };
+    return _localStatus();
   }
 
   /// Activate / Unlock Subscription
@@ -344,15 +368,15 @@ class SubscriptionService {
       );
 
       if (response != null && response is Map<String, dynamic>) {
-        await _db.updateSubscriptionStatus(true);
-        return true;
+        final data = response['data'] ?? response;
+        final active = data is Map && isActiveStatus(data);
+        await _db.updateSubscriptionStatus(active);
+        return active;
       }
     } catch (e) {
       debugPrint('[SubscriptionService.activateSubscription] error: $e');
     }
-    // Update local state even if offline
-    await _db.updateSubscriptionStatus(true);
-    return true;
+    return false;
   }
 
   /// Launch UPI Intent App for payment to 9709593705@ybl for Rs 300

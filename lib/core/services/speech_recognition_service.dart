@@ -27,7 +27,6 @@ class SpeechRecognitionService extends ChangeNotifier {
 
   double _audioLevel = 0.0; // 0.0 to 1.0 (Google Voice Search equalizer)
   double get audioLevel => _audioLevel;
-  int _lastSoundLevelMs = 0;
 
   String _errorMessage = '';
   String get errorMessage => _errorMessage;
@@ -36,6 +35,8 @@ class SpeechRecognitionService extends ChangeNotifier {
   StreamSubscription? _stdoutSub;
   Timer? _silenceTimer;
   Timer? _speechTimeoutTimer;
+  int _generation = 0;
+  bool _starting = false;
 
   void setLocale(String locale) {
     _currentLocale = locale;
@@ -60,7 +61,7 @@ class SpeechRecognitionService extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('[SpeechRecognitionService] Permission check error: $e');
-      return true;
+      return !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
     }
   }
 
@@ -70,10 +71,17 @@ class SpeechRecognitionService extends ChangeNotifier {
     Duration timeout = const Duration(seconds: 16),
   }) async {
     // Stop any existing session
-    stopListening();
+    final generation = ++_generation;
+    _starting = true;
+    _silenceTimer?.cancel();
+    _speechTimeoutTimer?.cancel();
+    _cleanupProcess();
+    _status = SpeechStatus.idle;
+    _liveTranscription = '';
 
     // 1. Ensure microphone permission is granted on mobile devices
     final hasPermission = await requestMicrophonePermission();
+    if (generation != _generation) return;
     if (!hasPermission) {
       setError('Microphone permission is required to use Chotu voice assistant');
       return;
@@ -89,38 +97,38 @@ class SpeechRecognitionService extends ChangeNotifier {
       return;
     }
 
-    // Overall max listening timeout
-    _speechTimeoutTimer = Timer(timeout, () {
-      if (_status == SpeechStatus.listening) {
-        stopListening();
-      }
-    });
-
-    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS) {
       // Use on-device Android/iOS Speech-to-Text plugin
-      await _startMobileSpeechRecognition();
+      await _startMobileSpeechRecognition(generation);
     } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       // Use Python Voice Engine with native PowerShell fallback on Windows
       final pythonSuccess = await _tryStartPythonVoiceEngine();
       if (!pythonSuccess) {
+        _cleanupProcess();
         await _startWindowsNativeMicrophoneListener();
       }
     } else {
-      debugPrint('[SpeechRecognitionService] Listening started on Web/other platform');
+      setError('Voice recognition is unavailable on this platform. Type your order instead.');
+    }
+    _starting = false;
+    if (generation == _generation && _status == SpeechStatus.listening) {
+      _speechTimeoutTimer = Timer(timeout, stopListening);
     }
   }
 
   /// Starts native Android/iOS Speech-to-Text with intelligent locale discovery & natural VAD
-  Future<void> _startMobileSpeechRecognition() async {
+  Future<void> _startMobileSpeechRecognition(int generation) async {
     try {
       if (!_isSttInitialized) {
         _isSttInitialized = await _speechToText.initialize(
           onStatus: (status) {
             debugPrint('[SpeechRecognitionService:Mobile] Status: $status');
             if (status == 'done' || status == 'notListening') {
+              if (_starting) return;
               if (_liveTranscription.trim().isNotEmpty) {
                 _onSpeechCompleted();
               } else if (_status == SpeechStatus.listening) {
+                _status = SpeechStatus.idle;
                 _audioLevel = 0.0;
                 notifyListeners();
               }
@@ -128,7 +136,13 @@ class SpeechRecognitionService extends ChangeNotifier {
           },
           onError: (err) {
             debugPrint('[SpeechRecognitionService:Mobile] Error: ${err.errorMsg}');
-            if (err.errorMsg != 'error_no_match' && err.errorMsg != 'error_speech_timeout') {
+            if (err.errorMsg == 'error_no_match' || err.errorMsg == 'error_speech_timeout') {
+              if (_liveTranscription.trim().isNotEmpty) {
+                _onSpeechCompleted();
+              } else {
+                setError('No speech detected. Tap the microphone to retry or type your order.');
+              }
+            } else {
               setError('Voice recognition notice: ${err.errorMsg}');
             }
           },
@@ -141,6 +155,7 @@ class SpeechRecognitionService extends ChangeNotifier {
       }
 
       if (_isSttInitialized) {
+        if (generation != _generation) return;
         String? targetLocaleId;
         try {
           final locales = await _speechToText.locales();
@@ -149,11 +164,11 @@ class SpeechRecognitionService extends ChangeNotifier {
             if (hiLocale != null) {
               targetLocaleId = hiLocale.localeId;
             } else {
-              final enInLocale = locales.where((l) => l.localeId.toLowerCase() == 'en_in').firstOrNull;
+              final enInLocale = locales.where((l) => l.localeId.toLowerCase().replaceAll('-', '_') == 'en_in').firstOrNull;
               targetLocaleId = enInLocale?.localeId;
             }
           } else if (_currentLocale == 'en_IN') {
-            final enInLocale = locales.where((l) => l.localeId.toLowerCase() == 'en_in').firstOrNull;
+            final enInLocale = locales.where((l) => l.localeId.toLowerCase().replaceAll('-', '_') == 'en_in').firstOrNull;
             targetLocaleId = enInLocale?.localeId;
           }
         } catch (e) {
@@ -162,6 +177,7 @@ class SpeechRecognitionService extends ChangeNotifier {
 
         await _speechToText.listen(
           onResult: (result) {
+            if (generation != _generation || _status != SpeechStatus.listening) return;
             final words = result.recognizedWords.trim();
             if (words.isNotEmpty) {
               _liveTranscription = words;
@@ -170,12 +186,14 @@ class SpeechRecognitionService extends ChangeNotifier {
 
               if (result.finalResult) {
                 _onSpeechCompleted();
-              } else {
-                _restartSilenceTimer();
               }
             }
           },
-          onSoundLevelChange: null,
+          onSoundLevelChange: (level) {
+            if (generation != _generation || !isListening) return;
+            _audioLevel = ((level + 2) / 12).clamp(0.0, 1.0);
+            notifyListeners();
+          },
           listenOptions: stt.SpeechListenOptions(
             localeId: targetLocaleId,
             listenMode: stt.ListenMode.dictation,
@@ -184,7 +202,7 @@ class SpeechRecognitionService extends ChangeNotifier {
             pauseFor: const Duration(milliseconds: 2800),
             listenFor: const Duration(seconds: 30),
           ),
-        );
+        ).timeout(const Duration(seconds: 12));
       }
     } catch (e) {
       debugPrint('[SpeechRecognitionService:Mobile] STT start failed: $e');
@@ -195,10 +213,11 @@ class SpeechRecognitionService extends ChangeNotifier {
   /// Tries starting the high-accuracy Python voice engine with ambient noise filter & fast VAD
   Future<bool> _tryStartPythonVoiceEngine() async {
     try {
+      final ready = Completer<bool>();
       _activeProcess = await Process.start(
         'python',
         ['scripts/chotu_voice_engine.py'],
-        runInShell: true,
+        runInShell: false,
       );
 
       _stdoutSub = _activeProcess!.stdout
@@ -216,6 +235,7 @@ class SpeechRecognitionService extends ChangeNotifier {
             final statusStr = data['status']?.toString();
 
             if (statusStr == 'READY' || statusStr == 'LISTENING') {
+              if (!ready.isCompleted) ready.complete(true);
               _audioLevel = 0.35;
               notifyListeners();
             } else if (statusStr == 'PROCESSING') {
@@ -247,6 +267,11 @@ class SpeechRecognitionService extends ChangeNotifier {
                 notifyListeners();
               }
             } else if (statusStr == 'ERROR') {
+              if (!ready.isCompleted) {
+                ready.complete(false);
+              } else if (isListening) {
+                setError('Voice engine failed. Retry the microphone or type your order.');
+              }
               debugPrint('[SpeechRecognitionService:Python] Error: ${data['message']}');
             }
           } catch (_) {}
@@ -255,13 +280,14 @@ class SpeechRecognitionService extends ChangeNotifier {
           debugPrint('[SpeechRecognitionService:Python] Process error: $err');
         },
         onDone: () {
+          if (!ready.isCompleted) ready.complete(false);
           if (_status == SpeechStatus.listening && _liveTranscription.trim().isNotEmpty) {
             _onSpeechCompleted();
           }
         },
       );
 
-      return true;
+      return await ready.future.timeout(const Duration(seconds: 5), onTimeout: () => false);
     } catch (e) {
       debugPrint('[SpeechRecognitionService] Python voice engine launch failed: $e');
       return false;
@@ -385,7 +411,7 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
   /// Restarts silence debounce timer: triggers execution 1100ms after user stops speaking
   void _restartSilenceTimer() {
     _silenceTimer?.cancel();
-    _silenceTimer = Timer(const Duration(milliseconds: 1100), () {
+    _silenceTimer = Timer(const Duration(milliseconds: 2800), () {
       if (_status == SpeechStatus.listening && _liveTranscription.isNotEmpty) {
         _onSpeechCompleted();
       }
@@ -402,6 +428,8 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
 
   /// Stop listening and finalize captured speech
   void stopListening() {
+    _generation++;
+    _starting = false;
     _silenceTimer?.cancel();
     _speechTimeoutTimer?.cancel();
     _cleanupProcess();
@@ -412,7 +440,7 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
 
     if (_status == SpeechStatus.listening) {
       _audioLevel = 0.0;
-      _status = SpeechStatus.done;
+      _status = _liveTranscription.trim().isEmpty ? SpeechStatus.idle : SpeechStatus.done;
       notifyListeners();
     }
   }
@@ -431,6 +459,8 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
 
   /// Reset speech state
   void reset() {
+    _generation++;
+    _starting = false;
     _silenceTimer?.cancel();
     _speechTimeoutTimer?.cancel();
     _cleanupProcess();

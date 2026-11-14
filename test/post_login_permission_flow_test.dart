@@ -196,6 +196,23 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
   }, variant: android);
 
+  testWidgets('restored session does not request permissions on Get Started', (
+    tester,
+  ) async {
+    logIn();
+    final navigator = await mountApp(tester);
+    navigator.currentState!.pushReplacement(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/get-started'),
+        builder: (_) => const Scaffold(body: Text('Welcome')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(events, isEmpty);
+    expect(requests, isEmpty);
+    expect(find.text('Welcome'), findsOneWidget);
+  }, variant: android);
+
   testWidgets('granted permissions never open another permission screen', (
     tester,
   ) async {

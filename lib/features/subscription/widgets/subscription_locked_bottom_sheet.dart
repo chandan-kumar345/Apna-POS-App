@@ -13,7 +13,12 @@ class SubscriptionLockedBottomSheet extends StatefulWidget {
   });
 
   /// Static helper to display the subscription locked bottom sheet or barrier
-  static Future<void> show(BuildContext context, {VoidCallback? onUnlocked}) {
+  static Future<void> show(BuildContext context, {VoidCallback? onUnlocked}) async {
+    if (await SubscriptionService().refreshAccess()) {
+      onUnlocked?.call();
+      return;
+    }
+    if (!context.mounted) return;
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -751,6 +756,13 @@ class SubscriptionLockedBarrier extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: DatabaseService(),
+      builder: (context, _) => _buildBarrier(context),
+    );
+  }
+
+  Widget _buildBarrier(BuildContext context) {
     final bool isActuallyLocked = isLocked && !DatabaseService().isSubscribed;
     if (!isActuallyLocked) return child;
 

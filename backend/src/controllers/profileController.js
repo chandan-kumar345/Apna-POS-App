@@ -8,12 +8,14 @@ const ApiError = require('../utils/ApiError');
 class ProfileController {
   async getProfile(req, res, next) {
     try {
-      const business = await Business.findOne({ ownerId: req.user._id });
+      const business = await Business.findById(req.businessId);
+      const access = await require('../services/entitlementService').status(req.businessId, req.user._id);
       return ApiResponse.success(
         res,
         {
-          user: req.user,
-          business: business || null,
+          user: { ...req.user.toObject(), subscription: access },
+          business: business ? { ...business.toObject(), subscription: access,
+            orderSettings: { ...business.toObject().orderSettings, enableChotuVoice: access.chotuAiAccess && business.orderSettings.enableChotuVoice === true } } : null,
         },
         'Profile retrieved'
       );

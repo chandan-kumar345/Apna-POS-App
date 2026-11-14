@@ -152,19 +152,15 @@ class CronService {
       const now = new Date();
       const twoDaysFromNow = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
-      // Find users with active subscriptions expiring in <= 48h and > now
-      const expiringUsers = await User.find({
-        $or: [
-          { 'subscription.isActive': true },
-          { 'subscription.isSubscriptionActive': true },
-          { 'subscription.status': 'active' },
-        ],
-        'subscription.expiresAt': { $gt: now, $lte: twoDaysFromNow },
-      }).lean();
+      const businesses = await Business.collection.find({
+        isSubscription: true,
+        subscriptionExpiresAt: { $type: 'date', $gt: now, $lte: twoDaysFromNow },
+      }).toArray();
 
-      for (const user of expiringUsers) {
-        if (!user.subscription?.expiresAt) continue;
-        const expiry = new Date(user.subscription.expiresAt);
+      for (const business of businesses) {
+        const user = await User.findById(business.ownerId).lean();
+        if (!user || user.status && user.status !== 'active') continue;
+        const expiry = business.subscriptionExpiresAt;
 
         // Format date and time (e.g., "13 Oct 2026 at 08:30 PM")
         const formattedDate = expiry.toLocaleDateString('en-IN', {
@@ -180,23 +176,23 @@ class CronService {
         const formattedDateTime = `${formattedDate} at ${formattedTime}`;
 
         const dateKey = `${expiry.getFullYear()}-${expiry.getMonth() + 1}-${expiry.getDate()}`;
-        const idempotencyKey = `sub_expiring_2days_${user._id.toString()}_${dateKey}`;
+        const idempotencyKey = `sub_expiring_2days_${business._id.toString()}_${dateKey}`;
 
         const title = 'Your subscription will end soon ⏳';
         const message = `Your Apna POS subscription will end on ${formattedDateTime}. Please renew your plan to continue using all features.`;
 
         await notificationService.createNotification({
           userId: user._id,
-          businessId: user.businessId,
+          businessId: business._id,
           type: 'system',
           title,
           message,
           entityType: 'subscription',
-          entityId: user._id.toString(),
+          entityId: business._id.toString(),
           metadata: {
             expiresAt: expiry.toISOString(),
             formattedDateTime,
-            plan: user.subscription?.plan || 'starter',
+            plan: business.subscription?.plan || 'starter',
           },
           sendPush: true,
           idempotencyKey,
@@ -236,6 +232,13 @@ class CronService {
       console.log(`[CronService] Found ${dueCampaigns.length} scheduled campaign(s) due for dispatch.`);
 
       for (const camp of dueCampaigns) {
+        // Leave unpaid campaigns scheduled so a later manual extension can
+        // resume them, rather than stranding them behind a processing lock.
+        try { await require('./entitlementService').requireSubscription(camp.businessId); }
+        catch (error) {
+          if (error.code === 'SUBSCRIPTION_REQUIRED') continue;
+          throw error;
+        }
         // Atomic lock: Only the worker that successfully transitions status executes the dispatch
         const locked = await Campaign.findOneAndUpdate(
           { _id: camp._id, status: 'scheduled' },
@@ -262,6 +265,9 @@ class CronService {
           await campaignService.executeScheduledCampaign(camp._id);
           console.log(`[CronService] Scheduled campaign "${camp.name}" (${camp._id}) executed successfully.`);
         } catch (execErr) {
+          if (execErr.code === 'SUBSCRIPTION_REQUIRED') {
+            await Campaign.updateOne({ _id: camp._id, status: 'processing' }, { $set: { status: 'scheduled' } });
+          }
           console.error(`[CronService] Failed executing scheduled campaign ${camp._id}:`, execErr.message);
         }
       }

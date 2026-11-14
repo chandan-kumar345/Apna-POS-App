@@ -31,6 +31,9 @@ const campaignRoutes = require('./campaignRoutes');
 const metaPartnerRoutes = require('./metaPartnerRoutes');
 
 const router = express.Router();
+const authenticated = require('../middleware/authMiddleware');
+const entitlement = require('../middleware/entitlementMiddleware');
+const paid = (routes) => [authenticated, entitlement.subscription, routes];
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -52,8 +55,8 @@ router.use('/sales', salesRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/tables', tableRoutes);
 router.use('/customers', customerRoutes);
-router.use('/crm', crmRoutes);
-router.use('/inventory', inventoryRoutes);
+router.use('/crm', ...paid(crmRoutes));
+router.use('/inventory', ...paid(inventoryRoutes));
 router.use('/upload', uploadRoutes);
 router.use('/cart', cartRoutes);
 router.use('/payment-methods', paymentMethodRoutes);
@@ -61,19 +64,19 @@ router.use('/extras', extraRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/print-logs', printLogRoutes);
 router.use('/printlogs', printLogRoutes);
-router.use('/loyalty', loyaltyRoutes);
+router.use('/loyalty', ...paid(loyaltyRoutes));
 router.use('/notifications', notificationRoutes);
 router.use('/subscription', subscriptionRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/chotu', chotuRoutes);
-router.use('/staff', staffRoutes);
+router.use('/staff', ...paid(staffRoutes));
 router.use('/superadmin', superadminRoutes);
 router.use('/ebill', ebillRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/whatsapp', whatsappRoutes);
-router.use('/coupons', couponRoutes);
+router.use('/coupons', ...paid(couponRoutes));
 router.use('/storefront', storefrontRoutes);
-router.use('/campaigns', campaignRoutes);
+router.use('/campaigns', ...paid(campaignRoutes));
 router.use('/meta-partner', metaPartnerRoutes);
 
 module.exports = router;

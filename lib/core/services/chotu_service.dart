@@ -276,7 +276,10 @@ class ChotuService extends ChangeNotifier {
       };
     }
     if (!_automationAgentEnabled && !await _automationClient.hasPending(scope)) {
-      return null;
+      return {
+        'status': 'rejected',
+        'chotuMessage': 'Validated Chotu agent unavailable. Connect to the backend started with npm run start:chotu, then retry. Order unchanged.',
+      };
     }
     if (_automationScope != scope) {
       return {'status': 'unconfirmed', 'chotuMessage': 'Account/backend change hua. Chotu dobara open kijiye.'};

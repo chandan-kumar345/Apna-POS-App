@@ -8,15 +8,17 @@
  * 5. Ambiguity Detection (Multiple matches -> Ask clarification, never randomly select)
  */
 
+const { transliterateDevanagari } = require('./speechProvider');
+
 class ProductMatcher {
   /**
    * Compute normalized similarity string
    */
   static cleanString(str) {
     if (!str || typeof str !== 'string') return '';
-    return str
+    return transliterateDevanagari(str.normalize('NFKC'))
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -148,13 +150,14 @@ class ProductMatcher {
     const substringMatches = [];
     for (const p of products) {
       const pName = this.cleanString(p.name);
-      const isMatch = pName.includes(cleanSpoken) || cleanSpoken.includes(pName);
+      const containsPhrase = (a, b) => (` ${a} `).includes(` ${b} `);
+      const isMatch = containsPhrase(pName, cleanSpoken) || containsPhrase(cleanSpoken, pName);
       let aliasMatch = false;
 
       if (!isMatch && Array.isArray(p.aliases)) {
         aliasMatch = p.aliases.some((a) => {
           const ca = this.cleanString(a);
-          return ca.includes(cleanSpoken) || cleanSpoken.includes(ca);
+          return ca && (containsPhrase(ca, cleanSpoken) || containsPhrase(cleanSpoken, ca));
         });
       }
 

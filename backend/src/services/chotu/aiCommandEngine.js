@@ -13,7 +13,7 @@ class AICommandEngine {
     if (!text || typeof text !== 'string') return fallbackTable ? fallbackTable.toString() : null;
 
     // Matches: table 5, t-5, t5, table five, table no 5, table number 5
-    const tableRegex = /\b(?:table|tbl|table\s+no|table\s+number|t|mez|table\s+no\.)\s*[-#]?\s*(\d+)\b/i;
+    const tableRegex = /\b(?:table(?:\s+(?:number|no\.?))?|tbl|t|mez)\s*(?:to\s*)?[-#]?\s*(\d+)\b/i;
     const match = text.match(tableRegex);
     if (match && match[1]) {
       return match[1];
@@ -73,7 +73,13 @@ class AICommandEngine {
       };
     }
 
-    const normalized = normalizeSpokenText(text);
+    const normalized = normalizeSpokenText(text.replace(/\btable\s+no\.?\s+/gi, 'table number '))
+      .replace(/\b(?:could|can|would)\s+you\b/gi, ' ')
+      .replace(/\b(?:please|kindly|sir|chotu)\b/gi, ' ')
+      .replace(/\bk\s*[.\s]*o\s*[.\s]*t\b/gi, 'kot')
+      .replace(/\b(bhejo|bhejiye)\b/gi, 'bhej do')
+      .replace(/\b(banao|banaiye)\b/gi, 'bana do')
+      .replace(/\s+/g, ' ').trim();
     const lower = normalized.toLowerCase();
 
     // 1. Resolve Table Context (Spoken table takes priority, then session memory, then active POS screen)
@@ -139,7 +145,7 @@ class AICommandEngine {
     }
     // G. Check for Switch / Select Table only (without dish names)
     else if (
-      (lower.includes('switch') || lower.includes('select') || lower.includes('open') || lower.includes('pe jao') || lower.includes('par jao')) &&
+      (lower.includes('switch') || lower.includes('change table') || lower.includes('select') || lower.includes('open') || lower.includes('pe jao') || lower.includes('par jao')) &&
       (lower.includes('table') || lower.includes('tbl') || lower.includes('mez')) &&
       !lower.includes('add') && !lower.includes('laga') && !lower.includes('bhej')
     ) {
@@ -355,7 +361,8 @@ class AICommandEngine {
       case 'UPDATE_QUANTITY': {
         // Find target quantity: e.g. "Butter naan ko 4 kar do"
         let targetQty = 1;
-        const qtyMatch = lower.match(/\b(?:ko\s+|to\s+)?(\d+)\s*(?:kar|karo|set|pieces|plate)?\b/i);
+        const withoutTable = lower.replace(/\b(?:table(?:\s+(?:number|no\.?))?|tbl|t)\s*[-#]?\s*\d+\b/gi, ' ');
+        const qtyMatch = withoutTable.match(/\b(?:ko\s+|to\s+)?(\d+)\s*(?:kar|karo|set|pieces|plate)?\b/i);
         if (qtyMatch && qtyMatch[1]) {
           targetQty = parseInt(qtyMatch[1], 10);
         }
@@ -390,7 +397,7 @@ class AICommandEngine {
       case 'REMOVE_ITEM': {
         // Find item and quantity to reduce (default 1)
         let removeQty = 1;
-        const qtyMatch = lower.match(/\b(\d+)\s+([a-zA-Z\s]+?)\s+(?:hata|remove|kam|nikal|cancel)\b/i);
+        const qtyMatch = lower.replace(/\b(?:table(?:\s+(?:number|no\.?))?|tbl|t)\s*[-#]?\s*\d+\b/gi, ' ').match(/\b(\d+)\b/);
         if (qtyMatch && qtyMatch[1]) {
           removeQty = parseInt(qtyMatch[1], 10);
         }
@@ -430,7 +437,8 @@ class AICommandEngine {
 
         // Remove table prefix/suffix from item extraction string
         let contentStr = normalized
-          .replace(/\b(?:table|tbl|mez)\s*[-#]?\s*\d+\s*(?:pe|mein|par|to|for)?\b/gi, ' ')
+          .replace(/\b(?:table(?:\s+(?:number|no\.?))?|tbl|mez|t)\s*[-#]?\s*\d+\s*(?:pe|mein|par|to|for)?\b/gi, ' ')
+          .replace(/\b(?:to|for)\s*$/gi, '')
           .replace(/\b(?:laga|lagao|kar|karo|bhej|rakh)\s+do\b/gi, ' ')
           .replace(/\b(?:add\s+karo|add\s+kar\s+do|add)\b/gi, ' ')
           .replace(/\b(?:aur\s+add\s+karo|bhi\s+add\s+karo|bhi)\b/gi, ' ')
@@ -438,7 +446,7 @@ class AICommandEngine {
 
         // Split multi-item phrases joined by 'aur', 'and', 'plus', comma, '+'
         const itemPhrases = contentStr
-          .split(/\b(?:aur|and|\+|&)\b|,/gi)
+          .split(/\b(?:aur|and|plus)\b|[,+&]/gi)
           .map((p) => p.trim())
           .filter(Boolean);
 

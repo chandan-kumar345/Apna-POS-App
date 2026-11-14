@@ -9,7 +9,7 @@ const ACTIONS = new Set([
 ]);
 
 function enabled() {
-  return process.env.CHOTU_AGENT_ENABLED === 'true';
+  return process.env.CHOTU_AGENT_ENABLED !== 'false';
 }
 
 function invoke(payload, health = false) {

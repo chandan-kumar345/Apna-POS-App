@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../database/database_service.dart';
 import '../models/menu_item_model.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import 'auth_service.dart';
+import 'cart_mutation_queue.dart';
 
 class CartApiService {
   static final CartApiService _instance = CartApiService._internal();
@@ -11,6 +14,37 @@ class CartApiService {
 
   final ApiClient _apiClient = ApiClient();
   final AuthService _authService = AuthService();
+  late final _mutations = CartMutationQueue(_postMutation);
+
+  String get _scope =>
+      '${ApiEndpoints.baseUrl}|${DatabaseService().currentUser?.id}|${DatabaseService().currentBusinessId}';
+  String _cartKey(String? table, String type) => '$type|${table?.trim() ?? ''}';
+
+  Future<Map<String, dynamic>?> _postMutation(
+    String scope,
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
+    if (scope != _scope ||
+        !await _authService.isAuthenticated() ||
+        scope != _scope) {
+      return null;
+    }
+    try {
+      final response = await _apiClient.postOnce(path, data: payload);
+      if (response is Map && response['data'] is Map) {
+        return Map<String, dynamic>.from(response['data'] as Map);
+      }
+    } catch (error) {
+      debugPrint('[CartApiService] Background cart sync failed: $error');
+    }
+    return null;
+  }
+
+  Future<void> flushPending({
+    String? tableNumber,
+    String orderType = 'dineIn',
+  }) => _mutations.flush(_scope, _cartKey(tableNumber, orderType));
 
   /// Add a product or variant to the server-side active cart
   Future<Map<String, dynamic>?> addToCart({
@@ -21,9 +55,6 @@ class CartApiService {
     String? variantName,
   }) async {
     try {
-      final isAuth = await _authService.isAuthenticated();
-      if (!isAuth) return null;
-
       final payload = {
         'tableNumber': tableNumber ?? '',
         'orderType': orderType,
@@ -43,15 +74,13 @@ class CartApiService {
         },
       };
 
-      final response = await _apiClient.post(
-        ApiEndpoints.cartAdd,
-        data: payload,
+      return await _mutations.enqueue(
+        scope: _scope,
+        cart: _cartKey(tableNumber, orderType),
+        path: ApiEndpoints.cartAdd,
+        payload: payload,
+        mergeKey: jsonEncode(payload['product']),
       );
-
-      if (response != null && response is Map && response['data'] != null) {
-        return Map<String, dynamic>.from(response['data'] as Map);
-      }
-      return null;
     } catch (e) {
       debugPrint('[CartApiService.addToCart] error: $e');
       return null;
@@ -67,9 +96,6 @@ class CartApiService {
     int quantity = 1,
   }) async {
     try {
-      final isAuth = await _authService.isAuthenticated();
-      if (!isAuth) return null;
-
       final payload = {
         'productId': productId,
         'variantName': variantName ?? '',
@@ -78,15 +104,13 @@ class CartApiService {
         'quantity': quantity,
       };
 
-      final response = await _apiClient.post(
-        ApiEndpoints.cartReduce,
-        data: payload,
+      return await _mutations.enqueue(
+        scope: _scope,
+        cart: _cartKey(tableNumber, orderType),
+        path: ApiEndpoints.cartReduce,
+        payload: payload,
+        mergeKey: '$productId|${variantName ?? ''}',
       );
-
-      if (response != null && response is Map && response['data'] != null) {
-        return Map<String, dynamic>.from(response['data'] as Map);
-      }
-      return null;
     } catch (e) {
       debugPrint('[CartApiService.reduceProductFromCart] error: $e');
       return null;
@@ -105,7 +129,8 @@ class CartApiService {
       final response = await _apiClient.get(
         ApiEndpoints.cart,
         queryParameters: {
-          if (tableNumber != null && tableNumber.isNotEmpty) 'tableNumber': tableNumber,
+          if (tableNumber != null && tableNumber.isNotEmpty)
+            'tableNumber': tableNumber,
           'orderType': orderType,
         },
       );
@@ -128,9 +153,6 @@ class CartApiService {
     String orderType = 'dineIn',
   }) async {
     try {
-      final isAuth = await _authService.isAuthenticated();
-      if (!isAuth) return null;
-
       final payload = {
         'productId': productId,
         'variantName': variantName ?? '',
@@ -138,15 +160,13 @@ class CartApiService {
         'orderType': orderType,
       };
 
-      final response = await _apiClient.post(
-        ApiEndpoints.cartRemove,
-        data: payload,
+      return await _mutations.enqueue(
+        scope: _scope,
+        cart: _cartKey(tableNumber, orderType),
+        path: ApiEndpoints.cartRemove,
+        payload: payload,
+        immediate: true,
       );
-
-      if (response != null && response is Map && response['data'] != null) {
-        return Map<String, dynamic>.from(response['data'] as Map);
-      }
-      return null;
     } catch (e) {
       debugPrint('[CartApiService.removeItemFromCart] error: $e');
       return null;
@@ -160,24 +180,19 @@ class CartApiService {
     String orderType = 'dineIn',
   }) async {
     try {
-      final isAuth = await _authService.isAuthenticated();
-      if (!isAuth) return null;
-
       final payload = {
         'tableNumber': tableNumber ?? '',
         'orderType': orderType,
-        'items': items,
+        'items': items.map((item) => Map<String, dynamic>.from(item)).toList(),
       };
 
-      final response = await _apiClient.post(
-        ApiEndpoints.cartSync,
-        data: payload,
+      return await _mutations.enqueue(
+        scope: _scope,
+        cart: _cartKey(tableNumber, orderType),
+        path: ApiEndpoints.cartSync,
+        payload: payload,
+        immediate: true,
       );
-
-      if (response != null && response is Map && response['data'] != null) {
-        return Map<String, dynamic>.from(response['data'] as Map);
-      }
-      return null;
     } catch (e) {
       debugPrint('[CartApiService.syncCart] error: $e');
       return null;
@@ -190,19 +205,19 @@ class CartApiService {
     String orderType = 'dineIn',
   }) async {
     try {
-      final isAuth = await _authService.isAuthenticated();
-      if (!isAuth) return false;
-
       final payload = {
         'tableNumber': tableNumber ?? '',
         'orderType': orderType,
       };
 
-      await _apiClient.post(
-        ApiEndpoints.cartClear,
-        data: payload,
+      final result = await _mutations.enqueue(
+        scope: _scope,
+        cart: _cartKey(tableNumber, orderType),
+        path: ApiEndpoints.cartClear,
+        payload: payload,
+        immediate: true,
       );
-      return true;
+      return result != null;
     } catch (e) {
       debugPrint('[CartApiService.clearCart] error: $e');
       return false;

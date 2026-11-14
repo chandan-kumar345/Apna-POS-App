@@ -377,6 +377,7 @@ class CampaignService {
   async executeScheduledCampaign(campaignId) {
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) return null;
+    await require('./entitlementService').requireSubscription(campaign.businessId);
 
     try {
       campaign.status = 'processing';
@@ -1567,6 +1568,7 @@ class CampaignService {
    */
   async _dispatchCampaignMessages(campaign) {
     if (!campaign || campaign.channel?.channelType === 'sms') return;
+    await require('./entitlementService').requireSubscription(campaign.businessId);
 
     try {
       const bId = campaign.businessId;

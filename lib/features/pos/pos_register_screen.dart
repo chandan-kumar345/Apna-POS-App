@@ -70,6 +70,37 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   String? _selectedTable;
 
   final List<CartItemModel> _cartItems = [];
+  final _cartChanges = ValueNotifier<int>(0);
+  final Map<String, ValueNotifier<int>> _productQuantityChanges = {};
+  bool _publishingCart = false;
+
+  void _publishQuantityEdit(MenuItemModel item) {
+    _publishingCart = true;
+    try {
+      _syncTableStatusWithCart(deferPersistence: true);
+    } finally {
+      _publishingCart = false;
+    }
+    for (final entry in _productQuantityChanges.entries) {
+      if (item.id == entry.key || item.id.startsWith('${entry.key}_var_')) {
+        entry.value.value++;
+      }
+    }
+    _cartChanges.value++;
+  }
+
+  String? _variantFor(MenuItemModel item, String? supplied) {
+    if (supplied != null) return supplied;
+    final marker = item.id.indexOf('_var_');
+    return marker < 0 ? null : item.id.substring(marker + 5);
+  }
+
+  Future<void> _flushCartEdits() async {
+    await Future.wait([
+      db.flushLiveCartPersistence(),
+      _cartApiService.flushPending(tableNumber: _selectedTable, orderType: _selectedOrderType.name),
+    ]);
+  }
   double _discountAmount = 0.0;
   double _tipAmount = 0.0;
   double _additionalCharge = 0.0;
@@ -111,11 +142,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       );
 
       if (_cartItems.isNotEmpty) {
-        db.setLiveTableCart(draftKey, List.from(_cartItems));
-        db.setLiveCartTotal(draftKey, currentSubtotal - _discountAmount.clamp(0, currentSubtotal));
+        db.setLiveTableCart(draftKey, List.from(_cartItems),
+          total: currentSubtotal - _discountAmount.clamp(0, currentSubtotal));
       } else {
-        db.setLiveTableCart(draftKey, []);
-        db.setLiveCartTotal(draftKey, 0.0);
+        db.setLiveTableCart(draftKey, [], total: 0.0);
       }
 
       // Save customer info in draft
@@ -315,11 +345,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     _promoCodeController.dispose();
     db.removeListener(_onDbChange);
     _chotuService.removeActionListener(_onChotuCommandReceived);
+    unawaited(_flushCartEdits());
+    _cartChanges.dispose();
+    for (final notifier in _productQuantityChanges.values) {
+      notifier.dispose();
+    }
     super.dispose();
   }
 
   void _onDbChange() {
-    if (mounted) setState(() {});
+    if (mounted && !_publishingCart && !db.isPublishingDraftChange) setState(() {});
   }
 
   void _onChotuCommandReceived(ChotuParsedCommand cmd) {
@@ -625,6 +660,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           child: KotDialog(
             order: tempOrder,
           onPrintKot: (updatedOrder) async {
+            await _flushCartEdits();
+            if (!mounted) return;
             // Sync sent kotQuantity back to in-memory cart items
             for (int i = 0; i < _cartItems.length; i++) {
               final match = updatedOrder.items.where((ui) => ui.item.id == _cartItems[i].item.id || ui.item.name == _cartItems[i].item.name).firstOrNull;
@@ -714,7 +751,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
   }
 
-  void _syncTableStatusWithCart() {
+  void _syncTableStatusWithCart({bool deferPersistence = false}) {
     if (_selectedOrderType == OrderType.dineIn) {
       if (_selectedTable == null || _selectedTable!.isEmpty) {
         final freeT = db.getNextAvailableTableSequence();
@@ -733,8 +770,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         );
 
         // Save live table cart total & items in DB so table card and view button can load it immediately
-        db.setLiveCartTotal(targetTable, cartTotal - _discountAmount.clamp(0, cartTotal));
-        db.setLiveTableCart(targetTable, _cartItems);
+        db.setLiveTableCart(targetTable, _cartItems,
+          total: cartTotal - _discountAmount.clamp(0, cartTotal), deferPersistence: deferPersistence,
+          notifyImmediately: !deferPersistence);
 
         final tbl = db.tables.where((t) => isSameTable(t.name, targetTable)).firstOrNull;
         if (tbl != null) {
@@ -765,22 +803,21 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         0.0,
         (sum, e) => sum + (e.item.effectivePrice * e.quantity),
       );
-      db.setLiveCartTotal(draftKey, cartTotal - _discountAmount.clamp(0, cartTotal));
-      db.setLiveTableCart(draftKey, _cartItems);
+      db.setLiveTableCart(draftKey, _cartItems,
+        total: cartTotal - _discountAmount.clamp(0, cartTotal), deferPersistence: deferPersistence,
+        notifyImmediately: !deferPersistence);
     }
   }
 
   void _addToCart(MenuItemModel item, {String? variantName, int quantity = 1}) {
     if (quantity <= 0) return;
-    setState(() {
-      final existingIndex = _cartItems.indexWhere((e) => e.item.id == item.id);
-      if (existingIndex >= 0) {
-        _cartItems[existingIndex].quantity += quantity;
-      } else {
-        _cartItems.add(CartItemModel(item: item, quantity: quantity));
-      }
-      _syncTableStatusWithCart();
-    });
+    final existingIndex = _cartItems.indexWhere((e) => e.item.id == item.id);
+    if (existingIndex >= 0) {
+      _cartItems[existingIndex].quantity += quantity;
+    } else {
+      _cartItems.add(CartItemModel(item: item, quantity: quantity));
+    }
+    _publishQuantityEdit(item);
 
     // Fire-and-sync server-side Cart API in background for seamless real-time syncing
     _cartApiService.addToCart(
@@ -788,28 +825,25 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       tableNumber: _selectedTable,
       orderType: _selectedOrderType.name,
       quantity: quantity,
-      variantName: variantName,
+      variantName: _variantFor(item, variantName),
     );
   }
 
   void _decrementCartItem(MenuItemModel item, {String? variantName}) {
-    setState(() {
-      final existingIndex = _cartItems.indexWhere((e) => e.item.id == item.id);
-      if (existingIndex >= 0) {
-        _cartItems[existingIndex].quantity--;
-        if (_cartItems[existingIndex].quantity <= 0) {
-          _cartItems.removeAt(existingIndex);
-        } else if (_cartItems[existingIndex].kotQuantity > _cartItems[existingIndex].quantity) {
-          _cartItems[existingIndex].kotQuantity = _cartItems[existingIndex].quantity;
-        }
-      }
-      _syncTableStatusWithCart();
-    });
+    final existingIndex = _cartItems.indexWhere((e) => e.item.id == item.id);
+    if (existingIndex < 0) return;
+    _cartItems[existingIndex].quantity--;
+    if (_cartItems[existingIndex].quantity <= 0) {
+      _cartItems.removeAt(existingIndex);
+    } else if (_cartItems[existingIndex].kotQuantity > _cartItems[existingIndex].quantity) {
+      _cartItems[existingIndex].kotQuantity = _cartItems[existingIndex].quantity;
+    }
+    _publishQuantityEdit(item);
 
     // Fire-and-sync server-side Cart reduction in background
     _cartApiService.reduceProductFromCart(
       productId: item.productId.isNotEmpty ? item.productId : item.id,
-      variantName: variantName,
+      variantName: _variantFor(item, variantName),
       tableNumber: _selectedTable,
       orderType: _selectedOrderType.name,
       quantity: 1,
@@ -1093,12 +1127,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 onDecrement: () {
                                   _decrementCartItem(variantItem, variantName: v.name);
                                   setModalState(() {});
-                                  setState(() {});
                                 },
                                 onIncrement: () {
                                   _addToCart(variantItem, variantName: v.name);
                                   setModalState(() {});
-                                  setState(() {});
                                 },
                                 height: 30,
                                 buttonSize: 24,
@@ -1111,7 +1143,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   onPressed: () {
                                     _addToCart(variantItem, variantName: v.name);
                                     setModalState(() {});
-                                    setState(() {});
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF051C48),
@@ -4660,6 +4691,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     _cartApiService.removeItemFromCart(
       productId: item.productId.isNotEmpty ? item.productId : item.id,
+      variantName: _variantFor(item, null),
       tableNumber: _selectedTable,
       orderType: _selectedOrderType.name,
     );
@@ -4696,6 +4728,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     // 1. Sync any active in-memory cart items & discount to old table first
     _saveCurrentTableDraft();
+    await _flushCartEdits();
+    if (!mounted) return;
 
     // 2. Perform full data migration in local database
     db.shiftTableData(oldTable, newTableName);
@@ -7812,8 +7846,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 InkWell(
                                   onTap: () {
                                     _decrementCartItem(cItem.item);
-                                    setStateCart(() {});
-                                    setState(() {});
                                     if (!isDesktopPanel) {
                                       _checkAndCloseEmptyCart(context, setStateCart);
                                     }
@@ -7852,8 +7884,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 InkWell(
                                   onTap: () {
                                     _addToCart(cItem.item);
-                                    setStateCart(() {});
-                                    setState(() {});
                                   },
                                   borderRadius: BorderRadius.circular(13),
                                   child: Container(
@@ -8782,7 +8812,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 child: SafeArea(
                   top: false,
                   bottom: true,
-                  child: _buildCartPanelContent(setStateCart: setStateModal, isDesktopPanel: false),
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _cartChanges,
+                    builder: (context, _, child) => _buildCartPanelContent(
+                      setStateCart: setStateModal, isDesktopPanel: false),
+                  ),
                 ),
               );
             },
@@ -8808,6 +8842,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         return;
       }
 
+      await _flushCartEdits();
+      if (!mounted) return;
       final currency = db.restaurant?.currencySymbol ?? '₹';
       final calc = currentOrderCalculation;
       final targetContext = callerContext ?? context;
@@ -8945,6 +8981,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         final double? totalAmount = modalResult is PaymentModalResult ? modalResult.totalAmount : null;
 
         if (resultMethod.isNotEmpty) {
+          await _flushCartEdits();
+          if (!mounted) return;
           // If order was already saved in DB (via KOT or Save&Print), settle it; otherwise create completed order
           final existingKotIndex = db.orders.indexWhere((o) =>
             (_activeRunningOrderId != null && (o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId)) ||
@@ -9947,6 +9985,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   Widget _buildProductCard(MenuItemModel item, {required bool showImages, required String currency, bool isDesktop = false}) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _productQuantityChanges.putIfAbsent(item.id, () => ValueNotifier(0)),
+      builder: (context, _, child) => _buildProductCardContent(item,
+        showImages: showImages, currency: currency, isDesktop: isDesktop),
+    );
+  }
+
+  Widget _buildProductCardContent(MenuItemModel item, {required bool showImages, required String currency, bool isDesktop = false}) {
     final qty = _getItemCartQuantity(item);
     final isSelected = qty > 0;
     final hasVariants = item.variants.isNotEmpty;
@@ -10840,9 +10886,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF003882)),
                     ),
                     SizedBox(width: 10),
-                    Text(
-                      'Syncing products from cloud...',
-                      style: TextStyle(color: Color(0xFF003882), fontSize: 13, fontWeight: FontWeight.w600),
+                    Flexible(
+                      child: Text(
+                        'Syncing products from cloud...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFF003882), fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ],
                 ),
@@ -11106,9 +11155,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(22),
-                  child: _buildCartPanelContent(
-                    setStateCart: (fn) => setState(fn),
-                    isDesktopPanel: true,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _cartChanges,
+                    builder: (context, _, child) => _buildCartPanelContent(
+                      setStateCart: (fn) => setState(fn), isDesktopPanel: true),
                   ),
                 ),
               ),
@@ -11173,8 +11223,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ),
 
           // 4) VIEW CART FLOATING BUTTON & BAR (Mobile only - Neumorphic Capsule)
-          if (_cartItems.isNotEmpty)
-            Positioned(
+          ValueListenableBuilder<int>(
+            valueListenable: _cartChanges,
+            builder: (context, _, child) => _cartItems.isEmpty
+                ? const SizedBox.shrink()
+                : Positioned(
               left: 16,
               right: 16,
               bottom: 16,
@@ -11294,6 +11347,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 ),
               ),
             ),
+          ),
         ],
       ),
     );

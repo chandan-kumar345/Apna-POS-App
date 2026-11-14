@@ -93,7 +93,7 @@ class SplashBrandView extends StatelessWidget {
                                   SizedBox(height: compact ? 16 : 28),
                                   _WritingText(
                                     text: 'SMART RESTAURANT POS',
-                                    progress: _phase(progress, 0.54, 0.72),
+                                    progress: _phase(progress, 0.58, 0.78),
                                     style: const TextStyle(
                                       color: _blue,
                                       fontSize: 10,
@@ -107,7 +107,7 @@ class SplashBrandView extends StatelessWidget {
                                     text: compact
                                         ? 'Smart billing. Better business.'
                                         : 'Smart billing.\nBetter business.',
-                                    progress: _phase(progress, 0.70, 0.96),
+                                    progress: _phase(progress, 0.87, 0.98),
                                     style: TextStyle(
                                       color: _ink,
                                       fontSize: compact ? 19 : 29,
@@ -148,7 +148,7 @@ class SplashBrandView extends StatelessWidget {
                                     const SizedBox(height: 18),
                                     _WritingText(
                                       text: 'BILLING  /  ORDERS  /  INSIGHTS',
-                                      progress: _phase(progress, 0.86, 1),
+                                      progress: _phase(progress, 0.90, 1),
                                       style: const TextStyle(
                                         color: Color(0xFF6B7B94),
                                         fontSize: 9,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/loyalty_program_model.dart';
 import '../../../core/services/loyalty_service.dart';
+import '../../../core/services/subscription_service.dart';
 import '../widgets/loyalty_program_card.dart';
 import 'loyalty_performance_screen.dart';
 import 'loyalty_details_screen.dart';
@@ -75,7 +76,8 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
-  void _openSubscription() {
+  Future<void> _openSubscription() async {
+    if (await SubscriptionService().refreshAccess() || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(

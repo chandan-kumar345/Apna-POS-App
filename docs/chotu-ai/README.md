@@ -23,8 +23,10 @@
    ```
 
    For normal deployment/startup, setting `CHOTU_AGENT_ENABLED=true` and using
-   `npm start` is equivalent. The example environment defaults to disabled for
-   a controlled rollout. The database account must be allowed to create the
+   `npm start` is equivalent. The validated agent is enabled by default; an
+   explicit `CHOTU_AGENT_ENABLED=false` disables execution. Chotu shows a setup
+   message instead of executing an unvalidated local fallback. The database
+   account must be allowed to create the
    session/receipt/lock indexes; startup of agent turns waits for these indexes.
 
 5. Sign in to Flutter, enable the existing Chotu voice setting, and open the

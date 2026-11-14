@@ -19,96 +19,21 @@ const tokenService = require('./tokenService');
 const ApiError = require('../utils/ApiError');
 
 const SUPERADMIN_EMAIL = 'chandanyaduvanshi190@gmail.com';
-const SUPERADMIN_PASSWORD_DEFAULT = 'Admin@12';
+
+const subscriptionFor = (business, userId) => business
+  ? require('./entitlementService').status(business._id, userId)
+  : require('./entitlementService').evaluate(null);
 
 class SuperadminService {
-  /**
-   * Automatically ensure Super Admin user exists with credentials
-   */
+  // Compatibility hook for startup callers. Roles and credentials must be
+  // provisioned explicitly; never elevate a registered email or reset passwords.
   async seedSuperAdmin() {
-    try {
-      const email = SUPERADMIN_EMAIL.toLowerCase();
-      let user = await User.findOne({ email }).select('+passwordHash');
-
-      if (!user) {
-        console.log(`[SuperAdmin] Initializing master owner account for ${email}...`);
-        const passwordHash = await User.hashPassword(SUPERADMIN_PASSWORD_DEFAULT);
-        user = await User.create({
-          email,
-          phone: '+91 9709590000',
-          passwordHash,
-          role: 'superadmin',
-          isSuperAdmin: true,
-          status: 'active',
-          emailVerified: true,
-          phoneVerified: true,
-          onboardingCompleted: true,
-          onboardingStep: 4,
-          subscription: {
-            plan: 'enterprise',
-            status: 'active',
-            startDate: new Date(),
-            expiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000), // Lifetime
-            billingCycle: 'lifetime',
-            maxTables: 9999,
-            maxStaff: 9999,
-            notes: 'Master Platform Owner (SuperAdmin)',
-          },
-        });
-
-        // Ensure Business entry exists
-        await Business.create({
-          ownerId: user._id,
-          profile: {
-            name: 'Chandan Yaduvanshi',
-            companyName: 'Apna POS Master HQ',
-            phone: '+91 9709590000',
-          },
-          business: {
-            businessType: 'Headquarters',
-            currency: 'INR',
-            country: 'IN',
-          },
-        });
-
-        console.log(`[SuperAdmin] Master owner account created successfully: ${email}`);
-      } else {
-        // Ensure flags are up to date
-        let modified = false;
-        if (!user.isSuperAdmin) {
-          user.isSuperAdmin = true;
-          modified = true;
-        }
-        if (user.role !== 'superadmin') {
-          user.role = 'superadmin';
-          modified = true;
-        }
-        if (user.status !== 'active') {
-          user.status = 'active';
-          modified = true;
-        }
-
-        // Verify password hash or ensure standard default is accepted
-        const isPasswordValid = await user.comparePassword(SUPERADMIN_PASSWORD_DEFAULT);
-        if (!isPasswordValid) {
-          user.passwordHash = await User.hashPassword(SUPERADMIN_PASSWORD_DEFAULT);
-          modified = true;
-          console.log(`[SuperAdmin] Password synchronized for ${email}`);
-        }
-
-        if (modified) {
-          await user.save();
-          console.log(`[SuperAdmin] Master owner account privileges verified: ${email}`);
-        }
-      }
-      return user;
-    } catch (err) {
-      console.error(`[SuperAdmin Seeding Warning]`, err.message);
-    }
+    return User.findOne({ email: SUPERADMIN_EMAIL.toLowerCase(),
+      $or: [{ isSuperAdmin: true }, { role: 'superadmin' }] });
   }
 
   /**
-   * Superadmin Login (strictly for chandanyaduvanshi190@gmail.com)
+   * Platform administrator login (database-provisioned role only)
    */
   async login(email, password) {
     if (!email || !password) {
@@ -116,27 +41,15 @@ class SuperadminService {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (normalizedEmail !== SUPERADMIN_EMAIL.toLowerCase()) {
-      throw ApiError.forbidden(
-        'Access Denied: Only the Apna POS platform owner (chandanyaduvanshi190@gmail.com) can log into this dashboard.',
-        'SUPERADMIN_UNAUTHORIZED'
-      );
+    const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
+    if (!user || !(user.isSuperAdmin === true || user.role === 'superadmin')) {
+      throw ApiError.unauthorized('Invalid platform administrator credentials', 'INVALID_CREDENTIALS');
     }
-
-    let user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
-    if (!user) {
-      // Auto seed if missing
-      await this.seedSuperAdmin();
-      user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
-    }
-
-    if (!user) {
-      throw ApiError.unauthorized('Owner account initialization failed. Please try again.', 'USER_NOT_FOUND');
-    }
+    if (user.status && user.status !== 'active') throw ApiError.forbidden('Administrator account is inactive', 'ACCOUNT_INACTIVE');
 
     const isValid = await user.comparePassword(password);
     if (!isValid) {
-      throw ApiError.unauthorized('Incorrect owner password. Please enter Admin@12.', 'INVALID_CREDENTIALS');
+      throw ApiError.unauthorized('Invalid platform administrator credentials', 'INVALID_CREDENTIALS');
     }
 
     const tokens = await tokenService.generateAuthTokens(user);
@@ -152,7 +65,7 @@ class SuperadminService {
         role: 'superadmin',
         isSuperAdmin: true,
         status: user.status || 'active',
-        subscription: user.subscription || { plan: 'enterprise', status: 'active' },
+        subscription: await subscriptionFor(business, user._id),
       },
       ...tokens,
     };
@@ -229,7 +142,7 @@ class SuperadminService {
           phone: u.phone,
           status: u.status || 'active',
           role: u.role,
-          subscription: u.subscription || { plan: 'starter', status: 'active' },
+          subscription: await subscriptionFor(biz, u._id),
           companyName: biz?.profile?.companyName || 'Not Set',
           businessType: biz?.business?.businessType || 'Restaurant',
           orderCount,
@@ -390,9 +303,9 @@ class SuperadminService {
           ],
         }).lean();
 
-        const isSubActive = subDoc
-          ? Boolean(subDoc.isSubscriptionActive || subDoc.isActive || subDoc.isSubscribed || subDoc.status === 'active')
-          : Boolean(u.subscription?.isActive && (u.subscription?.status === 'active' || u.subscription?.isSubscriptionActive));
+        const calculated = bizId ? await require('./entitlementService').status(bizId, u._id)
+          : require('./entitlementService').evaluate(null);
+        const isSubActive = calculated.isActive;
 
         return {
           id: u._id,
@@ -409,12 +322,13 @@ class SuperadminService {
           isSubscriptionActive: isSubActive,
           isSubscribed: isSubActive,
           subscription: {
+            ...calculated,
             plan: subDoc?.plan || u.subscription?.plan || 'starter',
-            status: isSubActive ? 'active' : 'inactive',
+            status: calculated.status,
             isActive: isSubActive,
             isSubscriptionActive: isSubActive,
             startDate: subDoc?.userCreatedAt || subDoc?.createdAt || u.createdAt,
-            expiresAt: subDoc?.expiresAt || u.subscription?.expiresAt || null,
+            expiresAt: calculated.expiresAt,
             billingCycle: subDoc?.billingCycle || u.subscription?.billingCycle || 'annual',
             maxTables: u.subscription?.maxTables || 50,
             maxStaff: u.subscription?.maxStaff || 20,
@@ -546,7 +460,7 @@ class SuperadminService {
         phone: user.phone,
         role: user.role,
         status: user.status,
-        subscription: user.subscription,
+        subscription: await subscriptionFor(business, user._id),
       },
       business: {
         id: business._id,
@@ -607,11 +521,11 @@ class SuperadminService {
         emailVerified: user.emailVerified,
         onboardingCompleted: user.onboardingCompleted,
         onboardingStep: user.onboardingStep,
-        subscription: user.subscription || { plan: 'starter', status: 'active' },
+        subscription: await subscriptionFor(business, user._id),
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      business,
+      business: business ? { ...business, subscription: await subscriptionFor(business, user._id) } : null,
       stats: {
         totalRevenue: Math.round((salesAggregate[0]?.totalRevenue || 0) * 100) / 100,
         totalOrders: salesAggregate[0]?.orderCount || 0,
@@ -681,8 +595,8 @@ class SuperadminService {
     }
 
     return {
-      user,
-      business,
+      user: { ...user.toObject(), subscription: await subscriptionFor(business, user._id) },
+      business: business ? { ...business.toObject(), subscription: await subscriptionFor(business, user._id) } : null,
     };
   }
 
@@ -719,120 +633,20 @@ class SuperadminService {
    */
   async updateUserSubscription(userId, subData) {
     const user = await User.findById(userId);
-    if (!user) {
-      throw ApiError.notFound('User not found', 'USER_NOT_FOUND');
+    if (!user) throw ApiError.notFound('User not found');
+    const business = user.businessId ? await Business.findById(user.businessId) : await Business.findOne({ ownerId: user._id });
+    if (!business) throw ApiError.notFound('Business not found');
+    const input = { ...subData };
+    if (input.extendDays !== undefined) {
+      if (!Number.isInteger(input.extendDays) || input.extendDays <= 0 || input.extendDays > 3650) throw ApiError.badRequest('extendDays must be 1-3650');
+      const access = await require('./entitlementService').read(business._id);
+      input.subscriptionExpiresAt = new Date(Math.max(Date.now(), access.subscriptionExpiresAt?.getTime() || 0) + input.extendDays * 86400000);
     }
-
-    user.subscription = user.subscription || {};
-
-    const isSubActive = subData.isSubscriptionActive !== undefined
-      ? Boolean(subData.isSubscriptionActive)
-      : (subData.isActive !== undefined
-          ? Boolean(subData.isActive)
-          : (subData.status !== undefined ? subData.status.toLowerCase() === 'active' : user.subscription.isActive));
-
-    if (subData.plan) user.subscription.plan = subData.plan.toLowerCase();
-    user.subscription.status = isSubActive ? 'active' : (subData.status ? subData.status.toLowerCase() : 'inactive');
-    user.subscription.isActive = isSubActive;
-    user.subscription.isSubscriptionActive = isSubActive;
-    if (subData.billingCycle) user.subscription.billingCycle = subData.billingCycle.toLowerCase();
-    if (subData.maxTables !== undefined) user.subscription.maxTables = Number(subData.maxTables);
-    if (subData.maxStaff !== undefined) user.subscription.maxStaff = Number(subData.maxStaff);
-    if (subData.notes !== undefined) user.subscription.notes = subData.notes;
-
-    if (subData.expiresAt) {
-      user.subscription.expiresAt = new Date(subData.expiresAt);
-    } else if (subData.extendDays) {
-      const currentExpiry = user.subscription.expiresAt && user.subscription.expiresAt > new Date()
-        ? new Date(user.subscription.expiresAt)
-        : new Date();
-      currentExpiry.setDate(currentExpiry.getDate() + Number(subData.extendDays));
-      user.subscription.expiresAt = currentExpiry;
-    } else if (isSubActive && (!user.subscription.expiresAt || user.subscription.expiresAt < new Date())) {
-      user.subscription.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    }
-
-    await user.save();
-
-    // Sync to Business
-    let business = null;
-    if (user.businessId) {
-      business = await Business.findById(user.businessId);
-    }
-    if (!business) {
-      business = await Business.findOne({ ownerId: user._id });
-    }
-
-    if (business) {
-      business.subscription = business.subscription || {};
-      business.subscription.isActive = isSubActive;
-      business.subscription.isSubscriptionActive = isSubActive;
-      business.subscription.status = isSubActive ? 'active' : 'inactive';
-      business.subscription.plan = user.subscription.plan || 'standard';
-      business.subscription.expiresAt = user.subscription.expiresAt;
-      await business.save();
-    }
-
-    // Upsert into unified "premiumsubscriptions" collection for this specific owner user
-    const subFilter = business?._id
-      ? { businessId: business._id }
-      : { userId: user._id };
-
-    const premiumSub = await Subscription.findOneAndUpdate(
-      subFilter,
-      {
-        businessId: business?._id || null,
-        userId: user._id,
-        userEmail: user.email,
-        userName: business?.profile?.name || user.email.split('@')[0],
-        businessName: business?.profile?.companyName || 'My Restaurant',
-        phone: user.phone || business?.profile?.phone || '',
-        plan: user.subscription.plan || 'starter',
-        billingCycle: user.subscription.billingCycle || 'monthly',
-        amount: isSubActive ? 300 : 0,
-        currency: 'INR',
-        isSubscriptionActive: isSubActive,
-        isActive: isSubActive,
-        isSubscribed: isSubActive,
-        status: isSubActive ? 'active' : 'inactive',
-        hasLoyalty: isSubActive,
-        hasCampaign: isSubActive,
-        hasInventory: isSubActive,
-        features: ['pos', 'tables', 'orders', 'reports', 'inventory', 'loyalty', 'campaign', 'staff', 'crm'],
-        userCreatedAt: user.createdAt,
-        activatedAt: isSubActive ? new Date() : null,
-        expiresAt: user.subscription.expiresAt,
-      },
-      { upsert: true, new: true }
-    );
-
-    // Broadcast real-time update to this tenant
-    try {
-      const socketService = require('./socketService');
-      if (business?._id) {
-        socketService.emitSubscriptionUpdated(business._id, {
-          isSubscriptionActive: isSubActive,
-          isActive: isSubActive,
-          isSubscribed: isSubActive,
-          status: isSubActive ? 'active' : 'inactive',
-          hasLoyalty: isSubActive,
-          hasCampaign: isSubActive,
-          hasInventory: isSubActive,
-        });
-      }
-    } catch (_) {}
-
-    return {
-      id: user._id,
-      email: user.email,
-      subscription: user.subscription,
-      premiumSubscription: premiumSub,
-    };
+    const subscription = await require('./subscriptionService').updateStatus(business._id, user._id, input);
+    require('./socketService').emitSubscriptionUpdated(business._id, subscription);
+    return { id: user._id, email: user.email, subscription, premiumSubscription: subscription };
   }
 
-  /**
-   * Reset Password for a User
-   */
   async resetUserPassword(userId, newPassword) {
     if (!newPassword || newPassword.trim().length < 6) {
       throw ApiError.badRequest('Password must be at least 6 characters long', 'INVALID_PASSWORD');

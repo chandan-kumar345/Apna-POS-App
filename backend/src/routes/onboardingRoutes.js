@@ -13,6 +13,7 @@ const router = express.Router();
 
 // All onboarding routes require authentication
 router.use(authMiddleware);
+router.use(require('../middleware/entitlementMiddleware').rejectControlUpdates);
 
 // Step 1: Profile
 router.patch('/profile', validate(profileSchema), (req, res, next) =>

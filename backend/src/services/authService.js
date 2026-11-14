@@ -11,6 +11,18 @@ const ApiError = require('../utils/ApiError');
 // In-memory store for active WhatsApp OTPs: Map<normalizedPhone, { otp: string, expiresAt: number, phone: string }>
 const activeWhatsappOtps = new Map();
 
+async function businessResponse(business, user, staff) {
+  if (!business) throw ApiError.forbidden('Business membership is required', 'BUSINESS_MEMBERSHIP_REQUIRED');
+  const ownsBusiness = String(business.ownerId) === String(user._id);
+  const member = staff && String(staff.userId) === String(user._id) && String(staff.businessId) === String(business._id);
+  if (!ownsBusiness && !member) throw ApiError.forbidden('Business membership is required', 'BUSINESS_MEMBERSHIP_REQUIRED');
+  if (staff?.status === 'Inactive') throw ApiError.forbidden('Staff account is inactive', 'ACCOUNT_INACTIVE');
+  const raw = business.toObject ? business.toObject() : business;
+  const subscription = await require('./entitlementService').status(business._id, user._id);
+  return { ...raw, subscription, orderSettings: { ...raw.orderSettings,
+    enableChotuVoice: subscription.chotuAiAccess && raw.orderSettings?.enableChotuVoice === true } };
+}
+
 class AuthService {
   // Pre-check if an account already exists by email or phone
   async checkUserExists({ email, phone } = {}) {
@@ -233,9 +245,7 @@ class AuthService {
       throw ApiError.unauthorized('Incorrect password or PIN. Please check and try again.', 'INVALID_CREDENTIALS');
     }
 
-    // Check user active status (Owner / SuperAdmin exempted)
-    const isSuperAdminEmail = (user?.email || '').toLowerCase() === 'chandanyaduvanshi190@gmail.com';
-    if (user && user.status && user.status !== 'active' && !user.isSuperAdmin && !isSuperAdminEmail) {
+    if (user && user.status && user.status !== 'active') {
       throw ApiError.forbidden(
         'Your account is currently inactive or suspended. Please contact Apna POS Owner/Support.',
         'ACCOUNT_INACTIVE'
@@ -273,9 +283,8 @@ class AuthService {
       business = await Business.findOne({ ownerId: user._id }).lean();
     }
 
-    // 8. Generate tokens
+    business = await businessResponse(business, user, staff);
     const tokens = await tokenService.generateAuthTokens(user);
-
     const isStaffUser = !!(user.businessId || user.staffId || (staff && user.role !== 'owner'));
 
     let permissions = [];
@@ -317,6 +326,7 @@ class AuthService {
         onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
         onboardingStep: isStaffUser ? 4 : user.onboardingStep,
         whatsappSettings: activeWaSettings,
+        subscription: business.subscription,
         business: business || null,
       },
       ...tokens,
@@ -383,59 +393,8 @@ class AuthService {
       permissions = ['pos', 'tables', 'orders'];
     }
 
-    const Subscription = require('../models/Subscription');
-    let subDoc = null;
-    try {
-      if (business?._id) {
-        subDoc = await Subscription.findOne({ businessId: business._id }).sort({ createdAt: -1 });
-      }
-      if (!subDoc && user?._id) {
-        subDoc = await Subscription.findOne({ userId: user._id }).sort({ createdAt: -1 });
-      }
-    } catch (_) {}
-
-    const bizSub = business?.subscription || {};
-    const userSub = user?.subscription || {};
-
-    let isSubActive = false;
-    if (subDoc) {
-      if (subDoc.isSubscriptionActive !== undefined && subDoc.isSubscriptionActive !== null) {
-        isSubActive = Boolean(subDoc.isSubscriptionActive);
-      } else if (subDoc.isActive !== undefined && subDoc.isActive !== null) {
-        isSubActive = Boolean(subDoc.isActive);
-      } else if (subDoc.isSubscribed !== undefined && subDoc.isSubscribed !== null) {
-        isSubActive = Boolean(subDoc.isSubscribed);
-      } else if (subDoc.status !== undefined && subDoc.status !== null) {
-        isSubActive = subDoc.status === 'active';
-      }
-    } else {
-      if (bizSub.isSubscriptionActive !== undefined && bizSub.isSubscriptionActive !== null) {
-        isSubActive = Boolean(bizSub.isSubscriptionActive);
-      } else if (bizSub.isActive !== undefined && bizSub.isActive !== null) {
-        isSubActive = Boolean(bizSub.isActive);
-      } else if (bizSub.status !== undefined && bizSub.status !== null) {
-        isSubActive = bizSub.status === 'active';
-      } else if (userSub.isSubscriptionActive !== undefined && userSub.isSubscriptionActive !== null) {
-        isSubActive = Boolean(userSub.isSubscriptionActive);
-      } else if (userSub.isActive !== undefined && userSub.isActive !== null) {
-        isSubActive = Boolean(userSub.isActive);
-      } else if (userSub.status !== undefined && userSub.status !== null) {
-        isSubActive = userSub.status === 'active';
-      }
-    }
-
-    const subPayload = {
-      isSubscriptionActive: isSubActive,
-      isActive: isSubActive,
-      isSubscribed: isSubActive,
-      status: isSubActive ? 'active' : 'inactive',
-      plan: subDoc?.plan || bizSub.plan || userSub.plan || 'standard',
-      amount: subDoc?.amount || bizSub.amount || 300,
-      upiId: subDoc?.upiId || '9709593705@ybl',
-      activatedAt: subDoc?.activatedAt || bizSub.activatedAt || userSub.startDate || null,
-      expiresAt: subDoc?.expiresAt || bizSub.expiresAt || userSub.expiresAt || null,
-      paymentRef: subDoc?.paymentRef || bizSub.paymentRef || userSub.paymentRef || '',
-    };
+    const businessPayload = await businessResponse(business, user, staff);
+    const subPayload = businessPayload.subscription;
 
     return {
       user: {
@@ -459,10 +418,7 @@ class AuthService {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      business: business ? {
-        ...business.toObject(),
-        subscription: subPayload,
-      } : null,
+      business: businessPayload,
     };
   }
 
@@ -473,6 +429,12 @@ class AuthService {
     const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
     if (!user) {
       throw ApiError.notFound('No user found with this email address', 'USER_NOT_FOUND');
+    }
+
+    // This legacy endpoint has no verified recovery proof. It must never reset
+    // credentials for users who can modify platform entitlement controls.
+    if (user.isSuperAdmin === true || user.role === 'superadmin') {
+      throw ApiError.forbidden('Platform administrator recovery requires a verified administrative process.', 'ADMIN_RECOVERY_REQUIRED');
     }
 
     // Hash new password
@@ -724,9 +686,7 @@ class AuthService {
       throw ApiError.notFound('No registered account found for this phone number. Please register first.', 'USER_NOT_FOUND');
     }
 
-    // Check user active status (Owner / SuperAdmin exempted)
-    const isSuperAdminEmail = (user?.email || '').toLowerCase() === 'chandanyaduvanshi190@gmail.com';
-    if (user && user.status && user.status !== 'active' && !user.isSuperAdmin && !isSuperAdminEmail) {
+    if (user && user.status && user.status !== 'active') {
       throw ApiError.forbidden(
         'Your account is currently inactive or suspended. Please contact Apna POS Owner/Support.',
         'ACCOUNT_INACTIVE'
@@ -772,6 +732,7 @@ class AuthService {
       } catch (_) {}
     }
 
+    business = await businessResponse(business, user, staff);
     const tokens = await tokenService.generateAuthTokens(user);
 
     const activeWaSettings = user.whatsappSettings?.phoneNumberId
@@ -793,6 +754,7 @@ class AuthService {
         onboardingCompleted: isStaffUser ? true : (user.onboardingCompleted ?? false),
         onboardingStep: isStaffUser ? 4 : (user.onboardingStep ?? 0),
         whatsappSettings: activeWaSettings,
+        subscription: business.subscription,
         business: business || null,
       },
       business: business || null,

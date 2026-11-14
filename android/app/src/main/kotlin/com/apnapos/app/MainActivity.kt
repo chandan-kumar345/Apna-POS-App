@@ -39,6 +39,19 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { view ->
+                // Continue the native writing in Flutter instead of restarting
+                // the wordmark after the engine's first frame becomes available.
+                val started = view.iconAnimationStart?.toEpochMilli()
+                val elapsed = started?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: 0L
+                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                    MethodChannel(messenger, "com.apnapos.app/startup_brand")
+                        .invokeMethod("continueWriting", elapsed)
+                }
+                view.animate().alpha(0f).setDuration(100L).withEndAction { view.remove() }.start()
+            }
+        }
         activeInstance = this
         registerUserPresentReceiver()
         wakeAndShowOverLockScreen()

@@ -4,6 +4,7 @@ const tokenService = require('../services/tokenService');
 const User = require('../models/User');
 const Business = require('../models/Business');
 const authMiddleware = require('../middleware/authMiddleware');
+const superadmin = require('../middleware/superAdminMiddleware');
 
 const router = express.Router();
 
@@ -46,23 +47,27 @@ router.post('/lead', optionalAuthMiddleware, (req, res, next) => subscriptionCon
 router.get('/leads', authMiddleware, (req, res, next) => subscriptionController.getLeads(req, res, next));
 
 // 4. Test SMTP / Email Connection Status
-router.get('/test-email', (req, res, next) => subscriptionController.testEmail(req, res, next));
+router.get('/test-email', superadmin, (req, res, next) => subscriptionController.testEmail(req, res, next));
 
 // 5. Get Current Business Subscription Status
-router.get('/status', optionalAuthMiddleware, (req, res, next) => subscriptionController.getStatus(req, res, next));
-router.post('/verify', optionalAuthMiddleware, (req, res, next) => subscriptionController.getStatus(req, res, next));
+router.get('/status', authMiddleware, (req, res, next) => subscriptionController.getStatus(req, res, next));
+router.post('/verify', authMiddleware, (req, res, next) => subscriptionController.getStatus(req, res, next));
 
 // 6. Unlock / Activate Subscription via UPI Payment
-router.post('/activate', optionalAuthMiddleware, (req, res, next) => subscriptionController.activateSubscription(req, res, next));
-router.post('/unlock', optionalAuthMiddleware, (req, res, next) => subscriptionController.activateSubscription(req, res, next));
+router.post('/payment-order', authMiddleware, async (req, res, next) => {
+  try { res.json({ success: true, data: await require('../services/subscriptionRenewalService').create(req.businessId) }); }
+  catch (error) { next(error); }
+});
+router.post('/activate', authMiddleware, (req, res, next) => subscriptionController.activateSubscription(req, res, next));
+router.post('/unlock', authMiddleware, (req, res, next) => subscriptionController.activateSubscription(req, res, next));
 
 // 7. Update Subscription Status directly (e.g. from Compass, SuperAdmin, or API toggle)
-router.patch('/status', optionalAuthMiddleware, (req, res, next) => subscriptionController.updateStatus(req, res, next));
+router.patch('/status', authMiddleware, superadmin, (req, res, next) => subscriptionController.updateStatus(req, res, next));
 
 // 8. Assign/Activate Subscription for specific staff
-router.post('/staff', optionalAuthMiddleware, (req, res, next) => subscriptionController.assignStaffSubscription(req, res, next));
+router.post('/staff', authMiddleware, superadmin, (req, res, next) => subscriptionController.assignStaffSubscription(req, res, next));
 
 // 9. Get All Subscriptions (for Admin / SuperAdmin)
-router.get('/all', optionalAuthMiddleware, (req, res, next) => subscriptionController.getAllSubscriptions(req, res, next));
+router.get('/all', superadmin, (req, res, next) => subscriptionController.getAllSubscriptions(req, res, next));
 
 module.exports = router;

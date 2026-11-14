@@ -211,6 +211,7 @@ class AIAgentService {
     messageText = rawText.trim();
 
     const bId = business._id || business.id;
+    await require('./entitlementService').requireChotu(bId);
     const context = await this.buildBusinessContext(bId);
     if (!context) return null;
 

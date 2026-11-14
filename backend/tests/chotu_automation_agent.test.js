@@ -41,6 +41,7 @@ describe('Python Chotu agent: authoritative order lifecycle', () => {
     });
     expect(registration.status).toBe(201);
     token = registration.body.data.accessToken;
+    await require('./helpers/grantBusinessAccess')(token);
     const me = await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${token}`);
     businessId = me.body.data.business.id || me.body.data.business._id;
     await Table.create({ businessId, tableNumber: 5, name: 'T-5' });
@@ -64,6 +65,24 @@ describe('Python Chotu agent: authoritative order lifecycle', () => {
     const response = await request(app).get('/api/v1/chotu/health').set('Authorization', `Bearer ${token}`);
     expect(response.body.data.automationAgent).toMatchObject({ enabled: true, available: true });
     expect(response.body.data.automationAgent.pythonVersion).toMatch(/^3\./);
+  });
+
+  it('grounds polite typed/voice requests, table switches, quantities and billing', async () => {
+    const added = await turn('Can you add two butter naan to table no. five?');
+    expect(added.status).toBe('completed');
+    expect(added.cart.items[0].quantity).toBe(2);
+    const updated = await turn('Table 5 butter naan ko 4 kar do');
+    expect(updated.cart.items[0].quantity).toBe(4);
+    const switched = await turn('Change table to 6');
+    expect(switched.tableNumber).toBe('T-6');
+    const emptyBill = await turn('Bill banao');
+    expect(emptyBill.steps).toEqual([]);
+    await turn('Select table 5');
+    const kot = await turn('K O T bhejo');
+    expect(kot.steps).toEqual(['send_kot']);
+    const bill = await turn('Bill banao');
+    expect(bill.order.totalAmount).toBe(168);
+    expect(bill.order.isPaid).toBe(false);
   });
 
   it('creates cart, KOT, unpaid bill, paid sale, and frees table without duplicate effects', async () => {
@@ -235,6 +254,7 @@ describe('Python Chotu agent: authoritative order lifecycle', () => {
     await turn('Select table 5', { sessionId: 'owner-only' });
     const other = await request(app).post('/api/v1/auth/register').send({ email: 'other-agent@example.com', password: 'Password@123' });
     const otherToken = other.body.data.accessToken;
+    await require('./helpers/grantBusinessAccess')(otherToken);
     const isolated = await turn('Table 5 pe ek butter naan laga do', { requestId: 'same' }, otherToken);
     expect(isolated.status).toBe('rejected');
     expect(isolated.isDuplicate).not.toBe(true);

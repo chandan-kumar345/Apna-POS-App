@@ -8,6 +8,8 @@ import '../notifications/services/notification_permission_helper.dart';
 class PostLoginPermissionObserver extends NavigatorObserver {
   void _requestForRoute(Route<dynamic>? route) {
     if (route is! PageRoute<dynamic>) return;
+    // Welcome is for signed-out users; restored sessions go straight to the app.
+    if (route.settings.name == '/get-started') return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!route.isCurrent) return;

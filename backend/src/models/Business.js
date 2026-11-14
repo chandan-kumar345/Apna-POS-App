@@ -195,6 +195,24 @@ const businessSchema = new mongoose.Schema(
       businessHoursOnly: { type: Boolean, default: false },
       autoReplyDelaySeconds: { type: Number, default: 2 },
     },
+    subscriptionRenewalOrderIds: { type: [String], default: [], select: false },
+    isSubscription: { type: Boolean, default: false, set(value) {
+      if (typeof value !== 'boolean') throw new mongoose.Error.CastError('Boolean', value, 'isSubscription');
+      return value;
+    } },
+    subscriptionExpiresAt: { type: Date, default: null, index: true, set(value) {
+      if (value === null) return value;
+      if (!(value instanceof Date) && !(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value))) {
+        throw new mongoose.Error.CastError('Date', value, 'subscriptionExpiresAt');
+      }
+      const date = new Date(value);
+      if (!Number.isFinite(date.getTime())) throw new mongoose.Error.CastError('Date', value, 'subscriptionExpiresAt');
+      return date;
+    } },
+    isChotuAiActive: { type: Boolean, default: false, set(value) {
+      if (typeof value !== 'boolean') throw new mongoose.Error.CastError('Boolean', value, 'isChotuAiActive');
+      return value;
+    } },
     subscription: {
       isActive: { type: Boolean, default: false }, // false for new user until unlocked/paid!
       status: {

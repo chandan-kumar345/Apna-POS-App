@@ -17,29 +17,41 @@ abstract class ISecureStorageService {
 }
 
 class SecureStorageService implements ISecureStorageService {
-  static final SecureStorageService _instance = SecureStorageService._internal();
+  static final SecureStorageService _instance =
+      SecureStorageService._internal();
   factory SecureStorageService() => _instance;
 
   final FlutterSecureStorage _storage;
+  Future<SharedPreferences> Function() _preferences =
+      SharedPreferences.getInstance;
+  Future<void>? _loading;
+
+  @visibleForTesting
+  SecureStorageService.forTesting({
+    required FlutterSecureStorage storage,
+    required Future<SharedPreferences> Function() preferences,
+    // Public injection argument; keep the backing field private.
+    // ignore: prefer_initializing_formals
+  }) : _storage = storage {
+    _preferences = preferences;
+  }
 
   // In-memory cache for instant zero-latency retrieval
-  static bool _isLoaded = false;
-  static String? _cachedAccessToken;
-  static String? _cachedRefreshToken;
-  static String? _cachedUserId;
-  static String? _cachedDeviceId;
-  static String? _cachedBusinessId;
+  bool _isLoaded = false;
+  String? _cachedAccessToken;
+  String? _cachedRefreshToken;
+  String? _cachedUserId;
+  String? _cachedDeviceId;
+  String? _cachedBusinessId;
 
   SecureStorageService._internal()
-      : _storage = const FlutterSecureStorage(
-          aOptions: AndroidOptions(
-            resetOnError: true,
-          ),
-          iOptions: IOSOptions(
-            accessibility: KeychainAccessibility.first_unlock_this_device,
-            synchronizable: false,
-          ),
-        );
+    : _storage = const FlutterSecureStorage(
+        aOptions: AndroidOptions(resetOnError: true),
+        iOptions: IOSOptions(
+          accessibility: KeychainAccessibility.first_unlock_this_device,
+          synchronizable: false,
+        ),
+      );
 
   static const String _accessTokenKey = 'SEC_KEY_AT_V1';
   static const String _refreshTokenKey = 'SEC_KEY_RT_V1';
@@ -47,16 +59,20 @@ class SecureStorageService implements ISecureStorageService {
   static const String _userIdKey = 'SEC_KEY_UID_V1';
   static const String _businessIdKey = 'SEC_KEY_BID_V1';
 
-  Future<void> _ensureLoaded() async {
-    if (_isLoaded) return;
-    _isLoaded = true;
+  Future<void> _ensureLoaded() {
+    if (_isLoaded) return Future.value();
+    return _loading ??= _loadSavedSession();
+  }
+
+  Future<void> _loadSavedSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _preferences();
       _cachedAccessToken ??= prefs.getString(_accessTokenKey);
       _cachedRefreshToken ??= prefs.getString(_refreshTokenKey);
       _cachedUserId ??= prefs.getString(_userIdKey);
       _cachedDeviceId ??= prefs.getString(_deviceIdKey);
-      _cachedBusinessId ??= prefs.getString(_businessIdKey) ??
+      _cachedBusinessId ??=
+          prefs.getString(_businessIdKey) ??
           prefs.getString('business_id') ??
           prefs.getString('apna_pos_business_id');
     } catch (_) {}
@@ -84,22 +100,25 @@ class SecureStorageService implements ISecureStorageService {
       }
     } catch (e) {
       debugPrint('SecureStorage initial read info: $e');
+    } finally {
+      _isLoaded = true;
+      _loading = null;
     }
   }
 
   @override
   Future<void> saveAccessToken(String token) async {
+    await _ensureLoaded();
     _cachedAccessToken = token;
-    _isLoaded = true;
+    try {
+      final prefs = await _preferences();
+      await prefs.setString(_accessTokenKey, token);
+    } catch (_) {}
     try {
       await _storage.write(key: _accessTokenKey, value: token);
     } catch (e) {
       debugPrint('SecureStorage write warning: $e');
     }
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_accessTokenKey, token);
-    } catch (_) {}
   }
 
   @override
@@ -110,17 +129,17 @@ class SecureStorageService implements ISecureStorageService {
 
   @override
   Future<void> saveRefreshToken(String token) async {
+    await _ensureLoaded();
     _cachedRefreshToken = token;
-    _isLoaded = true;
+    try {
+      final prefs = await _preferences();
+      await prefs.setString(_refreshTokenKey, token);
+    } catch (_) {}
     try {
       await _storage.write(key: _refreshTokenKey, value: token);
     } catch (e) {
       debugPrint('SecureStorage write refresh warning: $e');
     }
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_refreshTokenKey, token);
-    } catch (_) {}
   }
 
   @override
@@ -131,13 +150,13 @@ class SecureStorageService implements ISecureStorageService {
 
   @override
   Future<void> saveDeviceId(String deviceId) async {
+    await _ensureLoaded();
     _cachedDeviceId = deviceId;
-    _isLoaded = true;
     try {
       await _storage.write(key: _deviceIdKey, value: deviceId);
     } catch (_) {}
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _preferences();
       await prefs.setString(_deviceIdKey, deviceId);
     } catch (_) {}
   }
@@ -150,13 +169,13 @@ class SecureStorageService implements ISecureStorageService {
 
   @override
   Future<void> saveUserId(String userId) async {
+    await _ensureLoaded();
     _cachedUserId = userId;
-    _isLoaded = true;
     try {
       await _storage.write(key: _userIdKey, value: userId);
     } catch (_) {}
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _preferences();
       await prefs.setString(_userIdKey, userId);
     } catch (_) {}
   }
@@ -169,27 +188,27 @@ class SecureStorageService implements ISecureStorageService {
 
   @override
   Future<void> saveBusinessId(String businessId) async {
+    await _ensureLoaded();
     _cachedBusinessId = businessId;
-    _isLoaded = true;
     try {
       await _storage.write(key: _businessIdKey, value: businessId);
     } catch (_) {}
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _preferences();
       await prefs.setString(_businessIdKey, businessId);
     } catch (_) {}
   }
 
   Future<void> savePushToken(String token) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _preferences();
       await prefs.setString('SEC_KEY_PUSH_TOKEN_V1', token);
     } catch (_) {}
   }
 
   Future<String?> getPushToken() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _preferences();
       return prefs.getString('SEC_KEY_PUSH_TOKEN_V1');
     } catch (_) {
       return null;
@@ -204,6 +223,8 @@ class SecureStorageService implements ISecureStorageService {
 
   @override
   Future<void> clearAll() async {
+    // Finish any pending read before clearing, so it cannot restore old tokens.
+    await _loading;
     _cachedAccessToken = null;
     _cachedRefreshToken = null;
     _cachedUserId = null;
@@ -214,7 +235,7 @@ class SecureStorageService implements ISecureStorageService {
       await _storage.deleteAll();
     } catch (_) {}
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _preferences();
       await prefs.remove(_accessTokenKey);
       await prefs.remove(_refreshTokenKey);
       await prefs.remove(_userIdKey);

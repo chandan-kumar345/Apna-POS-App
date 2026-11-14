@@ -375,6 +375,18 @@ class AuthService {
       }
     }
 
+    final cachedUser = _db.currentUser;
+    final responseUserId = (userJson['_id'] ?? userJson['id'])?.toString();
+    final responseBusinessId = (businessJson?['_id'] ?? businessJson?['id'] ??
+        userJson['businessId'] ?? userJson['restaurantId'])?.toString();
+    if (cachedUser != null && cachedUser.id == responseUserId &&
+        (responseBusinessId == null || responseBusinessId == cachedUser.businessId)) {
+      // Profile refreshes may omit setup fields. Keep completed local setup and
+      // the saved step for this same account/business when restoring a session.
+      userJson['onboardingCompleted'] = userJson['onboardingCompleted'] == true ||
+          _db.isOnboardingCompleted;
+      userJson['onboardingStep'] ??= cachedUser.onboardingStep;
+    }
     final user = UserModel.fromJson(userJson);
     await _db.saveActiveUser(user);
 

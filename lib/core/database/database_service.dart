@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../models/restaurant_model.dart';
@@ -47,7 +48,7 @@ import '../models/notification_setting_model.dart';
 import '../services/upload_service.dart';
 import 'dart:io' show File;
 
-class DatabaseService extends ChangeNotifier {
+class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
   DatabaseService._internal() {
@@ -540,13 +541,20 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void setLiveCartTotal(String tableName, double total) {
-    if (total <= 0) {
-      _liveCartTotals.remove(tableName);
-    } else {
-      _liveCartTotals[tableName] = total;
-    }
+    if (!_setLiveCartTotalValue(tableName, total)) return;
     _saveLiveTableCartsToPrefs();
     notifyListeners();
+  }
+
+  // Remote batches update their totals without notifying/re-serializing all carts
+  // for each individual table. The caller persists and notifies once at the end.
+  bool _setLiveCartTotalValue(String tableName, double total) {
+    if (total <= 0) {
+      return _liveCartTotals.remove(tableName) != null;
+    }
+    if (_liveCartTotals[tableName] == total) return false;
+    _liveCartTotals[tableName] = total;
+    return true;
   }
 
   List<CartItemModel> getLiveTableCart(String tableName) {
@@ -652,9 +660,11 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setLiveTableCart(String tableName, List<CartItemModel> items) {
+  void setLiveTableCart(String tableName, List<CartItemModel> items, {double? total, bool deferPersistence = false, bool notifyImmediately = true}) {
     final tName = tableName.trim();
     if (tName.isEmpty) return;
+
+    if (total != null) _setLiveCartTotalValue(tName, total);
 
     if (items.isEmpty) {
       _liveTableCarts.remove(tName);
@@ -678,8 +688,13 @@ class DatabaseService extends ChangeNotifier {
       }
     }
 
-    _saveLiveTableCartsToPrefs();
-    notifyListeners();
+    if (deferPersistence) {
+      if (!notifyImmediately) _draftNotificationPending = true;
+      _scheduleLiveCartPersistence();
+    } else {
+      _saveLiveTableCartsToPrefs();
+    }
+    if (notifyImmediately || !deferPersistence) notifyListeners();
   }
 
   /// Dynamically shift all live carts, active orders, and status from sourceTable to targetTable
@@ -798,8 +813,65 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _saveLiveTableCartsToPrefs() async {
+  Timer? _draftSaveTimer;
+  Future<void> Function()? _pendingDraftSave;
+  String? _pendingDraftScope;
+  Future<void> _draftWriteTail = Future<void>.value();
+  bool _draftNotificationPending = false;
+  bool _isPublishingDraftChange = false;
+
+  /// Draft owners already update their local UI; other views receive one batch.
+  bool get isPublishingDraftChange => _isPublishingDraftChange;
+
+  void _notifyDraftChange() {
+    if (!_draftNotificationPending) return;
+    _draftNotificationPending = false;
+    _isPublishingDraftChange = true;
+    try { notifyListeners(); }
+    finally { _isPublishingDraftChange = false; }
+  }
+
+  void _scheduleLiveCartPersistence() {
+    final businessPrefix = _businessKey('');
+    final userPrefix = _userKey('');
+    final scope = '$businessPrefix|$userPrefix';
+    if (_pendingDraftScope != scope && _pendingDraftSave != null) {
+      unawaited(flushLiveCartPersistence());
+    }
+    _pendingDraftScope = scope;
+    _pendingDraftSave = () => _writeLiveTableCartsToPrefs(businessPrefix, userPrefix);
+    _draftSaveTimer ??= Timer(const Duration(milliseconds: 200), () {
+      unawaited(flushLiveCartPersistence());
+    });
+  }
+
+  Future<void> flushLiveCartPersistence() {
+    _draftSaveTimer?.cancel();
+    _draftSaveTimer = null;
+    final save = _pendingDraftSave;
+    _pendingDraftSave = null;
+    _pendingDraftScope = null;
+    final saved = save?.call() ?? _draftWriteTail;
+    _notifyDraftChange();
+    return saved;
+  }
+
+  Future<void> _saveLiveTableCartsToPrefs() {
+    if (_pendingDraftScope != '${_businessKey('')}|${_userKey('')}' && _pendingDraftSave != null) {
+      unawaited(flushLiveCartPersistence());
+    }
+    _draftSaveTimer?.cancel();
+    _draftSaveTimer = null;
+    _pendingDraftSave = null;
+    _pendingDraftScope = null;
+    _notifyDraftChange();
+    return _writeLiveTableCartsToPrefs(_businessKey(''), _userKey(''));
+  }
+
+  Future<void> _writeLiveTableCartsToPrefs(String businessPrefix, String userPrefix) async {
     try {
+      final prefs = _prefs;
+      if (prefs == null) return;
       final Map<String, dynamic> rawMap = {};
       _liveTableCarts.forEach((key, list) {
         rawMap[key] = list.map((i) => i.toJson()).toList();
@@ -810,19 +882,37 @@ class DatabaseService extends ChangeNotifier {
       final customerInfoEncoded = jsonEncode(_liveDraftCustomerInfo);
       final deliveryInfoEncoded = jsonEncode(_liveDraftDeliveryInfo);
 
-      await _prefs?.setString(_businessKey('live_table_carts'), cartsEncoded);
-      await _prefs?.setString(_businessKey('chotu_draft_order_baselines'), jsonEncode(_chotuDraftOrderBaselines));
-      await _prefs?.setString(_businessKey('live_cart_totals'), totalsEncoded);
-      await _prefs?.setString(_businessKey('live_table_discounts'), discountsEncoded);
-      await _prefs?.setString(_businessKey('live_draft_customer_info'), customerInfoEncoded);
-      await _prefs?.setString(_businessKey('live_draft_delivery_info'), deliveryInfoEncoded);
-
-      await _prefs?.setString(_userKey('live_table_carts'), cartsEncoded);
-      await _prefs?.setString(_userKey('live_cart_totals'), totalsEncoded);
-      await _prefs?.setString(_userKey('live_table_discounts'), discountsEncoded);
-      await _prefs?.setString(_userKey('live_draft_customer_info'), customerInfoEncoded);
-      await _prefs?.setString(_userKey('live_draft_delivery_info'), deliveryInfoEncoded);
+      // Snapshot values AND keys before waiting: account changes cannot redirect
+      // an older write into a different user's cache or overwrite a newer save.
+      final writes = <String, String>{
+        '${businessPrefix}chotu_draft_order_baselines': jsonEncode(_chotuDraftOrderBaselines),
+        for (final prefix in [businessPrefix, userPrefix]) ...{
+          '${prefix}live_table_carts': cartsEncoded,
+          '${prefix}live_cart_totals': totalsEncoded,
+          '${prefix}live_table_discounts': discountsEncoded,
+          '${prefix}live_draft_customer_info': customerInfoEncoded,
+          '${prefix}live_draft_delivery_info': deliveryInfoEncoded,
+        },
+      };
+      final previous = _draftWriteTail;
+      final completed = Completer<void>();
+      _draftWriteTail = completed.future;
+      try {
+        await previous;
+        for (final entry in writes.entries) {
+          await prefs.setString(entry.key, entry.value);
+        }
+      } finally {
+        completed.complete();
+      }
     } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      unawaited(flushLiveCartPersistence());
+    }
   }
 
   void _loadLiveTableCartsFromPrefs() {
@@ -1104,6 +1194,7 @@ class DatabaseService extends ChangeNotifier {
 
   /// Load or switch the dataset for the active user ID
   Future<void> loadUserDataForActiveUser(String userId) async {
+    if (_pendingDraftSave != null) await flushLiveCartPersistence();
     if (_prefs == null) {
       _prefs = await SharedPreferences.getInstance();
 
@@ -1430,6 +1521,7 @@ class DatabaseService extends ChangeNotifier {
     }
 
     _isInitialized = true;
+    WidgetsBinding.instance.addObserver(this);
     notifyListeners();
 
     // Connect real-time socket client if user has an active business
@@ -1487,6 +1579,88 @@ class DatabaseService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[DatabaseService] Error starting cloud orders stream: $e');
     }
+  }
+
+  /// Merge socket snapshots before doing any persistence or screen rebuilds.
+  /// The server can broadcast the same table through several event paths.
+  void _applyRemoteTableUpdates(List<TableModel> updatedList) {
+    var tablesChanged = false;
+    var cartsChanged = false;
+    var tableAdded = false;
+
+    bool clearDraft(TableModel table) {
+      var changed = false;
+      for (final key in {table.name, 'T-${table.tableNumber}'}) {
+        if (_liveCartTotals.remove(key) != null) changed = true;
+        if (_liveTableCarts.remove(key) != null) changed = true;
+      }
+      return changed;
+    }
+
+    for (final updatedTable in updatedList) {
+      final idx = tables.indexWhere((t) =>
+          (t.id.isNotEmpty && t.id == updatedTable.id) ||
+          t.tableNumber == updatedTable.tableNumber ||
+          isSameTable(t.name, updatedTable.name));
+      var effectiveTable = updatedTable;
+      if (idx >= 0) {
+        final existing = tables[idx];
+        if (updatedTable.status == TableStatus.free) {
+          final hasDraft = (_liveTableCarts[existing.name]?.isNotEmpty == true) ||
+              (_liveTableCarts['T-${existing.tableNumber}']?.isNotEmpty == true);
+          final hasActiveOrder = orders.any((o) =>
+              isSameTable(o.tableNumber, existing.name) &&
+              (o.status == OrderStatus.pending || o.status == OrderStatus.preparing));
+          // A stale free snapshot must not erase local work awaiting sync.
+          if (hasDraft || hasActiveOrder) continue;
+          if (clearDraft(existing)) cartsChanged = true;
+        }
+
+        final existingRunning = existing.status == TableStatus.occupied ||
+            existing.status == TableStatus.runningKot;
+        final updatedRunning = updatedTable.status == TableStatus.occupied ||
+            updatedTable.status == TableStatus.runningKot;
+        final String? occupiedSince;
+        if (updatedTable.status == TableStatus.free) {
+          occupiedSince = null;
+        } else if (existingRunning && updatedRunning) {
+          final oldStart = parseTableOccupiedSince(existing.occupiedSince);
+          final newStart = parseTableOccupiedSince(updatedTable.occupiedSince);
+          occupiedSince = oldStart != null && newStart != null
+              ? (oldStart.isBefore(newStart) ? existing.occupiedSince : updatedTable.occupiedSince)
+              : (existing.occupiedSince ?? updatedTable.occupiedSince);
+        } else if (existingRunning) {
+          occupiedSince = existing.occupiedSince;
+        } else {
+          occupiedSince = updatedTable.occupiedSince ??
+              (updatedRunning ? DateTime.now().toIso8601String() : null);
+        }
+        effectiveTable = updatedTable.copyWith(occupiedSince: occupiedSince);
+        // Compare the merged timer too: repeated snapshots may carry a newer
+        // timestamp even though nothing about the running session has changed.
+        if (!mapEquals(existing.toJson(), effectiveTable.toJson())) {
+          tables[idx] = effectiveTable;
+          tablesChanged = true;
+        }
+      } else {
+        tables.add(effectiveTable);
+        tablesChanged = true;
+        tableAdded = true;
+      }
+
+      if (effectiveTable.status == TableStatus.free) {
+        if (clearDraft(effectiveTable)) cartsChanged = true;
+      } else if (effectiveTable.activeOrderTotal > 0) {
+        if (_setLiveCartTotalValue(effectiveTable.name, effectiveTable.activeOrderTotal)) {
+          cartsChanged = true;
+        }
+      }
+    }
+
+    if (tableAdded) _sortTablesSequentially();
+    if (tablesChanged) _saveTablesToPrefs();
+    if (cartsChanged) _saveLiveTableCartsToPrefs();
+    if (tablesChanged || cartsChanged) notifyListeners();
   }
 
   void _initSocketListeners() {
@@ -1611,155 +1785,8 @@ class DatabaseService extends ChangeNotifier {
       }
     };
 
-    _socketService.onTableUpdated = (updatedTable) {
-      final idx = tables.indexWhere((t) =>
-          (t.id.isNotEmpty && t.id == updatedTable.id) ||
-          t.tableNumber == updatedTable.tableNumber ||
-          isSameTable(t.name, updatedTable.name));
-
-      if (idx >= 0) {
-        final existingTbl = tables[idx];
-        final isExistingRunning = existingTbl.status == TableStatus.occupied || existingTbl.status == TableStatus.runningKot;
-        final isUpdatedRunning = updatedTable.status == TableStatus.occupied || updatedTable.status == TableStatus.runningKot;
-
-        final hasLocalDraftCart = (_liveTableCarts[existingTbl.name]?.isNotEmpty == true) ||
-            (_liveTableCarts['T-${existingTbl.tableNumber}']?.isNotEmpty == true);
-        final hasLocalActiveOrder = orders.any((o) =>
-            isSameTable(o.tableNumber, existingTbl.name) &&
-            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing));
-
-        if (updatedTable.status == TableStatus.free) {
-          final isServerClean = updatedTable.activeOrderId == null && updatedTable.activeOrderNumber == null;
-          final hasLocalActiveOrder = orders.any((o) =>
-              isSameTable(o.tableNumber, existingTbl.name) &&
-              (o.status == OrderStatus.pending || o.status == OrderStatus.preparing));
-
-          if (hasLocalActiveOrder || hasLocalDraftCart) {
-            // Active pending or preparing order exists for this table! Protect it!
-            return;
-          }
-          if (isServerClean) {
-            _liveCartTotals.remove(existingTbl.name);
-            _liveTableCarts.remove(existingTbl.name);
-            _liveCartTotals.remove('T-${existingTbl.tableNumber}');
-            _liveTableCarts.remove('T-${existingTbl.tableNumber}');
-          }
-        }
-
-        final String? mergedOccupiedSince;
-        if (updatedTable.status == TableStatus.free) {
-          mergedOccupiedSince = null;
-        } else if (isExistingRunning && isUpdatedRunning) {
-          // Never restart an ongoing running table timer on KOT or bill print!
-          final existingStart = parseTableOccupiedSince(existingTbl.occupiedSince);
-          final updatedStart = parseTableOccupiedSince(updatedTable.occupiedSince);
-          if (existingStart != null && updatedStart != null) {
-            mergedOccupiedSince = existingStart.isBefore(updatedStart)
-                ? existingTbl.occupiedSince
-                : updatedTable.occupiedSince;
-          } else {
-            mergedOccupiedSince = existingTbl.occupiedSince ?? updatedTable.occupiedSince;
-          }
-        } else if (isExistingRunning && !isUpdatedRunning) {
-          mergedOccupiedSince = existingTbl.occupiedSince;
-        } else {
-          mergedOccupiedSince = updatedTable.occupiedSince ?? (isUpdatedRunning ? DateTime.now().toIso8601String() : null);
-        }
-
-        tables[idx] = updatedTable.copyWith(
-          occupiedSince: mergedOccupiedSince,
-        );
-      } else {
-        tables.add(updatedTable);
-        _sortTablesSequentially();
-      }
-
-      if (updatedTable.status == TableStatus.free) {
-        _liveCartTotals.remove(updatedTable.name);
-        _liveTableCarts.remove(updatedTable.name);
-        _liveCartTotals.remove('T-${updatedTable.tableNumber}');
-        _liveTableCarts.remove('T-${updatedTable.tableNumber}');
-      } else if (updatedTable.activeOrderTotal > 0) {
-        setLiveCartTotal(updatedTable.name, updatedTable.activeOrderTotal);
-      }
-
-      _saveTablesToPrefs();
-      notifyListeners();
-    };
-
-    _socketService.onTablesBatchUpdated = (updatedList) {
-      for (final updatedTable in updatedList) {
-        final idx = tables.indexWhere((t) =>
-            (t.id.isNotEmpty && t.id == updatedTable.id) ||
-            t.tableNumber == updatedTable.tableNumber ||
-            isSameTable(t.name, updatedTable.name));
-
-        if (idx >= 0) {
-          final existingTbl = tables[idx];
-          final isExistingRunning = existingTbl.status == TableStatus.occupied || existingTbl.status == TableStatus.runningKot;
-          final isUpdatedRunning = updatedTable.status == TableStatus.occupied || updatedTable.status == TableStatus.runningKot;
-
-          final hasLocalDraftCart = (_liveTableCarts[existingTbl.name]?.isNotEmpty == true) ||
-              (_liveTableCarts['T-${existingTbl.tableNumber}']?.isNotEmpty == true);
-          final hasLocalActiveOrder = orders.any((o) =>
-              isSameTable(o.tableNumber, existingTbl.name) &&
-              (o.status == OrderStatus.pending || o.status == OrderStatus.preparing));
-
-          if (updatedTable.status == TableStatus.free) {
-            final isServerClean = updatedTable.activeOrderId == null && updatedTable.activeOrderNumber == null;
-            final hasLocalActiveOrder = orders.any((o) =>
-                isSameTable(o.tableNumber, existingTbl.name) &&
-                (o.status == OrderStatus.pending || o.status == OrderStatus.preparing));
-
-            if (hasLocalActiveOrder || hasLocalDraftCart) {
-              continue;
-            }
-            if (isServerClean) {
-              _liveCartTotals.remove(existingTbl.name);
-              _liveTableCarts.remove(existingTbl.name);
-              _liveCartTotals.remove('T-${existingTbl.tableNumber}');
-              _liveTableCarts.remove('T-${existingTbl.tableNumber}');
-            }
-          }
-
-          final String? mergedOccupiedSince;
-          if (updatedTable.status == TableStatus.free) {
-            mergedOccupiedSince = null;
-          } else if (isExistingRunning && isUpdatedRunning) {
-            final existingStart = parseTableOccupiedSince(existingTbl.occupiedSince);
-            final updatedStart = parseTableOccupiedSince(updatedTable.occupiedSince);
-            if (existingStart != null && updatedStart != null) {
-              mergedOccupiedSince = existingStart.isBefore(updatedStart)
-                  ? existingTbl.occupiedSince
-                  : updatedTable.occupiedSince;
-            } else {
-              mergedOccupiedSince = existingTbl.occupiedSince ?? updatedTable.occupiedSince;
-            }
-          } else if (isExistingRunning && !isUpdatedRunning) {
-            mergedOccupiedSince = existingTbl.occupiedSince;
-          } else {
-            mergedOccupiedSince = updatedTable.occupiedSince ?? (isUpdatedRunning ? DateTime.now().toIso8601String() : null);
-          }
-
-          tables[idx] = updatedTable.copyWith(
-            occupiedSince: mergedOccupiedSince,
-          );
-        } else {
-          tables.add(updatedTable);
-        }
-
-        if (updatedTable.status == TableStatus.free) {
-          _liveCartTotals.remove(updatedTable.name);
-          _liveTableCarts.remove(updatedTable.name);
-          _liveCartTotals.remove('T-${updatedTable.tableNumber}');
-          _liveTableCarts.remove('T-${updatedTable.tableNumber}');
-        } else if (updatedTable.activeOrderTotal > 0) {
-          setLiveCartTotal(updatedTable.name, updatedTable.activeOrderTotal);
-        }
-      }
-      _saveTablesToPrefs();
-      notifyListeners();
-    };
+    _socketService.onTableUpdated = (table) => _applyRemoteTableUpdates([table]);
+    _socketService.onTablesBatchUpdated = _applyRemoteTableUpdates;
 
     _socketService.onTableCreated = (newTable) {
       final idx = tables.indexWhere((t) =>
@@ -2102,13 +2129,16 @@ class DatabaseService extends ChangeNotifier {
 
           final rawBizId = (b?['_id'] ?? b?['id'] ?? u['businessId'] ?? u['restaurantId'])?.toString();
           final cleanBizId = (rawBizId != null && rawBizId.trim().isNotEmpty && rawBizId != 'rest_001') ? rawBizId.trim() : null;
+          final responseUserId = (u['_id'] ?? u['id'])?.toString() ?? '';
+          final onboardingCompleted = u['onboardingCompleted'] == true;
+          final onboardingStep = (u['onboardingStep'] as num?)?.toInt() ?? 0;
           if (cleanBizId != null) {
             await saveBusinessId(cleanBizId);
           }
 
           if (!isStaffSession) {
             currentUser = UserModel(
-              id: (u['_id'] ?? u['id'])?.toString() ?? '',
+              id: responseUserId,
               name: prof?['name']?.toString() ?? u['name']?.toString() ?? 'User',
               email: u['email']?.toString() ?? '',
               phone: u['phone']?.toString(),
@@ -2117,6 +2147,8 @@ class DatabaseService extends ChangeNotifier {
               restaurantId: cleanBizId ?? restaurant?.id ?? 'rest_001',
               companyName: prof?['companyName']?.toString() ?? u['companyName']?.toString(),
               profilePhotoPath: cleanLogo ?? currentUser?.profilePhotoPath,
+              onboardingCompleted: onboardingCompleted,
+              onboardingStep: onboardingStep,
             );
             await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
           }
@@ -2154,7 +2186,7 @@ class DatabaseService extends ChangeNotifier {
               cuisineType: prof?['cuisineType']?.toString() ?? 'Indian & Continental',
               taxRate: (ordSet?['tax']?['percentage'] as num?)?.toDouble() ?? 5.0,
               tableCount: (ordSet?['tableCount'] as num?)?.toInt() ?? 12,
-              isOnboarded: u['onboardingCompleted'] == true,
+              isOnboarded: onboardingCompleted,
               isSubscribed: isSubActive || (!isExplicitlyCancelled && isSubscribed),
               upiId: ordSet?['upiId']?.toString() ?? 'apnapos@upi',
               posViewMode: ordSet?['posViewMode']?.toString() ?? 'with_image',
@@ -2902,6 +2934,7 @@ class DatabaseService extends ChangeNotifier {
 
   /// Clears menu items, orders, tables, and inventory data when a brand new user account is created.
   Future<void> clearUserDataForNewAccount() async {
+    await flushLiveCartPersistence();
     ProductService.clearPosCache();
     menuItems.clear();
     categories.clear();
@@ -3018,6 +3051,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> switchToStaff(StaffModel staff) async {
+    await flushLiveCartPersistence();
     if (currentUser != null && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner')) {
       cacheOwnerUser(currentUser!);
     }
@@ -3045,6 +3079,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> switchToOwner() async {
+    await flushLiveCartPersistence();
     final owner = cachedOwnerUser;
     if (owner != null) {
       currentUser = owner;
@@ -3073,6 +3108,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await flushLiveCartPersistence();
     stopAutoSync();
     _socketService.disconnect();
     ProductService.clearPosCache();
@@ -3455,6 +3491,11 @@ class DatabaseService extends ChangeNotifier {
         SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);
         LocalNotificationService.handlePayloadDirectly(orderMap);
       }
+    }, onError: (Object error, StackTrace stackTrace) {
+      // Firestore can deny this optional feed while backend/socket ordering
+      // remains available. Stream errors are asynchronous, so a surrounding
+      // try/catch cannot keep them from escaping to the root error handler.
+      debugPrint('[DatabaseService] Pending storefront orders stream error: $error');
     });
   }
 

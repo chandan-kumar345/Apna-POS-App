@@ -40,6 +40,7 @@ class ChotuService {
     sessionId = '',
     tableContext = null,
   }) {
+    await require('../entitlementService').requireChotu(businessId);
     if (!audio) {
       throw ApiError.badRequest('Audio or spoken text payload is required for transcription');
     }
@@ -97,6 +98,7 @@ class ChotuService {
     userId = null,
     apiKey = null,
   }) {
+    await require('../entitlementService').requireChotu(businessId);
     if (!text || typeof text !== 'string') {
       throw ApiError.badRequest('Spoken text command is required');
     }
@@ -196,6 +198,7 @@ class ChotuService {
     userId = null,
     userRole = 'owner',
   }) {
+    await require('../entitlementService').requireChotu(businessId);
     if (!command || !command.intent) {
       throw ApiError.badRequest('Invalid or missing command structure');
     }

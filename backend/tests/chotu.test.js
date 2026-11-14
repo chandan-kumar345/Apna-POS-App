@@ -18,6 +18,7 @@ describe('Chotu AI Voice Assistant - Phase 1 Voice Foundation (/api/v1/chotu)', 
       });
 
     token = res.body.data.accessToken;
+    await require('./helpers/grantBusinessAccess')(token);
   });
 
   describe('GET /api/v1/chotu/health', () => {

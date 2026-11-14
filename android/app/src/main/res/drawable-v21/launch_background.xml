@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/splash_color" />
-    <item>
-        <bitmap android:gravity="center" android:src="@drawable/splash_logo" android:filter="true" />
-    </item>
+    <item android:drawable="@drawable/startup_ink" android:gravity="center" />
 </layer-list>

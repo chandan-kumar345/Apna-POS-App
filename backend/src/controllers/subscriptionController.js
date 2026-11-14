@@ -77,7 +77,7 @@ class SubscriptionController {
       const result = await subscriptionService.activateSubscription(businessId, userId, req.body);
       res.json({
         success: true,
-        message: 'Subscription unlocked and activated successfully!',
+        message: 'Payment verified and subscription expiry extended. Manual access controls are preserved.',
         data: result,
       });
     } catch (err) {

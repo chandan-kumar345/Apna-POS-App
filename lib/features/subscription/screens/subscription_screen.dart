@@ -33,6 +33,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
 
   int _selectedTierIndex = 0; // 0: Yearly (Recommended), 1: Monthly
   bool _isLoading = false;
+  bool _leavingForActiveSubscription = false;
   SubscriptionDataModel _data = const SubscriptionDataModel();
 
   late final AnimationController _pulseController;
@@ -53,10 +54,26 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
       parent: _pulseController,
       curve: Curves.easeInOut,
     );
+    _db.addListener(_onSubscriptionChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _onSubscriptionChanged();
+      await _subscriptionService.getStatus();
+      if (mounted) _onSubscriptionChanged();
+    });
+  }
+
+  void _onSubscriptionChanged() {
+    if (!_db.isSubscribed || _leavingForActiveSubscription) return;
+    _leavingForActiveSubscription = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _navigateToTargetScreen(widget.sourceFeature.toLowerCase());
+    });
   }
 
   @override
   void dispose() {
+    _db.removeListener(_onSubscriptionChanged);
     _pulseController.dispose();
     super.dispose();
   }

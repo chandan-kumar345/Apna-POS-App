@@ -112,6 +112,9 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   void _onSpeechStateChanged() {
     if (mounted) {
       setState(() {});
+      if (_sheetState == ChotuSheetState.listening && _speechService.status == SpeechStatus.idle) {
+        setState(() => _sheetState = ChotuSheetState.idle);
+      }
       if (_sheetState == ChotuSheetState.listening &&
           _speechService.status == SpeechStatus.done &&
           _speechService.liveTranscription.trim().isNotEmpty) {
@@ -134,16 +137,15 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
       _statusFeedback = null;
     });
 
-    // Speak Hindi greeting aloud in background (non-blocking)
-    _ttsService.speakGreeting('Kya hua sir?').catchError((_) {});
-
-    // Start listening immediately
-    _speechService.startListening();
+    // The visual greeting is immediate. Do not play TTS over the microphone.
+    _ttsService.stop();
+    if (mounted) await _speechService.startListening();
   }
 
   void _startListening() {
     if (!mounted) return;
     _autoCloseTimer?.cancel();
+    _ttsService.stop();
     setState(() {
       _sheetState = ChotuSheetState.listening;
       _unmatchedItem = null;
@@ -172,13 +174,15 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
-    if (clean.isEmpty) return;
+    if (clean.isEmpty || !mounted || _sheetState == ChotuSheetState.processing) return;
+    _ttsService.stop();
 
     setState(() {
       _lastUserQuery = clean;
       _sheetState = ChotuSheetState.processing;
       _automationNeedsAttention = false;
     });
+    _speechService.reset();
 
     // The agent owns execution when enabled. Keep the existing surface and
     // display its receipt without replaying actions through the local POS.
@@ -503,7 +507,10 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
-                color: Colors.black.withValues(alpha: 0.70),
+                decoration: const BoxDecoration(gradient: LinearGradient(
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  colors: [Color(0xFF081424), Color(0xFF15243A), Color(0xFF09111F)],
+                )),
               ),
             ),
           ),
@@ -542,7 +549,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            hasGeminiKey ? 'Gemini AI Active' : 'Set Gemini Key',
+                            hasGeminiKey ? 'AI connected' : 'AI settings',
                             style: TextStyle(
                               color: hasGeminiKey ? const Color(0xFF34D399) : const Color(0xFFFBBF24),
                               fontSize: 11.5,
@@ -566,7 +573,12 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
           ),
 
           // 3. Main Center Content: Robot + Live Speech Display + Controls
-          Center(
+          Positioned.fill(
+            top: 84,
+            child: SafeArea(
+            child: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom + 24),
+            child: Center(
             child: FadeTransition(
               opacity: _growFade,
               child: ScaleTransition(
@@ -577,6 +589,31 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const Text('Chotu AI', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: -0.7)),
+                      const SizedBox(height: 8),
+                      Text(_chotuService.currentTableContext?.isNotEmpty == true
+                        ? 'Dine-in  •  ${_chotuService.currentTableContext}'
+                        : 'Your voice-powered order assistant',
+                        style: const TextStyle(color: Color(0xFF9FB0C8), fontSize: 13)),
+                      const SizedBox(height: 14),
+                      DropdownButton<String>(
+                        value: _speechService.currentLocale,
+                        dropdownColor: const Color(0xFF15243A),
+                        underline: const SizedBox.shrink(),
+                        icon: const Icon(Icons.translate_rounded, color: Color(0xFF9FB0C8), size: 18),
+                        style: const TextStyle(color: Color(0xFFCEDBF0), fontSize: 12),
+                        items: const [
+                          DropdownMenuItem(value: 'hinglish', child: Text('Hinglish', style: TextStyle(fontFamily: 'Roboto'))),
+                          DropdownMenuItem(value: 'hi_IN', child: Text('Hindi', style: TextStyle(fontFamily: 'Roboto'))),
+                          DropdownMenuItem(value: 'en_IN', child: Text('English (India)', style: TextStyle(fontFamily: 'Roboto'))),
+                        ],
+                        onChanged: _sheetState == ChotuSheetState.processing ? null : (value) {
+                          if (value == null) return;
+                          _speechService.reset();
+                          _speechService.setLocale(value);
+                          _startListening();
+                        },
+                      ),
                       // Floating Robot Avatar
                       GestureDetector(
                         onTap: () {
@@ -597,8 +634,8 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                             return Transform.translate(
                               offset: Offset(0, floatY),
                               child: SizedBox(
-                                width: 190,
-                                height: 200,
+                                width: 160,
+                                height: 155,
                                 child: Stack(
                                   alignment: Alignment.center,
                                   children: [
@@ -617,8 +654,8 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                                       tag: 'chotu_robot_hero',
                                       child: Image.asset(
                                         'assets/images/chotu_robot.png',
-                                        width: 150,
-                                        height: 170,
+                                        width: 115,
+                                        height: 135,
                                         fit: BoxFit.contain,
                                         filterQuality: FilterQuality.high,
                                       ),
@@ -640,11 +677,36 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
 
                       // Main Action Status & Controls
                       _buildBottomActionSection(),
+                      if (!_isTextMode) ...[
+                        const SizedBox(height: 12),
+                        TextButton.icon(
+                          onPressed: _sheetState == ChotuSheetState.processing ? null : () {
+                            _speechService.reset();
+                            setState(() => _isTextMode = true);
+                          },
+                          icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
+                          label: const Text('Type an order instead'),
+                          style: TextButton.styleFrom(foregroundColor: const Color(0xFFB9C9E3)),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      const Divider(color: Color(0xFF2A3A51)),
+                      const SizedBox(height: 8),
+                      const Text('ORDER  →  KITCHEN  →  BILL', style: TextStyle(color: Color(0xFF87A0C0), fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.8)),
+                      const SizedBox(height: 10),
+                      const Text('“Table 5 pe 2 butter naan”\n“KOT bhejo”  •  “Bill banao”  •  “Select table 6”',
+                        textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF9FB0C8), height: 1.7, fontSize: 12)),
+                      const SizedBox(height: 10),
+                      const Text('Menu and table are checked before every action.\nA bill stays unpaid until payment is confirmed.',
+                        textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF6E859F), height: 1.5, fontSize: 11)),
                     ],
                   ),
                 ),
               ),
             ),
+          ),
+          ),
+          ),
           ),
         ],
       ),

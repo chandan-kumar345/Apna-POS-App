@@ -2,11 +2,8 @@ const tokenService = require('../services/tokenService');
 const User = require('../models/User');
 const ApiError = require('../utils/ApiError');
 
-const SUPERADMIN_EMAIL = 'chandanyaduvanshi190@gmail.com';
-
 /**
- * Super Admin Middleware
- * Restricts access strictly to the owner (chandanyaduvanshi190@gmail.com)
+ * Platform administration requires a role provisioned in the database.
  */
 const superAdminMiddleware = async (req, res, next) => {
   try {
@@ -28,15 +25,14 @@ const superAdminMiddleware = async (req, res, next) => {
       throw ApiError.unauthorized('The user belonging to this token no longer exists', 'USER_NOT_FOUND');
     }
 
-    const normalizedEmail = (user.email || '').trim().toLowerCase();
     const isOwnerSuperAdmin =
-      normalizedEmail === SUPERADMIN_EMAIL.toLowerCase() ||
       user.isSuperAdmin === true ||
       user.role === 'superadmin';
+    if (user.status && user.status !== 'active') throw ApiError.forbidden('Administrator account is inactive', 'ACCOUNT_INACTIVE');
 
     if (!isOwnerSuperAdmin) {
       throw ApiError.forbidden(
-        'Access Denied. Only the platform owner (chandanyaduvanshi190@gmail.com) can access this Super Admin dashboard.',
+        'Access denied. A platform administrator role is required.',
         'SUPERADMIN_ONLY'
       );
     }

@@ -1,9 +1,8 @@
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
-import '../../core/utils/responsive_layout_helper.dart';
 import 'login_screen.dart';
+import 'widgets/logo_writing_reveal.dart';
 
 class GetStartedScreen extends StatefulWidget {
   const GetStartedScreen({super.key});
@@ -33,6 +32,16 @@ class _GetStartedScreenState extends State<GetStartedScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _motionController.stop();
+    } else if (!_motionController.isAnimating) {
+      _motionController.repeat(reverse: true);
+    }
+  }
+
+  @override
   void dispose() {
     _motionController.dispose();
     super.dispose();
@@ -40,10 +49,6 @@ class _GetStartedScreenState extends State<GetStartedScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (ResponsiveLayoutHelper.isDesktop(context) || (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)) {
-      return const LoginScreen();
-    }
-
     final topPadding = MediaQuery.of(context).padding.top;
 
     return Scaffold(
@@ -53,11 +58,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFF5F9FD),
-              Color(0xFFEDF3F9),
-              Color(0xFFE5EDF6),
-            ],
+            colors: [Color(0xFFF5F9FD), Color(0xFFEDF3F9), Color(0xFFE5EDF6)],
             stops: [0.0, 0.45, 1.0],
           ),
         ),
@@ -68,61 +69,64 @@ class _GetStartedScreenState extends State<GetStartedScreen>
             builder: (context, constraints) {
               return SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
-                  child: IntrinsicHeight(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Column(
-                        children: [
-                          SizedBox(height: topPadding + 50),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                      maxWidth: 520,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          children: [
+                            SizedBox(height: topPadding + 50),
 
-                          // 1. Interactive Hero Section with Neumorphic Squircle & Floating Badges
-                          _buildHeroSection(),
+                            // 1. Interactive Hero Section with Neumorphic Squircle & Floating Badges
+                            _buildHeroSection(),
 
-                          const SizedBox(height: 22),
+                            const SizedBox(height: 22),
 
-                          // 2. Headline & Subtitle Text
-                          const Text(
-                            "Everything You\nNeed, in one App.",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: _textPrimary,
-                              height: 1.22,
-                              letterSpacing: -0.5,
+                            // 2. Headline & Subtitle Text
+                            const Text(
+                              "Everything You\nNeed, in one App.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                color: _textPrimary,
+                                height: 1.22,
+                                letterSpacing: -0.5,
+                              ),
                             ),
-                          ),
 
-                          const SizedBox(height: 10),
+                            const SizedBox(height: 10),
 
-                          const Text(
-                            "Smart Restaurant Billing, KDS & Analytics",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: _textSecondary,
-                              letterSpacing: -0.1,
+                            const Text(
+                              "Smart Restaurant Billing, KDS & Analytics",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: _textSecondary,
+                                letterSpacing: -0.1,
+                              ),
                             ),
-                          ),
 
-                          const Spacer(),
-                          const SizedBox(height: 5),
+                            const Spacer(),
+                            const SizedBox(height: 5),
 
-                          // 3. Double-Wrapped Neumorphic Bottom Enclosure ("Grow Without Limits")
-                          _buildWrappedBottomCard(),
+                            // 3. Double-Wrapped Neumorphic Bottom Enclosure ("Grow Without Limits")
+                            _buildWrappedBottomCard(),
 
-                          const SizedBox(height: 25),
+                            const SizedBox(height: 25),
 
-                          // 4. Vibrant Electric Blue "Get Started" Button
-                          _buildGetStartedButton(),
+                            // 4. Vibrant Electric Blue "Get Started" Button
+                            _buildGetStartedButton(),
 
-                          const SizedBox(height: 18),
-                        ],
+                            const SizedBox(height: 18),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -174,14 +178,14 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                 child: Container(
                   width: 210,
                   height: 200,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(42),
-                    border: Border.all(
-                      color: Colors.white,
-                      width: 2.0,
-                    ),
+                    border: Border.all(color: Colors.white, width: 2.0),
                     boxShadow: [
                       // Top-Left Light Highlight
                       const BoxShadow(
@@ -208,10 +212,12 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                   ),
                   child: Center(
                     child: Image.asset(
-                      'assets/images/apna_pos_brand_logo.png',
-                      height: 145,
-                      width: 175,
+                      LogoWritingReveal.assetPath,
+                      height: 160,
+                      width: 160,
                       fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      semanticLabel: 'Apna POS',
                     ),
                   ),
                 ),
@@ -296,11 +302,32 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(width: 10, height: 1.6, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            Container(
+              width: 10,
+              height: 1.6,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
             const SizedBox(height: 2),
-            Container(width: 7, height: 1.6, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(1))),
+            Container(
+              width: 7,
+              height: 1.6,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
             const SizedBox(height: 2),
-            Container(width: 9, height: 1.6, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            Container(
+              width: 9,
+              height: 1.6,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
           ],
         ),
       ),
@@ -313,9 +340,10 @@ class _GetStartedScreenState extends State<GetStartedScreen>
       width: 20,
       height: 20,
       alignment: Alignment.center,
-      child: const Text(
-        '👑',
-        style: TextStyle(fontSize: 13.5),
+      child: const Icon(
+        Icons.workspace_premium_rounded,
+        color: Color(0xFFB97A0F),
+        size: 18,
       ),
     );
   }
@@ -340,11 +368,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           ),
         ],
       ),
-      child: const Icon(
-        Icons.campaign_rounded,
-        color: Colors.white,
-        size: 13,
-      ),
+      child: const Icon(Icons.campaign_rounded, color: Colors.white, size: 13),
     );
   }
 
@@ -373,11 +397,32 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Container(width: 2.2, height: 5.5, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(1))),
+            Container(
+              width: 2.2,
+              height: 5.5,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
             const SizedBox(width: 1.5),
-            Container(width: 2.2, height: 8.5, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            Container(
+              width: 2.2,
+              height: 8.5,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
             const SizedBox(width: 1.5),
-            Container(width: 2.2, height: 11.5, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            Container(
+              width: 2.2,
+              height: 11.5,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
           ],
         ),
       ),
@@ -478,10 +523,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
         padding: const EdgeInsets.fromLTRB(20, 18, 14, 18),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [
-              Color(0xFFF3F8FE),
-              Color(0xFFE5EFFB),
-            ],
+            colors: [Color(0xFFF3F8FE), Color(0xFFE5EFFB)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -575,18 +617,12 @@ class _GetStartedScreenState extends State<GetStartedScreen>
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFFFFFFFF),
-                    Color(0xFFF0F6FF),
-                  ],
+                  colors: [Color(0xFFFFFFFF), Color(0xFFF0F6FF)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white,
-                  width: 1.6,
-                ),
+                border: Border.all(color: Colors.white, width: 1.6),
                 boxShadow: [
                   BoxShadow(
                     color: const Color(0xFF0052FF).withValues(alpha: 0.26),
@@ -685,10 +721,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF0066FF),
-            Color(0xFF0044EB),
-          ],
+          colors: [Color(0xFF0066FF), Color(0xFF0044EB)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -709,12 +742,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
       ),
       child: ElevatedButton(
         onPressed: () {
-          Navigator.push(
-            context,
-            SlideUpPageRoute(
-              page: const LoginScreen(),
-            ),
-          );
+          Navigator.push(context, SlideUpPageRoute(page: const LoginScreen()));
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
@@ -736,16 +764,10 @@ class _GetStartedScreenState extends State<GetStartedScreen>
               ),
             ),
             SizedBox(width: 8),
-            Icon(
-              Icons.arrow_forward_rounded,
-              color: Colors.white,
-              size: 20,
-            ),
+            Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
           ],
         ),
       ),
     );
   }
 }
-
-

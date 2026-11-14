@@ -25,6 +25,7 @@ describe('Chotu AI Voice Assistant - Automated Order Flow (/api/v1/chotu)', () =
       });
 
     token = res.body.data.accessToken;
+    await require('./helpers/grantBusinessAccess')(token);
 
     // 2. Seed test products
     const p1 = await request(app)

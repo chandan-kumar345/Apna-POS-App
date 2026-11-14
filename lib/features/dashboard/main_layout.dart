@@ -78,6 +78,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   bool _isPosFullScreen = false;
   bool _isStaffDropdownOpen = false;
   bool _isWalletBalancePopupOpen = false;
+  bool _isCheckingSubscriptionNavigation = false;
   String? _selectedTableForPos;
   OrderType? _selectedOrderTypeForPos;
   int _posTableSelectionToken = 0;
@@ -2160,7 +2161,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     final double textOpacity = isSmallScreen ? 1.0 : ((expansionFactor - 0.25) / 0.75).clamp(0.0, 1.0);
     final double badgeCornerOpacity = isSmallScreen ? 0.0 : (1.0 - (expansionFactor / 0.35)).clamp(0.0, 1.0);
 
-    void onTapAction() {
+    Future<void> onTapAction() async {
       if (!isPermitted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2173,7 +2174,20 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         return;
       }
 
-      final bool requiresSubscriptionUnlock = isPremium && !db.isSubscribed;
+      if (_isCheckingSubscriptionNavigation) return;
+      final paidFeature = isPremium || index == 5 || index == 8;
+      if (paidFeature) {
+        final userId = db.currentUser?.id;
+        final businessId = db.currentBusinessId;
+        _isCheckingSubscriptionNavigation = true;
+        try {
+          await SubscriptionService().refreshAccess();
+        } finally {
+          _isCheckingSubscriptionNavigation = false;
+        }
+        if (!mounted || db.currentUser?.id != userId || db.currentBusinessId != businessId) return;
+      }
+      final bool requiresSubscriptionUnlock = paidFeature && !db.isSubscribed;
       if (requiresSubscriptionUnlock) {
         if (isSmallScreen) _closeSidebar();
         Navigator.push(

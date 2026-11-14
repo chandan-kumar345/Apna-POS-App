@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/database/database_service.dart';
+import '../../core/services/subscription_service.dart';
 import '../../core/models/menu_item_model.dart';
 import '../subscription/screens/subscription_screen.dart';
 import 'models/raw_material_model.dart';
@@ -91,7 +92,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (mounted) setState(() {});
   }
 
-  void _openSubscription() {
+  Future<void> _openSubscription() async {
+    if (await SubscriptionService().refreshAccess() || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(

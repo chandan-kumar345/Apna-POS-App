@@ -37,6 +37,24 @@ void main() {
       expect(speechService.isListening, false);
     });
 
+    test('restarting speech discards old words without submitting them again', () async {
+      await speechService.startListening();
+      speechService.updateTranscription('old instruction');
+      final statuses = <SpeechStatus>[];
+      void listener() => statuses.add(speechService.status);
+      speechService.addListener(listener);
+      try {
+        await speechService.startListening();
+        expect(speechService.liveTranscription, isEmpty);
+        expect(statuses, isNot(contains(SpeechStatus.done)));
+        speechService.stopListening();
+        expect(speechService.status, SpeechStatus.idle);
+      } finally {
+        speechService.removeListener(listener);
+        speechService.reset();
+      }
+    });
+
     test('ChotuService local normalization handles Hindi numerals while preserving verbs', () async {
       chotuService.setTableContext('5');
       expect(chotuService.currentTableContext, '5');

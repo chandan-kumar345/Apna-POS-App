@@ -14,6 +14,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await DatabaseService().updateSubscriptionStatus(false);
   });
 
   group('PremiumSubscription & Profile Login State Tests', () {

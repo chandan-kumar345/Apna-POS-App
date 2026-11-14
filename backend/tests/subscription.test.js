@@ -79,89 +79,28 @@ describe('Subscription & Lead Generation API', () => {
     });
   });
 
-  describe('GET & POST /api/v1/subscription/status & activate', () => {
-    it('should return subscription status with UPI pay url and amount 300', async () => {
-      const res = await request(app).get('/api/v1/subscription/status');
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.upiId).toBe('9709593705@ybl');
-      expect(res.body.data.amount).toBe(300);
-      expect(res.body.data.upiPayUrl).toContain('pa=9709593705@ybl');
-      expect(res.body.data.upiPayUrl).toContain('am=300');
+  describe('Authenticated subscription status and renewal safety', () => {
+    let token;
+    beforeEach(async () => {
+      const response = await request(app).post('/api/v1/auth/register')
+        .send({ email: 'subscription-contract@example.com', password: 'Password@123' });
+      token = response.body.data.accessToken;
     });
-
-    it('should unlock and activate subscription on POST /api/v1/subscription/activate', async () => {
-      const res = await request(app)
-        .post('/api/v1/subscription/activate')
-        .send({
-          paymentRef: 'UPI_TEST_UTR_123456',
-          amount: 300,
-        });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.isSubscriptionActive).toBe(true);
-      expect(res.body.data.isActive).toBe(true);
-      expect(res.body.data.status).toBe('active');
-      expect(res.body.data.upiId).toBe('9709593705@ybl');
-      expect(res.body.data.paymentRef).toBe('UPI_TEST_UTR_123456');
+    it('keeps existing calculated response aliases and payment details', async () => {
+      const response = await request(app).get('/api/v1/subscription/status').set('Authorization', 'Bearer ' + token);
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({ isSubscriptionActive: false, isActive: false, isSubscribed: false, amount: 300, upiId: '9709593705@ybl' });
     });
-
-    it('should lock subscription when isSubscriptionActive is updated to false', async () => {
-      const updateRes = await request(app)
-        .patch('/api/v1/subscription/status')
-        .send({
-          isSubscriptionActive: false,
-        });
-
-      expect(updateRes.status).toBe(200);
-      expect(updateRes.body.success).toBe(true);
-
-      const statusRes = await request(app).get('/api/v1/subscription/status');
-      expect(statusRes.status).toBe(200);
-      expect(statusRes.body.data.isSubscriptionActive).toBe(false);
-      expect(statusRes.body.data.isActive).toBe(false);
-      expect(statusRes.body.data.status).toBe('inactive');
+    it('does not accept an unverified UTR as a paid subscription', async () => {
+      const response = await request(app).post('/api/v1/subscription/activate').set('Authorization', 'Bearer ' + token).send({ paymentRef: 'UNVERIFIED', amount: 300 });
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('PAYMENT_VERIFICATION_REQUIRED');
     });
-
-    it('should unlock subscription when isSubscriptionActive is updated to true', async () => {
-      const updateRes = await request(app)
-        .patch('/api/v1/subscription/status')
-        .send({
-          isSubscriptionActive: true,
-        });
-
-      expect(updateRes.status).toBe(200);
-      expect(updateRes.body.success).toBe(true);
-
-      const statusRes = await request(app).get('/api/v1/subscription/status');
-      expect(statusRes.status).toBe(200);
-      expect(statusRes.body.data.isSubscriptionActive).toBe(true);
-      expect(statusRes.body.data.isActive).toBe(true);
-      expect(statusRes.body.data.status).toBe('active');
-    });
-
-    it('should list all subscriptions from the new subscriptions collection', async () => {
-      const res = await request(app).get('/api/v1/subscription/all');
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(Array.isArray(res.body.data)).toBe(true);
-    });
-
-    it('should create and assign staff subscription on POST /api/v1/subscription/staff', async () => {
-      const res = await request(app)
-        .post('/api/v1/subscription/staff')
-        .send({
-          userId: '6abe430203f46a99a8b7654c',
-          plan: 'standard',
-          amount: 300,
-          isActive: true,
-        });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.isActive).toBe(true);
-      expect(res.body.data.targetType).toBe('staff');
+    it('requires authentication and platform authority for entitlement changes', async () => {
+      expect((await request(app).get('/api/v1/subscription/status')).status).toBe(401);
+      expect((await request(app).patch('/api/v1/subscription/status').set('Authorization', 'Bearer ' + token).send({ isSubscriptionActive: true })).status).toBe(403);
+      expect((await request(app).get('/api/v1/subscription/all').set('Authorization', 'Bearer ' + token)).status).toBe(403);
+      expect((await request(app).post('/api/v1/subscription/staff').set('Authorization', 'Bearer ' + token).send({ isActive: true })).status).toBe(403);
     });
   });
 });

@@ -85,7 +85,7 @@ async function acquire(actor, input, resource, token) {
 }
 
 async function parse(actor, input, session, apiKey) {
-  const normalized = normalizeSpokenText(input.text);
+  const normalized = normalizeSpokenText(input.text.replace(/\btable\s+no\.?\s+/gi, 'table number '));
   const lower = normalized.toLowerCase();
   const table = AICommandEngine.extractTableNumber(normalized, session.tableNumber || input.currentTableContext || null);
   const explicitTable = AICommandEngine.extractTableNumber(normalized);
@@ -93,10 +93,11 @@ async function parse(actor, input, session, apiKey) {
   const sameTable = !explicitTable || String(explicitTable) === String(session.tableNumber).replace(/^(?:table\s*|t-?)/i, '');
   // The general number normalizer converts English "no" to 9 (Hindi nau).
   // Read negation and conditionals from the original utterance as well.
-  const language = `${input.text.toLowerCase()} ${lower}`;
+  const language = `${input.text.toLowerCase().replace(/\btable\s+no\.?\s+/g, 'table number ')} ${lower}`;
   const negative = /\b(?:no|not|never|nahi|nahin|mat|dont|don't|pending|unpaid|without)\b/i.test(language);
-  const hypothetical = /[?]|\b(?:if|when|after|before|once|unless|whether|maybe|perhaps|will|did|has|have|was|is|can|could|should)\b/i.test(language);
-  const cashReceived = !negative && !hypothetical && /\b(?:cash\s+(?:received|collected)|received\s+cash|cash\s+(?:mil|aa)\s+gay[ae]|cash\s+le\s+liya)\b/i.test(lower);
+  const hypothetical = /\b(?:if|when|after|before|once|unless|whether|maybe|perhaps|will|did|has|have|was|is|should)\b/i.test(language);
+  const cashQuestion = /[?]|\b(?:can|could|would)\b/i.test(language);
+  const cashReceived = !negative && !hypothetical && !cashQuestion && /\b(?:cash\s+(?:received|collected)|received\s+cash|cash\s+(?:mil|aa)\s+gay[ae]|cash\s+le\s+liya)\b/i.test(lower);
   const complete = /\b(?:settle|checkout|complete\s+(?:the\s+)?order|order\s+(?:complete|finish)|finish\s+(?:the\s+)?order)\b/i.test(lower);
   const base = { table_number: table, confidence: 1 };
   if (/\b(?:take\s*away|takeaway|parcel|delivery)\b/i.test(lower)) {
@@ -141,6 +142,7 @@ async function parse(actor, input, session, apiKey) {
 }
 
 async function runTurn(actor, rawInput, apiKey = null) {
+  await require('../entitlementService').requireChotu(actor.businessId);
   if ((rawInput?.expectedBusinessId && rawInput.expectedBusinessId !== String(actor.businessId))
     || (rawInput?.expectedUserId && rawInput.expectedUserId !== String(actor.userId))) {
     throw ApiError.conflict('The active account changed while this turn was pending. Return to its original POS account.', 'CHOTU_ACTOR_CHANGED');

@@ -30,7 +30,7 @@ const startServer = async () => {
     // Connect to Database asynchronously
     connectDB()
       .then(async () => {
-        // Ensure Master SuperAdmin user is seeded and active
+        // Read-only compatibility lookup; never provision privileges on startup.
         await superadminService.seedSuperAdmin();
 
         // Initialize daily summary cron jobs after DB is connected

@@ -154,9 +154,6 @@ class RazorpayService {
     ].filter(Boolean);
 
     if (candidateSecrets.length === 0) {
-      if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') {
-        return true;
-      }
       return false;
     }
 
