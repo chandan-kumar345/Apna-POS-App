@@ -127,11 +127,15 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       _loadError = null;
     });
     _loadingRestaurant = _service.cachedStorefront(widget.slug)?.restaurant;
-    if (widget.isPreviewMode) {
-      final local = DatabaseService().restaurant;
-      if (local != null &&
-          (widget.slug == 'preview' || widget.slug == local.storefrontSlug))
-        _loadingRestaurant = local;
+    final local = DatabaseService().restaurant;
+    if (widget.isPreviewMode && local != null) {
+      _loadingRestaurant = local;
+    } else if (local != null &&
+        (widget.slug == 'preview' ||
+            widget.slug.toLowerCase() == local.storefrontSlug.toLowerCase() ||
+            widget.slug.toLowerCase() ==
+                local.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-'))) {
+      _loadingRestaurant = local;
     }
     if (_loadingRestaurant == null && _data == null && !widget.isPreviewMode) {
       unawaited(

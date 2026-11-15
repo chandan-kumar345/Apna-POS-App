@@ -259,7 +259,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
 
   String _buildTableDirectUrl(int tableNum) {
     final tCode = _formatTableCode(tableNum);
-    return 'https://apnaposs.vercel.app/$_companySlug/R=$_restaurantCode&T=$tCode';
+    return 'https://apnaposs.vercel.app/$_companySlug?R=$_restaurantCode&T=$tCode';
   }
 
   List<String> get _floors {

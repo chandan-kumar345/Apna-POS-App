@@ -4313,7 +4313,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Table QR Ordering',
-                            subtitle: 'apnaposs.vercel.app/${restaurant?.storefrontSlug ?? "company-name"}/R=R1&T=T01',
+                            subtitle: 'apnaposs.vercel.app/${restaurant?.storefrontSlug ?? "company-name"}?R=R1&T=T01',
                             icon: Icons.qr_code_2_rounded,
                             accentColor: const Color(0xFF10B981),
                             badgeText: '${db.tables.length} Tables',
