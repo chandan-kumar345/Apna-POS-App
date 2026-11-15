@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,7 +16,7 @@ class NotificationPermissionHelper {
   static Future<void>? _requestInProgress;
 
   /// Ask once after login, using only system permission screens.
-  static Future<void> requestAllAppPermissionsAfterLogin() {
+  static Future<void> requestStartupPermissionsAfterLogin() {
     if (DatabaseService().currentUser == null ||
         (!kIsWeb &&
             defaultTargetPlatform != TargetPlatform.android &&
@@ -42,20 +43,18 @@ class NotificationPermissionHelper {
       }
 
       if (kIsWeb) {
-        await FcmService().requestNotificationPermissionAfterLogin();
+        await FcmService().enableNotifications();
         await prefs.setBool(_prefKeyPostLoginRequested, true);
         return;
       }
 
+      // Keep this list explicit: media files use the system picker.
       final permissions = <Permission>[
         Permission.notification,
         Permission.camera,
         Permission.microphone,
         Permission.location,
-        Permission.photos,
         if (defaultTargetPlatform == TargetPlatform.android) ...[
-          Permission.storage,
-          Permission.videos,
           Permission.bluetoothScan,
           Permission.bluetoothConnect,
         ] else ...[
@@ -128,77 +127,42 @@ class NotificationPermissionHelper {
     await prefs.setBool(_prefKeyFullScreenRequested, true);
   }
 
-  /// Check if notification permission is currently granted
+  static bool get _usesFirebaseAuthorization =>
+      kIsWeb || defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// Reading authorization is safe during navigation and after returning from settings.
   static Future<bool> isPermissionGranted() async {
+    if (!FcmService.isSupported) return true;
     try {
-      if (kIsWeb) return true;
-      final status = await Permission.notification.status;
-      return status.isGranted;
+      if (_usesFirebaseAuthorization) {
+        final settings = await FirebaseMessaging.instance.getNotificationSettings();
+        return settings.authorizationStatus == AuthorizationStatus.authorized ||
+            settings.authorizationStatus == AuthorizationStatus.provisional;
+      }
+      return (await Permission.notification.status).isGranted;
     } catch (_) {
       return false;
     }
   }
 
-  /// Check if 'Display over other apps' (SYSTEM_ALERT_WINDOW) is granted
-  static Future<bool> isSystemAlertWindowGranted() async {
-    try {
-      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-        return true;
-      }
-      final perms = await OrderAlertPermissionService.checkPermissions();
-      return perms['overlayGranted'] == true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Request 'Display over other apps' permission
-  static Future<bool> requestSystemAlertWindow() async {
-    return OrderAlertPermissionService.requestOverlayPermission();
-  }
-
-  /// Check if battery optimizations are ignored (to prevent OEM background freezing)
-  static Future<bool> isBatteryOptimizationsIgnored() async {
-    try {
-      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-        return true;
-      }
-      final status = await Permission.ignoreBatteryOptimizations.status;
-      return status.isGranted;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Request ignore battery optimizations
-  static Future<bool> requestIgnoreBatteryOptimizations() async {
-    try {
-      if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-        return true;
-      }
-      final status = await Permission.ignoreBatteryOptimizations.request();
-      return status.isGranted;
-    } catch (e) {
-      debugPrint(
-        '[NotificationPermissionHelper] Error requesting ignoreBatteryOptimizations: $e',
-      );
-      return false;
-    }
-  }
-
-  /// Directly trigger native system notification permission popup
+  /// Call only from an explicit Enable alerts action.
   static Future<bool> requestPermissionDirectly() async {
+    if (!FcmService.isSupported) return true;
     try {
-      if (kIsWeb) return true;
-      final status = await Permission.notification.request();
-      if (status.isPermanentlyDenied) {
-        await openAppSettings();
+      if (_usesFirebaseAuthorization) {
+        return await FcmService().enableNotifications();
       }
-      return status.isGranted;
-    } catch (e) {
-      debugPrint(
-        '[NotificationPermissionHelper] Error requesting notification permission: $e',
-      );
+      final current = await Permission.notification.status;
+      if (current.isPermanentlyDenied) {
+        await openAppSettings();
+        return false;
+      }
+      final granted = current.isGranted ||
+          (current.isDenied && (await Permission.notification.request()).isGranted);
+      if (granted) unawaited(FcmService().registerTokenWithBackend());
+      return granted;
+    } catch (error) {
+      debugPrint('[NotificationPermissionHelper] Error enabling alerts: $error');
       return false;
     }
   }

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
@@ -327,7 +326,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                     final messenger = ScaffoldMessenger.of(context);
                     Navigator.pop(context);
                     try {
-                      await Permission.photos.request();
                       final picker = ImagePicker();
 
                       final XFile? image = await picker.pickImage(
@@ -410,7 +408,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                     final messenger = ScaffoldMessenger.of(context);
                     Navigator.pop(context);
                     try {
-                      await Permission.camera.request();
                       final picker = ImagePicker();
 
                       final XFile? image = await picker.pickImage(

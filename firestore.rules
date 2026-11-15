@@ -1,11 +1,133 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper: user is authenticated
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /orders/{orderId}
+    // Document ID: orderId (String, unique order identifier)
+    // Fields:
+    //   - restaurantId: string (required, 1-100 chars, immutable) - Restaurant document ID
+    //   - status: string (required, 'pending' on public create, max 30 chars) - Order status
+    //   - totalAmount: number (required, > 0) - Total order amount
+    //   - items: list (required, 1-200 items) - Line items with quantities & details
+    //   - submittedAt: timestamp (optional/required alt) - Server timestamp when order was placed
+    //   - createdAt: string (optional/required alt, ISO 8601 string, immutable)
+    //   - orderNumber: string (optional, max 50 chars) - Human-readable order number
+    //   - tableNumber: string (optional, max 50 chars) - Dine-in table identifier
+    //   - orderType: string (optional, max 30 chars) - dineIn, takeaway, delivery
+    //   - customerName: string (optional, max 100 chars) - Customer name
+    //   - customerPhone: string (optional, max 30 chars) - Customer contact number
+    //   - deliveryAddress: string (optional, max 500 chars) - Delivery address
+    //   - paymentMethod: string (optional, max 50 chars) - Cash, UPI, Card, etc.
+    //   - paymentStatus: string (optional, max 50 chars) - pending, paid
+    //   - isPaid: bool (optional) - Payment indicator
+    //   - isOnlineOrder: bool (optional) - Online storefront / QR flag
+    //   - isSynced: bool (optional) - Cloud sync flag
+    //   - subtotal, taxAmount, discountAmount, deliveryCharge, tipAmount: number (optional, >= 0)
+    //
+    // Collection: /users/{userId}
+    // Document ID: userId (Firebase Auth UID)
+    //
+    // Collection: /restaurants/{restaurantId}
+    // Document ID: restaurantId (String)
+    //
+    // Collection: /businesses/{businessId}
+    // Document ID: businessId (String)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    // ===============================================================
+    // Order Domain Validators
+    // ===============================================================
+
+    // Validates new order creation (Storefront customer, Table QR, or authenticated POS)
+    function isValidOrderCreate(data) {
+      return data.status == 'pending'
+        && data.restaurantId is string
+        && data.restaurantId.size() > 0
+        && data.restaurantId.size() <= 100
+        && data.totalAmount is number
+        && data.totalAmount > 0
+        && data.items is list
+        && data.items.size() > 0
+        && data.items.size() <= 200
+        && (
+          ('submittedAt' in data && data.submittedAt != null) ||
+          ('createdAt' in data && data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 50)
+        )
+        && (!('orderNumber' in data) || data.orderNumber == null || (data.orderNumber is string && data.orderNumber.size() <= 50))
+        && (!('tableNumber' in data) || data.tableNumber == null || (data.tableNumber is string && data.tableNumber.size() <= 50))
+        && (!('orderType' in data) || data.orderType == null || (data.orderType is string && data.orderType.size() <= 30))
+        && (!('customerName' in data) || data.customerName == null || (data.customerName is string && data.customerName.size() <= 100))
+        && (!('customerPhone' in data) || data.customerPhone == null || (data.customerPhone is string && data.customerPhone.size() <= 30))
+        && (!('deliveryAddress' in data) || data.deliveryAddress == null || (data.deliveryAddress is string && data.deliveryAddress.size() <= 500))
+        && (!('orderSource' in data) || data.orderSource == null || (data.orderSource is string && data.orderSource.size() <= 50))
+        && (!('source' in data) || data.source == null || (data.source is string && data.source.size() <= 50))
+        && (!('paymentMethod' in data) || data.paymentMethod == null || (data.paymentMethod is string && data.paymentMethod.size() <= 50))
+        && (!('paymentStatus' in data) || data.paymentStatus == null || (data.paymentStatus is string && data.paymentStatus.size() <= 50))
+        && (!('subtotal' in data) || data.subtotal == null || (data.subtotal is number && data.subtotal >= 0))
+        && (!('discountAmount' in data) || data.discountAmount == null || (data.discountAmount is number && data.discountAmount >= 0))
+        && (!('taxAmount' in data) || data.taxAmount == null || (data.taxAmount is number && data.taxAmount >= 0))
+        && (!('deliveryCharge' in data) || data.deliveryCharge == null || (data.deliveryCharge is number && data.deliveryCharge >= 0))
+        && (!('tipAmount' in data) || data.tipAmount == null || (data.tipAmount is number && data.tipAmount >= 0))
+        && (!('roundOff' in data) || data.roundOff == null || data.roundOff is number)
+        && (!('isPaid' in data) || data.isPaid == null || data.isPaid is bool)
+        && (!('isOnlineOrder' in data) || data.isOnlineOrder == null || data.isOnlineOrder is bool)
+        && (!('isSynced' in data) || data.isSynced == null || data.isSynced is bool);
+    }
+
+    // Validates order creation by authenticated staff when status might differ from 'pending'
+    function isValidAuthenticatedOrderCreate(data) {
+      return data.status in ['pending', 'preparing', 'ready', 'completed', 'cancelled', 'confirmed']
+        && data.restaurantId is string
+        && data.restaurantId.size() > 0
+        && data.restaurantId.size() <= 100
+        && data.totalAmount is number
+        && data.totalAmount > 0
+        && data.items is list
+        && data.items.size() > 0
+        && data.items.size() <= 200
+        && (
+          ('submittedAt' in data && data.submittedAt != null) ||
+          ('createdAt' in data && data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 50)
+        )
+        && (!('customerName' in data) || data.customerName == null || (data.customerName is string && data.customerName.size() <= 100))
+        && (!('customerPhone' in data) || data.customerPhone == null || (data.customerPhone is string && data.customerPhone.size() <= 30))
+        && (!('deliveryAddress' in data) || data.deliveryAddress == null || (data.deliveryAddress is string && data.deliveryAddress.size() <= 500));
+    }
+
+    // Validates order updates by authenticated merchant/staff (protects immutability & schema integrity)
+    function isValidOrderUpdate(data, prevData) {
+      return data.restaurantId == prevData.restaurantId
+        && (!('id' in data) || !('id' in prevData) || data.id == prevData.id)
+        && (!('createdAt' in prevData) || !('createdAt' in data) || data.createdAt == prevData.createdAt)
+        && data.totalAmount is number
+        && data.totalAmount > 0
+        && data.items is list
+        && data.items.size() > 0
+        && data.items.size() <= 200
+        && data.status is string
+        && data.status.size() <= 30
+        && (!('customerName' in data) || data.customerName == null || (data.customerName is string && data.customerName.size() <= 100))
+        && (!('customerPhone' in data) || data.customerPhone == null || (data.customerPhone is string && data.customerPhone.size() <= 30))
+        && (!('deliveryAddress' in data) || data.deliveryAddress == null || (data.deliveryAddress is string && data.deliveryAddress.size() <= 500));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
 
     // Users collection: users can only read and write their own document
     match /users/{userId} {
@@ -32,6 +154,22 @@ service cloud.firestore {
       match /{subcollection}/{document=**} {
         allow read, write: if isAuthenticated();
       }
+    }
+
+    // Orders collection: customer storefront & table QR orders, plus merchant order management
+    match /orders/{orderId} {
+      // Authenticated merchants and staff can read (both get single order and list queries by restaurantId)
+      allow read: if isAuthenticated();
+
+      // Public (storefront / table QR) or authenticated order creation
+      allow create: if isValidOrderCreate(request.resource.data) ||
+        (isAuthenticated() && isValidAuthenticatedOrderCreate(request.resource.data));
+
+      // Authenticated merchants/staff can update orders (e.g. status changes, KOT workflow)
+      allow update: if isAuthenticated() && isValidOrderUpdate(request.resource.data, resource.data);
+
+      // Authenticated merchants/staff can delete orders
+      allow delete: if isAuthenticated();
     }
 
     // Zero-Trust Default: Reject any collection outside defined models

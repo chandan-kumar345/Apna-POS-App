@@ -14,6 +14,7 @@ import '../widgets/storefront_product_detail_sheet.dart';
 import '../widgets/storefront_menu_view.dart';
 import '../../../core/models/restaurant_model.dart';
 import '../widgets/storefront_checkout_flow_sheet.dart';
+import 'table_qr_order_screen.dart';
 
 class CustomerStorefrontScreen extends StatefulWidget {
   final String slug;
@@ -151,7 +152,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
     try {
       final data = await _service.loadStorefront(
         widget.slug,
-        tableCode: _activeTableCode ?? widget.tableCode,
+        tableCode: widget.tableCode ?? _activeTableCode,
         restaurantCode: widget.restaurantCode,
         preview: widget.isPreviewMode,
       );
@@ -160,8 +161,10 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         _data = data;
         _isLoading = false;
         final table = data.tableInfo;
-        _isTableValid = table?.isValid ?? !_isTableSession;
-        if (table != null && table.isValid) {
+        _isTableValid = _isTableSession
+            ? table?.isValid == true && table!.tableCode.trim().isNotEmpty
+            : true;
+        if (_isTableSession && _isTableValid && table != null) {
           _activeTableCode = table.tableCode;
           _orderType = OrderType.dineIn;
         } else if (!_isTableSession) {
@@ -675,6 +678,21 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         restaurant: _loadingRestaurant,
         avatar: (logo, name, size) =>
             _buildRestaurantAvatar(logo, name, size: size),
+      );
+    }
+    if (_isTableSession) {
+      return TableQrOrderScreen(
+        key: ValueKey((
+          widget.slug,
+          _activeTableCode,
+          widget.restaurantCode,
+          widget.isPreviewMode,
+        )),
+        data: _data!,
+        tableCode: _activeTableCode!,
+        preview: widget.isPreviewMode,
+        onRefresh: _loadData,
+        avatar: (logo, name, size) => _buildRestaurantAvatar(logo, name, size: size),
       );
     }
     return StorefrontMenuView(

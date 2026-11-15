@@ -30,6 +30,7 @@ class StorefrontService {
   }
 
   final Map<String, StorefrontData> _brandCache = {};
+  final Map<(String, String, String), StorefrontTableInfo> _verifiedTables = {};
   StorefrontData? cachedStorefront(String slug) =>
       _brandCache[slug.trim().toLowerCase()];
   Future<RestaurantModel> loadBranding(String slug) async {
@@ -56,6 +57,21 @@ class StorefrontService {
     bool preview = false,
   }) async {
     final cleanSlug = slug.trim().toLowerCase();
+    final requestedTable = tableCode?.trim().toUpperCase() ?? '';
+    final tableKey = (
+      cleanSlug,
+      restaurantCode?.trim().toUpperCase() ?? '',
+      requestedTable,
+    );
+    StorefrontTableInfo? fallbackTable() {
+      if (requestedTable.isEmpty) return null;
+      return _verifiedTables[tableKey] ??
+          StorefrontTableInfo(
+            isValid: false,
+            tableCode: requestedTable,
+            error: 'This table could not be verified. Pull down to retry.',
+          );
+    }
     final local = _db.restaurant;
     final bool isLocalMatch = local != null &&
         (preview ||
@@ -185,7 +201,16 @@ class StorefrontService {
         deliveryEta: json['deliveryEta']?.toString() ?? '',
         pickupEta: json['pickupEta']?.toString() ?? '',
       );
-      _brandCache[cleanSlug] = data;
+      if (requestedTable.isNotEmpty) {
+        _verifiedTables.remove(tableKey);
+        if (data.tableInfo case final table?) {
+          _verifiedTables[tableKey] = table;
+          if (_verifiedTables.length > 32) {
+            _verifiedTables.remove(_verifiedTables.keys.first);
+          }
+        }
+      }
+      _brandCache[cleanSlug] = data.copyWith(clearTable: true);
       if (_brandCache.length > 16) _brandCache.remove(_brandCache.keys.first);
       cacheCategory(cleanSlug, restaurant.cuisineType);
       return data;
@@ -195,29 +220,12 @@ class StorefrontService {
       // Fallback 1: Memory cache
       if (_brandCache.containsKey(cleanSlug)) {
         debugPrint('[StorefrontService] Serving from memory brand cache for $cleanSlug');
-        return _brandCache[cleanSlug]!;
+        return _brandCache[cleanSlug]!.copyWith(tableInfo: fallbackTable());
       }
 
       // Fallback 2: Local POS database
-      if (isLocalMatch && local != null) {
+      if (isLocalMatch) {
         debugPrint('[StorefrontService] Serving from local POS database for $cleanSlug');
-        StorefrontTableInfo? fallbackTable;
-        if (tableCode != null && tableCode.trim().isNotEmpty) {
-          final cleanTable = tableCode.trim().toUpperCase();
-          final parsedNum =
-              int.tryParse(cleanTable.replaceAll(RegExp(r'[^0-9]'), ''));
-          fallbackTable = StorefrontTableInfo(
-            isValid: true,
-            tableCode: cleanTable,
-            tableNumber: parsedNum ?? 1,
-            name: 'Table ${parsedNum ?? 1}',
-            floor: 'Ground Floor',
-            capacity: 4,
-            isTableOrdering: true,
-            restaurantCode: restaurantCode ?? 'R1',
-            totalTables: _db.tables.isNotEmpty ? _db.tables.length : 20,
-          );
-        }
         return StorefrontData(
           restaurant: local,
           categories: ['All', ..._db.categories.where((c) => c != 'All')],
@@ -227,7 +235,7 @@ class StorefrontService {
           isOnline: _db.isStorefrontOnline,
           themeColorHex: _db.storefrontThemeColor,
           themeColorEndHex: _db.storefrontThemeColorEnd,
-          tableInfo: fallbackTable,
+          tableInfo: fallbackTable(),
         );
       }
 
@@ -254,25 +262,6 @@ class StorefrontService {
           final settings =
               await FirestoreService().getStorefrontSettings(firestoreRest.id);
 
-          StorefrontTableInfo? tableInfo;
-          if (tableCode != null && tableCode.trim().isNotEmpty) {
-            final cleanTable = tableCode.trim().toUpperCase();
-            final parsedNum =
-                int.tryParse(cleanTable.replaceAll(RegExp(r'[^0-9]'), ''));
-            tableInfo = StorefrontTableInfo(
-              isValid: true,
-              tableCode: cleanTable,
-              tableNumber: parsedNum ?? 1,
-              name: 'Table ${parsedNum ?? 1}',
-              floor: 'Ground Floor',
-              capacity: 4,
-              isTableOrdering: true,
-              restaurantCode: restaurantCode ?? 'R1',
-              totalTables:
-                  firestoreRest.tableCount > 0 ? firestoreRest.tableCount : 20,
-            );
-          }
-
           final data = StorefrontData(
             restaurant: firestoreRest,
             categories: ['All', ...cats],
@@ -288,9 +277,9 @@ class StorefrontService {
             themeColorEndHex:
                 (settings?['storefrontThemeColorEnd'] as num?)?.toInt() ??
                 firestoreRest.storefrontThemeColorEnd,
-            tableInfo: tableInfo,
+            tableInfo: fallbackTable(),
           );
-          _brandCache[cleanSlug] = data;
+          _brandCache[cleanSlug] = data.copyWith(clearTable: true);
           return data;
         }
       } catch (firestoreError) {

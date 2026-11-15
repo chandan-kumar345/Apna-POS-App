@@ -40,7 +40,12 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
     _orderStreamSub = _apiService.streamOrderStatus(_currentOrder.orderId).listen((updated) {
       if (updated != null && mounted) {
         setState(() {
-          _currentOrder = updated;
+          // Status-only updates may omit the receipt lines and kitchen note.
+          _currentOrder = _currentOrder.copyWith(
+            status: updated.status,
+            currentStepIndex: updated.currentStepIndex,
+            paymentStatus: updated.paymentStatus,
+          );
         });
       }
     });
@@ -136,12 +141,16 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
                   ),
                 ),
                 const SizedBox(width: 5),
-                Text(
-                  'Live Kitchen Tracking • Table $_displayTable',
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    'Live Kitchen Tracking • Table $_displayTable',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

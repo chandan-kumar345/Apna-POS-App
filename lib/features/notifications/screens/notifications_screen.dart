@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/notification_screen_theme.dart';
+import '../../../core/services/fcm_service.dart';
 import '../models/notification_model.dart';
 import '../services/notification_service.dart';
 import '../services/notification_permission_helper.dart';
@@ -26,7 +29,8 @@ class _NotificationsContent extends StatefulWidget {
   State<_NotificationsContent> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<_NotificationsContent> {
+class _NotificationsScreenState extends State<_NotificationsContent>
+    with WidgetsBindingObserver {
   final NotificationService _service = NotificationService();
   final ScrollController _scrollController = ScrollController();
 
@@ -42,10 +46,12 @@ class _NotificationsScreenState extends State<_NotificationsContent> {
 
   String _selectedFilter = 'All';
   bool _isPermissionGranted = true;
+  bool _requestingPermission = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _service.addListener(_onServiceUpdate);
     _scrollController.addListener(_onScroll);
 
@@ -61,11 +67,20 @@ class _NotificationsScreenState extends State<_NotificationsContent> {
     final granted = await NotificationPermissionHelper.isPermissionGranted();
     if (mounted && _isPermissionGranted != granted) {
       setState(() => _isPermissionGranted = granted);
+      if (granted) unawaited(FcmService().registerTokenWithBackend());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_requestingPermission) {
+      unawaited(_checkPermission());
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _service.removeListener(_onServiceUpdate);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -815,11 +830,15 @@ class _NotificationsScreenState extends State<_NotificationsContent> {
           ),
           const SizedBox(width: 8),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: _requestingPermission ? null : () async {
+              setState(() => _requestingPermission = true);
               final granted =
                   await NotificationPermissionHelper.requestPermissionDirectly();
               if (mounted) {
-                setState(() => _isPermissionGranted = granted);
+                setState(() {
+                  _requestingPermission = false;
+                  _isPermissionGranted = granted;
+                });
               }
             },
             style: ElevatedButton.styleFrom(

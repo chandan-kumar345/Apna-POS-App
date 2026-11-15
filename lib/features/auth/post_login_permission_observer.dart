@@ -14,7 +14,7 @@ class PostLoginPermissionObserver extends NavigatorObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!route.isCurrent) return;
       unawaited(
-        NotificationPermissionHelper.requestAllAppPermissionsAfterLogin(),
+        NotificationPermissionHelper.requestStartupPermissionsAfterLogin(),
       );
     });
   }

@@ -149,6 +149,7 @@ void main() {
   Future<void> mount(
     WidgetTester tester, {
     String slug = 'river-kitchen',
+    String? tableCode,
     GlobalKey? key,
     Size size = const Size(390, 844),
     bool merchantTheme = false,
@@ -172,7 +173,7 @@ void main() {
                   : null,
             ),
           ),
-          home: CustomerStorefrontScreen(slug: slug),
+          home: CustomerStorefrontScreen(slug: slug, tableCode: tableCode),
         ),
       ),
     );
@@ -216,6 +217,43 @@ void main() {
       image.dispose();
     });
   }
+
+  test('a new QR cannot inherit a cached table from another code', () async {
+    response['table'] = {'isValid': true, 'tableCode': 'T01', 'isTableOrdering': true};
+    final service = StorefrontService();
+    final initial = await service.loadStorefront('qr-cache-fixture', tableCode: 'T01');
+    expect(initial.tableInfo?.tableCode, 'T01');
+    notFound = true;
+    final other = await service.loadStorefront('qr-cache-fixture', tableCode: 'T02');
+    expect(other.tableInfo?.tableCode, 'T02');
+    expect(other.tableInfo?.isValid, isFalse);
+    final same = await service.loadStorefront('qr-cache-fixture', tableCode: 'T01');
+    expect(same.tableInfo?.isValid, isTrue);
+    final normal = await service.loadStorefront('qr-cache-fixture');
+    expect(normal.tableInfo, isNull);
+  });
+
+  testWidgets('a valid QR route opens the redesigned table home', (tester) async {
+    response['table'] = {'isValid': true, 'tableCode': 'T01', 'isTableOrdering': true};
+    final key = GlobalKey();
+    await mount(tester, slug: 'qr-layout-fixture', tableCode: 'T01', key: key);
+    expect(requests.any((r) => r.queryParameters['T'] == 'T01'), isTrue);
+    expect(find.text('Welcome to Table T01'), findsOneWidget);
+    await capture(tester, key, 'table-qr-01-home');
+    await tester.tap(find.text('Explore menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ ADD').first);
+    await tester.pumpAndSettle();
+    await capture(tester, key, 'table-qr-02-menu');
+    await tester.tap(find.text('View cart'));
+    await tester.pumpAndSettle();
+    await capture(tester, key, 'table-qr-03-cart');
+    await tester.tap(find.textContaining('Place order'));
+    await tester.pumpAndSettle();
+    expect(find.text('Continue as guest'), findsOneWidget);
+    await capture(tester, key, 'table-qr-04-login');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('branding loads before menu and menu renders actual API data', (
     tester,

@@ -351,15 +351,19 @@ class FcmService {
     }
   }
 
-  /// Used for the browser notification prompt after an authenticated navigation.
-  Future<void> requestNotificationPermissionAfterLogin() async {
-    if (!isSupported || DatabaseService().currentUser == null) return;
-    await FirebaseMessaging.instance.requestPermission(
+  /// Called when the user explicitly enables push alerts.
+  Future<bool> enableNotifications() async {
+    if (!isSupported || DatabaseService().currentUser == null) return false;
+    final settings = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
-    unawaited(registerTokenWithBackend());
+    final granted =
+        settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+    if (granted) unawaited(registerTokenWithBackend());
+    return granted;
   }
 
   /// Register FCM push token with backend with automatic retries and endpoint check

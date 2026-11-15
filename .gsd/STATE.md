@@ -1,13 +1,18 @@
 # Current task state
 
-2026-11-15 active task: QR/storefront order alerts and acceptance fixes are
-implemented, tested and built. 49 Flutter and 18 backend checks pass. Profile
+2026-11-15 completed: QR/storefront order alerts and acceptance fixes are
+published as e5698f8288ab4876a788c19c83dfcb49a86664e8 on origin/main.
+49 Flutter and 18 backend checks pass. Profile
 APK 109.8s / 91.3 MB installed successfully, artifact
 build/product_details_validation/apna-pos-order-accept-fix.apk. Web release
-83.9s built at build/web with production API and vercel.json. User approval
-for live Vercel/Render publication was approved by the user with Deploy the
-live fixes. Publishing and live verification are in progress. No production orders
-were created, production DB inspection was read-only.
+83.9s built at build/web with production API and vercel.json. User explicitly
+approved live publication. Render serves the new empty-cart validation handler,
+Vercel apnaposs production deployment succeeded, and live main.dart.js contains
+the new request identity and acceptance-label code. Public QR route HTTP 200,
+R1/T02 binds to canonical Pizza 47 business and Table 2. No production order
+was created. Real handset alert delivery was not exercised with a real order.
+Evidence: build/product_details_validation/live-order-deployment.json and
+backend-deployment-validation.json. Publication and requested verification done.
 See final JOURNAL entry for diagnosis, changes and test files. Main branch,
 related dirty storefront/network/view edits predate this task and are retained.
 firestore.rules and scratch/ are unrelated dirty work and should not be shipped.

@@ -49,14 +49,10 @@ class SpeechRecognitionService extends ChangeNotifier {
     try {
       if (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS) {
-        final status = await Permission.microphone.request();
-        if (status.isGranted) {
-          return true;
-        } else if (status.isPermanentlyDenied) {
-          debugPrint('[SpeechRecognitionService] Mic permission permanently denied');
-          return false;
-        }
-        return false;
+        final current = await Permission.microphone.status;
+        if (current.isGranted) return true;
+        if (!current.isDenied) return false;
+        return (await Permission.microphone.request()).isGranted;
       }
       return true;
     } catch (e) {
@@ -70,6 +66,7 @@ class SpeechRecognitionService extends ChangeNotifier {
     String? initialText,
     Duration timeout = const Duration(seconds: 16),
   }) async {
+    if (_starting) return;
     // Stop any existing session
     final generation = ++_generation;
     _starting = true;
@@ -83,7 +80,8 @@ class SpeechRecognitionService extends ChangeNotifier {
     final hasPermission = await requestMicrophonePermission();
     if (generation != _generation) return;
     if (!hasPermission) {
-      setError('Microphone permission is required to use Chotu voice assistant');
+      _starting = false;
+      setError('Microphone access is off. Enable it in phone settings or type your order.');
       return;
     }
 
@@ -94,6 +92,7 @@ class SpeechRecognitionService extends ChangeNotifier {
     notifyListeners();
 
     if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      _starting = false;
       return;
     }
 

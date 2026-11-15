@@ -1,8 +1,11 @@
 import 'dart:async';
+
 import 'package:apna_pos/core/database/database_service.dart';
 import 'package:apna_pos/core/models/user_model.dart';
-import 'package:apna_pos/features/auth/post_login_permission_observer.dart';
+import 'package:apna_pos/core/services/local_notification_service.dart';
+import 'package:apna_pos/core/services/speech_recognition_service.dart';
 import 'package:apna_pos/features/notifications/services/notification_permission_helper.dart';
+import 'package:apna_pos/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -102,6 +105,7 @@ void main() {
   });
 
   tearDown(() {
+    SpeechRecognitionService().reset();
     DatabaseService().currentUser = null;
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -111,16 +115,13 @@ void main() {
   });
 
   Future<GlobalKey<NavigatorState>> mountApp(WidgetTester tester) async {
-    final navigatorKey = GlobalKey<NavigatorState>();
     await tester.pumpWidget(
-      MaterialApp(
-        navigatorKey: navigatorKey,
-        navigatorObservers: [PostLoginPermissionObserver()],
-        home: const Scaffold(body: Text('Login')),
+      const ApnaPosApp(
+        initialHome: Scaffold(body: Text('Login')),
       ),
     );
     await tester.pumpAndSettle();
-    return navigatorKey;
+    return LocalNotificationService.navigatorKey;
   }
 
   void navigate(GlobalKey<NavigatorState> key, String screen) {
@@ -135,15 +136,33 @@ void main() {
     final navigator = await mountApp(tester);
     navigate(navigator, 'Sign up');
     await tester.pumpAndSettle();
-    await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+    await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
 
     expect(events, isEmpty);
     expect(requests, isEmpty);
     expect(find.byType(Dialog), findsNothing);
   }, variant: android);
 
+  testWidgets('Enable alerts retries only notification permission', (_) async {
+    expect(await NotificationPermissionHelper.isPermissionGranted(), isFalse);
+    expect(requests, isEmpty);
+    expect(await NotificationPermissionHelper.requestPermissionDirectly(), isFalse);
+    expect(requests, [[Permission.notification.value]]);
+  }, variant: android);
+
+  testWidgets('the mic can still retry after a startup denial', (_) async {
+    final speech = SpeechRecognitionService();
+    await speech.startListening();
+    expect(requests, [[Permission.microphone.value]]);
+    expect(speech.status, SpeechStatus.error);
+    statuses[Permission.microphone.value] = 1;
+    await speech.startListening();
+    expect(speech.isListening, isTrue);
+    expect(requests, hasLength(1));
+  }, variant: android);
+
   testWidgets(
-    'login requests system permissions then opens overlay settings directly',
+    'login requests only allowed permissions then opens overlay settings',
     (tester) async {
       final navigator = await mountApp(tester);
       logIn();
@@ -154,12 +173,11 @@ void main() {
       expect(events, ['runtime', 'battery', 'overlay']);
       expect(
         requests.first,
-        containsAll([
+        unorderedEquals([
           Permission.notification.value,
           Permission.camera.value,
           Permission.microphone.value,
           Permission.location.value,
-          Permission.photos.value,
           Permission.bluetoothScan.value,
           Permission.bluetoothConnect.value,
         ]),
@@ -232,7 +250,7 @@ void main() {
     defaultStatus = 1;
     overlayGranted = true;
     logIn();
-    await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+    await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
 
     expect(events, isEmpty);
     expect(requests, isEmpty);
@@ -243,8 +261,8 @@ void main() {
     (tester) async {
       logIn();
       await Future.wait([
-        NotificationPermissionHelper.requestAllAppPermissionsAfterLogin(),
-        NotificationPermissionHelper.requestAllAppPermissionsAfterLogin(),
+        NotificationPermissionHelper.requestStartupPermissionsAfterLogin(),
+        NotificationPermissionHelper.requestStartupPermissionsAfterLogin(),
       ]);
 
       expect(events, ['runtime', 'battery', 'overlay']);
@@ -258,7 +276,7 @@ void main() {
     statuses[Permission.camera.value] = 4;
     statuses[Permission.microphone.value] = 4;
     logIn();
-    await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+    await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
 
     expect(requests.first, isNot(contains(Permission.camera.value)));
     expect(requests.first, isNot(contains(Permission.microphone.value)));
@@ -270,7 +288,7 @@ void main() {
     (tester) async {
       logIn();
       logOutDuringRequest = true;
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
 
       expect(events, ['runtime']);
       expect(DatabaseService().currentUser, isNull);
@@ -282,17 +300,16 @@ void main() {
     'iOS requests its permissions without opening Android special settings',
     (tester) async {
       logIn();
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
 
       expect(events, ['runtime']);
       expect(
         requests.single,
-        containsAll([
+        unorderedEquals([
           Permission.notification.value,
           Permission.camera.value,
           Permission.microphone.value,
           Permission.location.value,
-          Permission.photos.value,
           Permission.speech.value,
           Permission.bluetooth.value,
         ]),
@@ -308,9 +325,9 @@ void main() {
       fullScreenRequired = true;
       fullScreenGranted = false;
       logIn();
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
       expect(events, ['runtime', 'battery', 'full-screen', 'overlay']);
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
       expect(events, ['runtime', 'battery', 'full-screen', 'overlay']);
     },
     variant: android,
@@ -325,8 +342,8 @@ void main() {
       fullScreenRequired = true;
       fullScreenGranted = false;
       logIn();
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
       expect(events, ['full-screen']);
       expect(requests, isEmpty);
       final prefs = await SharedPreferences.getInstance();
@@ -346,7 +363,7 @@ void main() {
     });
     fullScreenRequired = true;
     logIn();
-    await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+    await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
     expect(events, isEmpty);
     expect(requests, isEmpty);
   }, variant: android);
@@ -359,7 +376,7 @@ void main() {
       fullScreenSettingsResult = Completer<bool>();
       logIn();
       final permissionFlow =
-          NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+          NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
       await tester.pumpAndSettle();
       expect(events, ['runtime', 'battery', 'full-screen']);
       fullScreenSettingsResult!.complete(false);
@@ -376,11 +393,11 @@ void main() {
         'has_requested_post_login_permissions': true,
       });
       logIn();
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
       expect(events, isEmpty);
       fullScreenRequired = true;
       fullScreenGranted = false;
-      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestStartupPermissionsAfterLogin();
       expect(events, ['full-screen']);
     },
     variant: android,

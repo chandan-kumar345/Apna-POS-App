@@ -35,7 +35,6 @@ class BluetoothPrinterService {
   // In-Memory Fast Cache for instant UI loading
   List<BluetoothInfo>? _cachedBondedDevices;
   Map<String, String?>? _cachedSavedPrinter;
-  bool _permissionsRequestedOnce = false;
   CapabilityProfile? _cachedProfile;
 
   // In-Memory Pre-Processed Logo Cache (eliminates 200-800ms resizing loop on every print)
@@ -72,20 +71,20 @@ class BluetoothPrinterService {
     }
   }
 
-  /// Request runtime Bluetooth and Location permissions safely for Android
-  Future<void> requestPermissions({bool force = false}) async {
-    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux)) {
-      return;
-    }
-    if (_permissionsRequestedOnce && !force) return;
+  /// Check Bluetooth access only when looking up or connecting to a printer.
+  Future<void> requestPermissions() async {
+    if (kIsWeb) return;
     try {
-      _permissionsRequestedOnce = true;
-      await [
-        Permission.bluetooth,
-        Permission.bluetoothConnect,
-        Permission.bluetoothScan,
-        Permission.location,
-      ].request();
+      final permissions = switch (defaultTargetPlatform) {
+        TargetPlatform.android => [Permission.bluetoothConnect, Permission.bluetoothScan],
+        TargetPlatform.iOS => [Permission.bluetooth],
+        _ => <Permission>[],
+      };
+      final pending = <Permission>[];
+      for (final permission in permissions) {
+        if ((await permission.status).isDenied) pending.add(permission);
+      }
+      if (pending.isNotEmpty) await pending.request();
     } catch (e) {
       if (kDebugMode) print('Error requesting permissions: $e');
     }

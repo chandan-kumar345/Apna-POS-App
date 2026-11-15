@@ -1216,3 +1216,26 @@ vercel.json. Configured GitHub main pushes auto-deploy Vercel and Render.
 Live deployment approval requested through the asynchronous question. Await
 that approval before publishing. Current branch main; unrelated dirty
 firestore.rules and scratch/ must remain outside the order-flow publication.
+
+## 2026-11-15: Approved live order-flow publication completed
+
+User answered Deploy the live fixes. Published commit
+ e5698f8288ab4876a788c19c83dfcb49a86664e8 to origin/main. Remote SHA confirmed.
+Kept the unrelated firestore.rules and scratch/ work outside this commit.
+Render public health is healthy and the live handler returns the new
+Add at least one product to place an order validation for the deployment
+probe. Probe supplied an empty cart and negative totals, causing validation
+failure under both old and new handlers. No valid production order was sent.
+
+GitHub web release build succeeded. Its token-based deployment step was skipped,
+while the connected Vercel Git integration completed the apnaposs production
+release at https://vercel.com/chandanyaduvanshi190-3791s-projects/apnaposs/Drannd9yncpSepZGw9jUvc1bPnei.
+The separate apna-pos project check failed; it is outside the requested public
+apnaposs project, which deployed successfully. Live apnaposs main.dart.js now
+contains storefront_pending_ and Awaiting restaurant acceptance. Public
+/pizza-47/R=R1&T=T02 returns HTTP 200; backend QR binding returns isValid true,
+business 6ad46853ea47d6b3e13d633d, Table 2, isTableOrdering true, restaurant R1.
+Evidence saved in live-order-deployment.json and backend-deployment-validation.json
+under build/product_details_validation/. Handset alert delivery was not tested
+using a real production order. Local automated verification remains 67 passing
+checks and the updated APK is installed. Live publication complete.

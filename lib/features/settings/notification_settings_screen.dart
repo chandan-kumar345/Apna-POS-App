@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +8,9 @@ import '../../core/database/database_service.dart';
 import '../../core/models/notification_setting_model.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/services/order_alert_permission_service.dart';
+import '../../core/services/fcm_service.dart';
 import '../../core/theme/notification_screen_theme.dart';
+import '../notifications/services/notification_permission_helper.dart';
 
 /// Clean Neumorphic Theme styling
 class _NeumorphicStyle {
@@ -70,6 +73,8 @@ class _NotificationSettingsScreenState
   bool _fullScreenRequired = false;
   bool _fullScreenGranted = false;
   bool _requestingFullScreenPermission = false;
+  bool? _notificationsGranted;
+  bool _requestingNotifications = false;
 
   String? _previewingSource;
   bool _isPreviewActive = false;
@@ -123,6 +128,7 @@ class _NotificationSettingsScreenState
     WidgetsBinding.instance.addObserver(this);
     _currentSetting = _db.notificationSetting;
     _loadSettings();
+    unawaited(_checkNotificationPermission());
     _checkOverlayPermission();
     _checkFullScreenPermission();
   }
@@ -138,9 +144,29 @@ class _NotificationSettingsScreenState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(_checkNotificationPermission());
       _checkOverlayPermission();
       _checkFullScreenPermission();
     }
+  }
+
+  Future<void> _checkNotificationPermission() async {
+    if (!FcmService.isSupported || _requestingNotifications) return;
+    final granted = await NotificationPermissionHelper.isPermissionGranted();
+    if (!mounted || _requestingNotifications) return;
+    final newlyGranted = _notificationsGranted == false && granted;
+    setState(() => _notificationsGranted = granted);
+    if (newlyGranted) unawaited(FcmService().registerTokenWithBackend());
+  }
+
+  Future<void> _enableNotifications() async {
+    setState(() => _requestingNotifications = true);
+    final granted = await NotificationPermissionHelper.requestPermissionDirectly();
+    if (!mounted) return;
+    setState(() {
+      _requestingNotifications = false;
+      _notificationsGranted = granted;
+    });
   }
 
   Future<void> _checkFullScreenPermission() async {
@@ -1115,6 +1141,17 @@ class _NotificationSettingsScreenState
           ),
 
           const SizedBox(height: 8),
+
+          if (_notificationsGranted == false)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Push alerts are off'),
+              subtitle: const Text('Enable alerts for incoming orders and messages.'),
+              trailing: TextButton(
+                onPressed: _requestingNotifications ? null : _enableNotifications,
+                child: const Text('Enable'),
+              ),
+            ),
 
           // Sound Effects Switch
           _buildCompactSwitch(

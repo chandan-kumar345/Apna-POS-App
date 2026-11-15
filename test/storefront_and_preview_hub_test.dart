@@ -19,6 +19,36 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  Future<void> seedLocalStorefront({bool withBanner = false}) async {
+    final db = DatabaseService();
+    final previousRestaurant = db.restaurant;
+    final previousMenu = db.menuItems;
+    const bannerId = 'preview-hub-test-banner';
+    addTearDown(() async {
+      if (withBanner) await db.deleteStorefrontBanner(bannerId);
+      db.restaurant = previousRestaurant;
+      db.menuItems = previousMenu;
+    });
+    db.restaurant = RestaurantModel(
+      id: 'pizza-47-fixture',
+      slug: 'pizza-47',
+      name: 'Pizza 47',
+      tagline: '',
+      phone: '',
+      address: '',
+      cuisineType: 'Pizza',
+      services: const ['Delivery', 'Takeaway', 'Dine In'],
+    );
+    db.menuItems = [
+      MenuItemModel(id: 'pizza-fixture', name: 'Pizza', category: 'Pizzas', price: 249, description: ''),
+    ];
+    if (withBanner) {
+      await db.saveStorefrontBanner(const StorefrontBanner(
+        id: bannerId, tag: '', headline: 'Fresh pizza', subtitle: '', ctaText: '', imageUrl: '',
+      ));
+    }
+  }
+
   group('Storefront & Company Slug Algorithms', () {
     test('slugify converts company names into clean URL slugs', () {
       expect(RestaurantModel.slugify('Pizza 47'), equals('pizza-47'));
@@ -119,6 +149,7 @@ void main() {
     });
 
     test('StorefrontService loads fallback data with banners, online status, and theme', () async {
+      await seedLocalStorefront(withBanner: true);
       final service = StorefrontService();
       final data = await service.loadStorefront('pizza-47');
 
@@ -133,6 +164,7 @@ void main() {
 
   group('CustomerStorefrontScreen UI Rendering', () {
     testWidgets('renders storefront screen components on 360px viewport without overflow', (WidgetTester tester) async {
+      await seedLocalStorefront();
       tester.view.physicalSize = const Size(360, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);

@@ -313,6 +313,7 @@ class StorefrontData {
     int? themeColorHex,
     int? themeColorEndHex,
     StorefrontTableInfo? tableInfo,
+    bool clearTable = false,
   }) {
     return StorefrontData(
       restaurant: restaurant ?? this.restaurant,
@@ -323,7 +324,7 @@ class StorefrontData {
       isOnline: isOnline ?? this.isOnline,
       themeColorHex: themeColorHex ?? this.themeColorHex,
       themeColorEndHex: themeColorEndHex ?? this.themeColorEndHex,
-      tableInfo: tableInfo ?? this.tableInfo,
+      tableInfo: clearTable ? null : (tableInfo ?? this.tableInfo),
       rating: rating,
       reviewCount: reviewCount,
       deliveryEta: deliveryEta,

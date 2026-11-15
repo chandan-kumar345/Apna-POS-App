@@ -283,9 +283,12 @@ void main() {
   }
 
   testWidgets(
-    'transparent compact overlay starts the microphone after access check',
+    'transparent compact overlay waits for the mic button',
     (tester) async {
       await open(tester);
+      expect(speech.isListening, isFalse);
+      await tester.tap(find.byKey(const ValueKey('chotu-microphone')));
+      await tester.pump();
       expect(speech.isListening, isTrue);
       expect(find.text('Chotu AI'), findsOneWidget);
       expect(find.text('Table 5'), findsOneWidget);
@@ -332,7 +335,7 @@ void main() {
   });
 
   testWidgets(
-    'disabled account shows the cause and Retry can restore listening',
+    'retry restores access without starting the microphone',
     (tester) async {
       adapter.healthStatus = 403;
       await open(tester);
@@ -347,7 +350,7 @@ void main() {
       await tester.tap(find.text('Retry'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
-      expect(speech.isListening, isTrue);
+      expect(speech.isListening, isFalse);
       expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
       await tester.pumpWidget(const SizedBox());
     },

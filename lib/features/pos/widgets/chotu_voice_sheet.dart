@@ -80,7 +80,6 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
     await _chotu.checkBackendHealth();
     if (!mounted) return;
     setState(() => _checking = false);
-    if (_ready && !_busy) await _listen();
   }
 
   Future<void> _listen() async {
@@ -157,7 +156,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
           ? _speech.liveTranscription
           : 'Listening…';
     }
-    return 'Speak or type an order.';
+    return 'Tap the mic or type an order.';
   }
 
   @override
@@ -299,11 +298,8 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
                                           ? null
                                           : (value) {
                                               if (value == null) return;
-                                              final resume =
-                                                  _speech.isListening;
                                               _speech.reset();
                                               _speech.setLocale(value);
-                                              if (resume) unawaited(_listen());
                                             },
                                     ),
                                   ),

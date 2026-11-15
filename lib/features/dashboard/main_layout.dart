@@ -1710,7 +1710,13 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               end: Alignment.bottomRight,
             ),
           ),
-          child: SafeArea(
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: const SystemUiOverlayStyle(
+              statusBarColor: Color(0xFF031024),
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+            ),
+            child: SafeArea(
             bottom: true,
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -2056,6 +2062,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             );
               },
             ),
+          ),
           ),
         ),
       ),
