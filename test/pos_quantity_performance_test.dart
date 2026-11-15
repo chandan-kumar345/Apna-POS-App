@@ -22,6 +22,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _CountedItem extends MenuItemModel {
   var serializations = 0;
   var priceReads = 0;
+  var nameReads = 0;
+  @override
+  String get name {
+    nameReads++;
+    return super.name;
+  }
   _CountedItem(int number)
     : super(
         id: 'burst-$number',
@@ -405,6 +411,33 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     },
   );
+
+  testWidgets('hidden POS ignores unrelated database redraws and reads fresh data on return', (tester) async {
+    tester.view.physicalSize = const Size(432, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    Widget host(bool visible) => MaterialApp(home: TickerMode(enabled: visible,
+      child: const PosRegisterScreen(initialTable: 'T-9')));
+    await tester.pumpWidget(host(true));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpWidget(host(false));
+    await tester.pump();
+    untouched.nameReads = 0;
+    for (var i = 0; i < 10; i++) {
+      db.setLiveCartTotal('unrelated-update', i.toDouble());
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(untouched.nameReads, 0,
+        reason: 'Hidden POS must not rebuild its catalog for background updates');
+    db.menuItems = [_CountedItem(99)];
+    db.setLiveCartTotal('unrelated-update', 11);
+    await tester.pumpWidget(host(true));
+    await tester.pump();
+    expect(find.text('Burst item 99'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
 
   testWidgets(
     'rapid quantity taps keep exact local cart without rebuilding unrelated cards',

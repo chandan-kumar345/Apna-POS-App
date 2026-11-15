@@ -89,6 +89,22 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     final cleanNum = (orderNumber ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
     if (cleanId.isNotEmpty && _dismissedOrPromptedOrderIds.contains(cleanId)) return true;
     if (cleanNum.isNotEmpty && _dismissedOrPromptedOrderIds.contains(cleanNum)) return true;
+
+    // Check if the order is already in memory and no longer pending (completed, preparing, ready, cancelled)
+    try {
+      final existing = _instance.orders.where((o) {
+        final oId = o.id.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+        final oNum = o.orderNumber.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+        return (cleanId.isNotEmpty && (oId == cleanId || oNum == cleanId)) ||
+            (cleanNum.isNotEmpty && (oId == cleanNum || oNum == cleanNum));
+      }).firstOrNull;
+      if (existing != null && existing.status != OrderStatus.pending) {
+        if (cleanId.isNotEmpty) _dismissedOrPromptedOrderIds.add(cleanId);
+        if (cleanNum.isNotEmpty) _dismissedOrPromptedOrderIds.add(cleanNum);
+        return true;
+      }
+    } catch (_) {}
+
     return false;
   }
 
@@ -97,6 +113,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     final cleanNum = (orderNumber ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
     if (cleanId.isNotEmpty) _dismissedOrPromptedOrderIds.add(cleanId);
     if (cleanNum.isNotEmpty) _dismissedOrPromptedOrderIds.add(cleanNum);
+    _persistDismissedOrderIds();
   }
 
   static void unmarkOrderDismissed(String? id, [String? orderNumber]) {
@@ -104,6 +121,29 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     final cleanNum = (orderNumber ?? '').replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
     if (cleanId.isNotEmpty) _dismissedOrPromptedOrderIds.remove(cleanId);
     if (cleanNum.isNotEmpty) _dismissedOrPromptedOrderIds.remove(cleanNum);
+    _persistDismissedOrderIds();
+  }
+
+  static void _persistDismissedOrderIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _dismissedOrPromptedOrderIds.toList();
+      if (list.length > 500) {
+        await prefs.setStringList('apna_pos_dismissed_order_ids', list.sublist(list.length - 400));
+      } else {
+        await prefs.setStringList('apna_pos_dismissed_order_ids', list);
+      }
+    } catch (_) {}
+  }
+
+  static void loadPersistedDismissedOrderIds(SharedPreferences prefs) {
+    try {
+      final saved = prefs.getStringList('apna_pos_dismissed_order_ids') ?? [];
+      for (final s in saved) {
+        final clean = s.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+        if (clean.isNotEmpty) _dismissedOrPromptedOrderIds.add(clean);
+      }
+    } catch (_) {}
   }
 
   static bool isKnownPosOrder(String? idOrNumber) {
@@ -1414,6 +1454,9 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> init() async {
     if (_isInitialized) return;
     _prefs = await SharedPreferences.getInstance();
+    if (_prefs != null) {
+      loadPersistedDismissedOrderIds(_prefs!);
+    }
 
     // Purge legacy un-scoped WhatsApp credentials to prevent multi-tenant cross-contamination
     _prefs?.remove('apna_pos_wa_enabled');
@@ -1558,6 +1601,14 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         for (final cloudOrder in cloudOrders) {
           final isDismissed = isOrderDismissed(cloudOrder.id, cloudOrder.orderNumber);
           final diffSec = DateTime.now().difference(cloudOrder.createdDateTime).inSeconds.abs();
+          final localOrder = orders.where((o) =>
+              (o.id.isNotEmpty && o.id == cloudOrder.id) ||
+              (o.orderNumber.isNotEmpty && o.orderNumber == cloudOrder.orderNumber)
+          ).firstOrNull;
+          if (localOrder != null && localOrder.status != OrderStatus.pending) {
+            markOrderDismissed(cloudOrder.id, cloudOrder.orderNumber);
+            continue;
+          }
           if (!isDismissed && cloudOrder.status == OrderStatus.pending && diffSec < 900) {
             debugPrint('[DatabaseService] ⚡ Incoming real-time cloud/storefront order received: #${cloudOrder.orderNumber}');
             final bool isTable = (cloudOrder.tableNumber != null && cloudOrder.tableNumber!.trim().isNotEmpty);
@@ -3208,6 +3259,9 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
           'taxRate': updated.taxRate,
           'upiId': updated.upiId,
           'posViewMode': updated.posViewMode,
+          'slug': resolvedSlug,
+          'openingTime': updated.openingTime,
+          'closingTime': updated.closingTime,
         });
       }
     } catch (e) {
@@ -3216,6 +3270,30 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   bool? _isStorefrontOnlineMemory;
+  Future<void> _storefrontPublishQueue = Future<void>.value();
+
+  Future<void> _publishStorefrontConfiguration() {
+    final rest = restaurant;
+    if (rest == null) return Future<void>.value();
+    final payload = {
+      'slug': rest.storefrontSlug,
+      'storefrontOnline': isStorefrontOnline,
+      'storefrontThemeColor': storefrontThemeColor,
+      'storefrontThemeColorEnd': storefrontThemeColorEnd,
+      'storefrontBanners': _storefrontBanners.map((b) => b.toJson()).toList(),
+      'openingTime': rest.openingTime,
+      'closingTime': rest.closingTime,
+    };
+    return _storefrontPublishQueue = _storefrontPublishQueue.then((_) async {
+      try {
+        if (await _authService.isAuthenticated()) {
+          await ApiClient().patch(ApiEndpoints.profileSettings, data: payload);
+        }
+      } catch (error) {
+        debugPrint('[Storefront configuration] API sync notice: $error');
+      }
+    });
+  }
   int? _storefrontThemeColorMemory;
   int? _storefrontThemeColorEndMemory;
 
@@ -3244,6 +3322,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       } catch (_) {}
     }
     notifyListeners();
+    await _publishStorefrontConfiguration();
   }
 
   /// Theme color hex for the customer storefront (defaults to 0xFFE65100)
@@ -3288,6 +3367,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       } catch (_) {}
     }
     notifyListeners();
+    await _publishStorefrontConfiguration();
   }
 
   /// Synchronize restaurant storefront configuration, theme colors & banners across devices via Firestore
@@ -3339,6 +3419,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       await _saveRestaurantToPrefs();
       await _firestoreService.saveRestaurant(restaurant!);
       await syncStorefrontCatalog();
+      await _publishStorefrontConfiguration();
       notifyListeners();
     }
   }
@@ -3463,6 +3544,14 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         if (DatabaseService.isOrderDismissed(order.id, order.orderNumber)) {
           continue;
         }
+        final localOrder = orders.where((o) =>
+            (o.id.isNotEmpty && o.id == order.id) ||
+            (o.orderNumber.isNotEmpty && o.orderNumber == order.orderNumber)
+        ).firstOrNull;
+        if (localOrder != null && localOrder.status != OrderStatus.pending) {
+          DatabaseService.markOrderDismissed(order.id, order.orderNumber);
+          continue;
+        }
         _notifiedPendingOrderIds.add(orderKey);
         debugPrint('[DatabaseService] 🔔 Real-time pending storefront/table order detected from Firestore: #${order.orderNumber}');
 
@@ -3567,6 +3656,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('[DatabaseService] syncStorefrontBanners notice: $e');
     }
+    await _publishStorefrontConfiguration();
   }
 
   /// Synchronize promotional storefront banners from Cloud Firestore across multiple devices
@@ -5103,6 +5193,18 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     if (index >= 0) {
       orders[index] = orders[index].copyWith(status: newStatus);
 
+      if (newStatus != OrderStatus.pending) {
+        markOrderDismissed(orders[index].id, orders[index].orderNumber);
+        _prefs?.remove('pending_incoming_order_payload');
+        try {
+          _firestoreService.updateStorefrontOrderStatus(
+            orders[index].id,
+            newStatus.name,
+            newStatus == OrderStatus.completed ? 3 : (newStatus == OrderStatus.preparing ? 1 : 0),
+          );
+        } catch (_) {}
+      }
+
       // If completed or cancelled, clear occupied table and live cart data
       if (newStatus == OrderStatus.completed || newStatus == OrderStatus.cancelled) {
         clearTableCartAndFree(orders[index].tableNumber);
@@ -5115,8 +5217,11 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         final isAuth = await _authService.isAuthenticated();
         if (isAuth) {
           final targetId = orders[index].id;
-          if (targetId.length == 24) {
-            unawaited(_orderService.updateOrderStatus(targetId, newStatus));
+          if (targetId.isNotEmpty) {
+            unawaited(_orderService.updateOrderStatus(targetId, newStatus).catchError((e) {
+              debugPrint('[DatabaseService.updateOrderStatus] Remote update notice: $e');
+              return null;
+            }));
           }
         }
       } catch (e) {
@@ -5130,6 +5235,17 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     if (index >= 0) {
       orders[index] = orders[index].copyWith(status: newStatus);
+      if (newStatus != OrderStatus.pending) {
+        markOrderDismissed(orders[index].id, orders[index].orderNumber);
+        _prefs?.remove('pending_incoming_order_payload');
+        try {
+          _firestoreService.updateStorefrontOrderStatus(
+            orders[index].id,
+            newStatus.name,
+            newStatus == OrderStatus.completed ? 3 : (newStatus == OrderStatus.preparing ? 1 : 0),
+          );
+        } catch (_) {}
+      }
       if (newStatus == OrderStatus.completed || newStatus == OrderStatus.cancelled) {
         clearTableCartAndFree(orders[index].tableNumber);
       }
@@ -5147,6 +5263,9 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Inserts or updates an order in local memory and persists immediately with UI notification
   void upsertOrderLocally(OrderModel order) {
+    if (order.status != OrderStatus.pending) {
+      markOrderDismissed(order.id, order.orderNumber);
+    }
     final index = orders.indexWhere((o) => (order.id.isNotEmpty && o.id == order.id) || (order.orderNumber.isNotEmpty && o.orderNumber == order.orderNumber));
     if (index >= 0) {
       orders[index] = order;
@@ -5266,6 +5385,15 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
         if (isOrderDismissed(r.id, r.orderNumber)) continue;
 
+        final localOrder = orders.where((o) =>
+            (o.id.isNotEmpty && o.id == r.id) ||
+            (o.orderNumber.isNotEmpty && o.orderNumber == r.orderNumber)
+        ).firstOrNull;
+        if (localOrder != null && localOrder.status != OrderStatus.pending) {
+          markOrderDismissed(r.id, r.orderNumber);
+          continue;
+        }
+
         if (r.status == OrderStatus.pending && isExternalOrder) {
           final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
           // Prompt unhandled orders placed within last 15 minutes (900 seconds)
@@ -5338,6 +5466,15 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         final bool isExternalOrder = isExplicitExternal && !isKot && !isPosOrder;
 
         if (isOrderDismissed(r.id, r.orderNumber)) continue;
+
+        final localOrder = orders.where((o) =>
+            (o.id.isNotEmpty && o.id == r.id) ||
+            (o.orderNumber.isNotEmpty && o.orderNumber == r.orderNumber)
+        ).firstOrNull;
+        if (localOrder != null && localOrder.status != OrderStatus.pending) {
+          markOrderDismissed(r.id, r.orderNumber);
+          continue;
+        }
 
         if (r.status == OrderStatus.pending && isExternalOrder) {
           final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();

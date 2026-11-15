@@ -23,7 +23,7 @@ class ChotuTtsService extends ChangeNotifier {
   StreamSubscription? _playerCompleteSub;
 
   void _initPlayer() {
-    _audioPlayer.setReleaseMode(ReleaseMode.stop);
+    unawaited(_audioPlayer.setReleaseMode(ReleaseMode.stop).catchError((_) {}));
   }
 
   /// Speaks the initial friendly Hindi greeting when Chotu is started
@@ -127,7 +127,7 @@ class ChotuTtsService extends ChangeNotifier {
   void stop() {
     try {
       _playerCompleteSub?.cancel();
-      _audioPlayer.stop();
+      unawaited(_audioPlayer.stop().catchError((_) {}));
       _activeProcess?.kill();
     } catch (_) {}
     _activeProcess = null;

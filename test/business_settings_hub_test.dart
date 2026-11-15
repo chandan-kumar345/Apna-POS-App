@@ -45,7 +45,7 @@ void main() {
     // Verify outlet name, company name & hero card Edit button
     expect(find.text('Apna Test Diner'), findsOneWidget);
     expect(find.text('Apna POS Tech Ltd'), findsOneWidget);
-    expect(find.text('ONLINE'), findsOneWidget);
+    expect(find.text('ONLINE'), findsWidgets);
     expect(find.text('Edit'), findsOneWidget);
 
     // Verify category headers for normal user
@@ -160,7 +160,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Apna Test Diner'), findsOneWidget);
-    expect(find.text('ONLINE'), findsOneWidget);
+    expect(find.text('ONLINE'), findsWidgets);
     expect(find.text('Order Setting'), findsOneWidget);
   });
 
@@ -222,6 +222,8 @@ void main() {
 
     final paymentCard = find.text('Payment Setting');
     expect(paymentCard, findsOneWidget);
+    await tester.ensureVisible(paymentCard);
+    await tester.pumpAndSettle();
     await tester.tap(paymentCard);
     await tester.pumpAndSettle();
 

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart' show Options;
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
+import '../network/api_exception.dart';
 import '../database/database_service.dart';
 import '../models/order_model.dart';
 import '../models/menu_item_model.dart';
@@ -10,7 +11,6 @@ import 'product_service.dart';
 import 'speech_recognition_service.dart';
 import 'chotu_gemini_client.dart';
 import 'chotu_automation_client.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ChotuCommandItem {
   final String? productId;
@@ -201,6 +201,15 @@ class ChotuTranscriptionResult {
   }
 }
 
+enum ChotuAvailability {
+  checking,
+  ready,
+  signInRequired,
+  subscriptionRequired,
+  disabled,
+  unavailable,
+}
+
 class ChotuService extends ChangeNotifier {
   static final ChotuService _instance = ChotuService._internal();
   factory ChotuService() => _instance;
@@ -226,63 +235,130 @@ class ChotuService extends ChangeNotifier {
   String? get currentTableContext => _currentTableContext;
 
   String? _activeSessionId;
-  String get activeSessionId => _activeSessionId ??= 'chotu_sess_${DateTime.now().millisecondsSinceEpoch}';
+  String get activeSessionId => _activeSessionId ??=
+      'chotu_sess_${DateTime.now().millisecondsSinceEpoch}';
 
   bool _backendGeminiConfigured = false;
   bool _automationAgentEnabled = false;
   String? _automationHealthScope;
+  ChotuAvailability _availability = ChotuAvailability.checking;
+  String _accessMessage = '';
+  int _healthRequest = 0;
+  Future<bool>? _healthCheck;
+  String? _healthCheckScope;
   String get _automationScope {
     final db = DatabaseService();
     return '${ApiEndpoints.baseUrl}|${db.currentBusinessId}|${db.currentUser?.id ?? ''}';
   }
-  bool get isBackendGeminiConfigured => _backendGeminiConfigured;
-  bool get isGeminiActive => DatabaseService().chotuGeminiApiKey.isNotEmpty || _backendGeminiConfigured;
 
-  Future<bool> checkBackendHealth() async {
-    final scope = _automationScope;
-    try {
-      final res = await _apiClient.get(ApiEndpoints.chotuHealth);
-      if (res != null && res['data'] != null) {
-        _backendGeminiConfigured = res['data']['geminiConfigured'] == true;
-        _automationAgentEnabled = res['data']['automationAgent']?['enabled'] == true;
-        _automationHealthScope = scope;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('chotu_agent_enabled_$scope', _automationAgentEnabled);
-        notifyListeners();
-        return _backendGeminiConfigured;
-      }
-    } catch (_) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        _automationAgentEnabled = prefs.getBool('chotu_agent_enabled_$scope') ?? false;
-      } catch (_) {}
-      _automationHealthScope = scope;
+  bool get isBackendGeminiConfigured => _backendGeminiConfigured;
+  bool get isGeminiActive =>
+      DatabaseService().chotuGeminiApiKey.isNotEmpty ||
+      _backendGeminiConfigured;
+  ChotuAvailability get availability =>
+      _automationHealthScope == _automationScope
+      ? _availability
+      : ChotuAvailability.checking;
+  String get accessMessage =>
+      _automationHealthScope == _automationScope ? _accessMessage : '';
+
+  void _setAccessFailure(ApiException error) {
+    _automationAgentEnabled = false;
+    if (error.statusCode == 401) {
+      _availability = ChotuAvailability.signInRequired;
+      _accessMessage = 'Sign in again to use Chotu AI.';
+    } else if (error.code == 'CHOTU_AI_DISABLED') {
+      _availability = ChotuAvailability.disabled;
+      _accessMessage = 'Chotu AI access is off for this business.';
+    } else if (error.code == 'SUBSCRIPTION_REQUIRED') {
+      _availability = ChotuAvailability.subscriptionRequired;
+      _accessMessage = 'An active subscription is required for Chotu AI.';
+    } else if (error.statusCode == 403) {
+      _availability = ChotuAvailability.disabled;
+      _accessMessage = 'Your account does not have access to Chotu AI.';
+    } else {
+      _availability = ChotuAvailability.unavailable;
+      _accessMessage = 'Chotu cannot connect right now. Please retry.';
     }
-    return false;
   }
 
-  /// Returns null only when this backend has not enabled the Python agent.
-  /// Once dispatched, every outcome comes from the server or an explicit error.
+  Future<bool> checkBackendHealth() {
+    final scope = _automationScope;
+    if (_healthCheck != null && _healthCheckScope == scope) {
+      return _healthCheck!;
+    }
+    final request = ++_healthRequest;
+    _healthCheckScope = scope;
+    final pending = _fetchBackendHealth(scope, request);
+    _healthCheck = pending;
+    pending.whenComplete(() {
+      if (identical(_healthCheck, pending)) _healthCheck = null;
+    });
+    return pending;
+  }
+
+  Future<bool> _fetchBackendHealth(String scope, int request) async {
+    _automationHealthScope = scope;
+    _availability = ChotuAvailability.checking;
+    _accessMessage = '';
+    _backendGeminiConfigured = false;
+    notifyListeners();
+    try {
+      final res = await _apiClient.get(ApiEndpoints.chotuHealth);
+      if (scope != _automationScope || request != _healthRequest) return false;
+      final data = res is Map ? res['data'] : null;
+      if (data is! Map) throw const FormatException('Missing Chotu health');
+      _backendGeminiConfigured = data['geminiConfigured'] == true;
+      final agent = data['automationAgent'];
+      _automationAgentEnabled =
+          agent is Map &&
+          agent['enabled'] == true &&
+          agent['available'] == true;
+      _availability = _automationAgentEnabled
+          ? ChotuAvailability.ready
+          : ChotuAvailability.unavailable;
+      _accessMessage = _automationAgentEnabled
+          ? ''
+          : 'Chotu is temporarily unavailable. Please retry.';
+    } on ApiException catch (error) {
+      if (scope != _automationScope || request != _healthRequest) return false;
+      _setAccessFailure(error);
+    } catch (_) {
+      if (scope != _automationScope || request != _healthRequest) return false;
+      _automationAgentEnabled = false;
+      _availability = ChotuAvailability.unavailable;
+      _accessMessage = 'Chotu cannot connect right now. Please retry.';
+    }
+    notifyListeners();
+    return _availability == ChotuAvailability.ready;
+  }
+
+  /// Only dispatches to a healthy, authorized server agent. A failed access or
+  /// connection check returns an explicit error without executing locally.
   Future<Map<String, dynamic>?> processAutomationTurn({
     required String speechText,
     String? tableNumber,
   }) async {
     final scope = _automationScope;
-    if (_automationHealthScope != scope) await checkBackendHealth();
+    if (_automationHealthScope != scope ||
+        _availability != ChotuAvailability.ready) {
+      await checkBackendHealth();
+    }
     if (_automationScope != scope) {
       return {
         'status': 'unconfirmed',
-        'chotuMessage': 'Backend ya account change hua. Chotu dobara open kijiye; order dispatch nahi hua.',
+        'chotuMessage':
+            'Backend ya account change hua. Chotu dobara open kijiye; order dispatch nahi hua.',
       };
     }
-    if (!_automationAgentEnabled && !await _automationClient.hasPending(scope)) {
-      return {
-        'status': 'rejected',
-        'chotuMessage': 'Validated Chotu agent unavailable. Connect to the backend started with npm run start:chotu, then retry. Order unchanged.',
-      };
+    if (!_automationAgentEnabled) {
+      return {'status': 'rejected', 'chotuMessage': _accessMessage};
     }
     if (_automationScope != scope) {
-      return {'status': 'unconfirmed', 'chotuMessage': 'Account/backend change hua. Chotu dobara open kijiye.'};
+      return {
+        'status': 'unconfirmed',
+        'chotuMessage': 'Account/backend change hua. Chotu dobara open kijiye.',
+      };
     }
     _isProcessing = true;
     notifyListeners();
@@ -294,13 +370,19 @@ class ChotuService extends ChangeNotifier {
         if (draft.isNotEmpty) {
           expectedDrafts.add({
             'tableNumber': table.name,
-            'items': draft.map((item) => {
-              'productId': item.item.productId.isNotEmpty ? item.item.productId : item.item.id,
-              'quantity': item.quantity,
-              'note': item.note ?? '',
-              'price': item.item.effectivePrice,
-              'gstPercent': item.effectiveGstRate,
-            }).toList(),
+            'items': draft
+                .map(
+                  (item) => {
+                    'productId': item.item.productId.isNotEmpty
+                        ? item.item.productId
+                        : item.item.id,
+                    'quantity': item.quantity,
+                    'note': item.note ?? '',
+                    'price': item.item.effectivePrice,
+                    'gstPercent': item.effectiveGstRate,
+                  },
+                )
+                .toList(),
           });
         }
       }
@@ -309,14 +391,30 @@ class ChotuService extends ChangeNotifier {
       final mongoId = RegExp(r'^[a-fA-F0-9]{24}$');
       final localUserId = db.currentUser?.id ?? '';
       final result = await _automationClient.runTurn(
-        scope: scope, sessionId: activeSessionId, text: speechText,
+        scope: scope,
+        sessionId: activeSessionId,
+        text: speechText,
         tableNumber: tableNumber ?? _currentTableContext,
         apiKey: DatabaseService().chotuGeminiApiKey.trim(),
         expectedDrafts: expectedDrafts,
         apiBaseUrl: ApiEndpoints.baseUrl,
-        businessId: mongoId.hasMatch(db.currentBusinessId) ? db.currentBusinessId : null,
+        businessId: mongoId.hasMatch(db.currentBusinessId)
+            ? db.currentBusinessId
+            : null,
         userId: mongoId.hasMatch(localUserId) ? localUserId : null,
       );
+      if (_automationScope == scope &&
+          (result['accessStatusCode'] == 401 ||
+              result['accessStatusCode'] == 403)) {
+        _setAccessFailure(
+          ApiException(
+            message: result['chotuMessage']?.toString() ?? '',
+            code: result['errorCode']?.toString() ?? 'API_ERROR',
+            statusCode: result['accessStatusCode'] as int,
+          ),
+        );
+        return {...result, 'chotuMessage': _accessMessage};
+      }
       if (_automationScope == scope) {
         // A duplicate receipt may contain an older snapshot. Only install the
         // current read snapshot supplied by the server for a replay.

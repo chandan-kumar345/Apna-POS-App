@@ -1,5 +1,26 @@
 # Chotu AI implementation roadmap
 
+## Product detail popup redesign, 2026-11-15
+
+1. Isolate the existing product presentation while preserving its add callback.
+2. Implement compact typography, a quiet card layout and a fixed action footer.
+3. Verify variant/quantity/stock behavior and responsive layouts, render previews,
+   run relevant POS regressions and create the updated Android APK.
+
+## Chotu access and transparent screen follow-up, 2026-11-15
+
+1. Inspect actual business access and Python runtime; distinguish disabled AI
+   from subscription/authentication failures.
+2. Replace the opaque assistant screen with a compact glass panel and remove
+   the large illustration, setup badges, examples and redundant text.
+3. Retry failed health checks, start voice after verified access, and send typed
+   and voice instructions through the authoritative order agent.
+4. Verify access denial, retry, duplicate voice submission, small layouts and
+   existing order lifecycle; render the real widget and build/install Android.
+5. Apply the explicitly approved one-field Pizza 47 AI access repair, preserve
+   the original subscription expiry and record read-back evidence. Physical
+   microphone verification requires the owner to sign in on the phone.
+
 1. Analyse current speech, parsing, cart, KOT, invoice and settlement paths.
 2. Write PRD, TRD, architecture, stack and operation instructions.
 3. Implement the Python planner and bounded Node process bridge.

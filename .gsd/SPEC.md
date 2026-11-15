@@ -72,3 +72,56 @@ Repair observed tap-audio preparation/uncaught async errors without changing
 notification/ringtone behavior. Verify burst edits, serialized synchronization,
 local persistence, actual widget counts, existing POS/table/audio regressions
 and a fresh Android build/runtime log. Preserve unrelated work and user data.
+
+## Chotu access and transparent overlay, 2026-11-14
+
+Status: FINALIZED
+
+Diagnose Chotu failures and implement a compact transparent overlay with only
+the assistant title, current table/language, microphone, typed input and current
+transcript/result. Remove provider setup badges, large robot/marketing sections,
+example-command lists and redundant instructions. Preserve manual POS workflows
+and server validation/confirmation. Report authentication/subscription/AI-access
+and runtime errors distinctly, retry health after denied/unavailable results and
+do not cache an access denial as permanent agent configuration. Do not call AI
+or mutate orders through local fallbacks after denied server access.
+Read-only inspection confirms Pizza 47 is subscribed but its manual AI permission
+is missing/false. Prepare and verify code/UI before requesting explicit approval
+for the targeted AI toggle, respecting the earlier production-write restriction.
+Verify the Python planner, Flutter rendering and backend behavior, then check
+the installed Android build when a signed-in phone is available. Report any
+remaining authentication or live microphone verification limits explicitly.
+
+## Product details visual redesign, 2026-11-15
+
+Status: FINALIZED
+
+Redesign the POS product detail popup shown by the user. Use smaller, readable
+typography, neutral surfaces, subtle borders and a clear hierarchy. Remove the
+glowing outer shadow and excessive colored badges. Keep photo/video, food type,
+category, stock, description, GST, discounted prices, variants and nutritional
+estimates. Keep quantity and Add visible while details scroll. Preserve the
+existing cart callback, variant identity, stock limits and order workflows.
+Support small phones, tablets and enlarged text without overflow. Verify the
+rendered popup and existing relevant POS behavior; build the Android artifact.
+
+## Compact product popup follow-up, 2026-11-15
+
+Status: FINALIZED
+
+Reduce the product popup's height and excessive spacing per the marked screen.
+Use a shorter photo, inline category/availability, tighter section and variant
+spacing and a compact nutrition grid. Keep all information, readable text,
+accessible action controls, scrolling and the existing cart behavior. Render
+phone/tablet layouts and verify quantity, size selection and enlarged text.
+
+## Product photo/video fitting repair, 2026-11-15
+
+Status: FINALIZED
+
+Correct the cropped media in the compact product popup. Show the full photo or
+video at its original aspect ratio in a balanced, bounded preview frame. Avoid
+square image decoding and thumbnail ghosting behind contained video. Retain
+compact details and existing grid playback, cart behavior and stock rules.
+Verify landscape/portrait images and videos, render the actual media widget,
+then build and install the Android update.

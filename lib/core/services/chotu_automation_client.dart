@@ -166,6 +166,8 @@ class ChotuAutomationClient {
       }
       return {
         'status': 'unconfirmed',
+        'errorCode': error.code,
+        'accessStatusCode': error.statusCode,
         'chotuMessage':
             '${error.message} Order success confirm nahi hua. Same instruction repeat karke receipt check kijiye.',
       };

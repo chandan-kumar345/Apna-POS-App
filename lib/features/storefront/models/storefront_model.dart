@@ -52,17 +52,19 @@ class StorefrontBanner {
   factory StorefrontBanner.fromJson(Map<String, dynamic> json) {
     return StorefrontBanner(
       id: json['id']?.toString() ?? '',
-      tag: json['tag']?.toString() ?? 'SPECIAL OFFER',
-      headline: json['headline']?.toString() ?? 'DELICIOUS BITES',
-      subtitle: json['subtitle']?.toString() ?? 'Fresh taste crafted with passion',
-      ctaText: json['ctaText']?.toString() ?? 'ORDER NOW',
+      tag: json['tag']?.toString() ?? '',
+      headline: json['headline']?.toString() ?? '',
+      subtitle: json['subtitle']?.toString() ?? '',
+      ctaText: json['ctaText']?.toString() ?? '',
       imageUrl: json['imageUrl']?.toString() ?? '',
       accentColorHex: json['accentColorHex'] as int? ?? 0xFFFF5722,
       couponCode: json['couponCode']?.toString(),
       discountText: json['discountText']?.toString(),
       isActive: json['isActive'] is bool ? json['isActive'] as bool : true,
       displayOrder: (json['displayOrder'] as num?)?.toInt() ?? 0,
-      createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt'].toString()) : null,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString())
+          : null,
     );
   }
 
@@ -161,8 +163,12 @@ class StorefrontCartItem {
   }) : selectedAddons = selectedAddons ?? [];
 
   double get unitPrice {
-    double base = selectedSize != null ? selectedSize!.price : item.effectivePrice;
-    double addonsTotal = selectedAddons.where((a) => a.isSelected).fold(0.0, (sum, a) => sum + a.price);
+    double base = selectedSize != null
+        ? selectedSize!.price
+        : item.effectivePrice;
+    double addonsTotal = selectedAddons
+        .where((a) => a.isSelected)
+        .fold(0.0, (sum, a) => sum + a.price);
     return base + addonsTotal;
   }
 
@@ -262,6 +268,10 @@ class StorefrontData {
   final int themeColorHex;
   final int? themeColorEndHex;
   final StorefrontTableInfo? tableInfo;
+  final double? rating;
+  final String reviewCount;
+  final String deliveryEta;
+  final String pickupEta;
 
   const StorefrontData({
     required this.restaurant,
@@ -273,9 +283,14 @@ class StorefrontData {
     this.themeColorHex = 0xFFE65100,
     this.themeColorEndHex,
     this.tableInfo,
+    this.rating,
+    this.reviewCount = '',
+    this.deliveryEta = '',
+    this.pickupEta = '',
   });
 
-  bool get hasGradient => themeColorEndHex != null && themeColorEndHex != themeColorHex;
+  bool get hasGradient =>
+      themeColorEndHex != null && themeColorEndHex != themeColorHex;
 
   StorefrontData copyWith({
     RestaurantModel? restaurant,
@@ -298,6 +313,10 @@ class StorefrontData {
       themeColorHex: themeColorHex ?? this.themeColorHex,
       themeColorEndHex: themeColorEndHex ?? this.themeColorEndHex,
       tableInfo: tableInfo ?? this.tableInfo,
+      rating: rating,
+      reviewCount: reviewCount,
+      deliveryEta: deliveryEta,
+      pickupEta: pickupEta,
     );
   }
 }

@@ -6,7 +6,6 @@ import '../../../core/models/extra_model.dart';
 import '../../../core/models/order_model.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
-import '../../../core/services/firestore_service.dart';
 import '../models/storefront_model.dart';
 
 class StorefrontService {
@@ -15,11 +14,11 @@ class StorefrontService {
   StorefrontService._internal();
 
   final DatabaseService _db = DatabaseService();
-  final FirestoreService _firestore = FirestoreService();
   final ApiClient _apiClient = ApiClient();
   final Map<String, String> _categoryCache = {};
 
-  String? getCachedCategory(String slug) => _categoryCache[slug.trim().toLowerCase()];
+  String? getCachedCategory(String slug) =>
+      _categoryCache[slug.trim().toLowerCase()];
 
   void cacheCategory(String slug, String category) {
     if (slug.isNotEmpty && category.isNotEmpty) {
@@ -27,247 +26,142 @@ class StorefrontService {
     }
   }
 
-  /// Fetch dynamic storefront data for given company slug or business ID
-  Future<StorefrontData> loadStorefront(String slug, {String? tableCode, String? restaurantCode}) async {
-    final cleanSlug = slug.trim().toLowerCase();
-
-    RestaurantModel? restaurant;
-    List<String> categories = [];
-    List<MenuItemModel> menuItems = [];
-    List<ExtraModel> addOns = [];
-    List<StorefrontBanner> banners = [];
-    StorefrontTableInfo? resolvedTableInfo;
-
-    // 1. Resolve dynamic local restaurant, logo, store name and menu data from DatabaseService
-    final localRest = _db.restaurant;
-    final dynamicLogo = _db.companyLogoPath?.trim().isNotEmpty == true
-        ? _db.companyLogoPath!.trim()
-        : (localRest?.logoUrl?.trim().isNotEmpty == true ? localRest!.logoUrl!.trim() : null);
-
-    final dynamicStoreName = (localRest?.name.trim().isNotEmpty == true && localRest!.name != 'Apna Restaurant')
-        ? localRest.name.trim()
-        : ((localRest?.companyName.trim().isNotEmpty == true)
-            ? localRest!.companyName.trim()
-            : 'Pizza 47');
-
-    final isLocalMatch = cleanSlug.isEmpty ||
-        cleanSlug == 'preview' ||
-        cleanSlug == 'company-name' ||
-        (localRest != null &&
-            (localRest.storefrontSlug.toLowerCase() == cleanSlug ||
-                RestaurantModel.slugify(localRest.companyName).toLowerCase() == cleanSlug ||
-                RestaurantModel.slugify(localRest.name).toLowerCase() == cleanSlug ||
-                localRest.id.toLowerCase() == cleanSlug));
-
-    if (isLocalMatch) {
-      if (localRest != null) {
-        restaurant = localRest.copyWith(
-          name: dynamicStoreName,
-          logoUrl: dynamicLogo ?? localRest.logoUrl,
-        );
-      }
-      if (_db.menuItems.isNotEmpty) {
-        menuItems = List<MenuItemModel>.from(_db.menuItems);
-      }
-      if (_db.categories.isNotEmpty) {
-        categories = List<String>.from(_db.categories);
-      }
-      if (_db.extras.isNotEmpty) {
-        addOns = List<ExtraModel>.from(_db.extras);
-      }
-      if (_db.storefrontBanners.isNotEmpty) {
-        final active = _db.storefrontBanners.where((b) => b.isActive).toList();
-        if (active.isNotEmpty) {
-          banners = List<StorefrontBanner>.from(active);
-        }
-      }
-    }
-
-    // 2. Try loading from Backend Storefront API
-    if (restaurant == null || menuItems.isEmpty) {
-      try {
-        final queryParams = <String, dynamic>{};
-        if (tableCode != null && tableCode.isNotEmpty) queryParams['T'] = tableCode;
-        if (restaurantCode != null && restaurantCode.isNotEmpty) queryParams['R'] = restaurantCode;
-        final res = await _apiClient.get(
-          ApiEndpoints.storefront(cleanSlug.isNotEmpty ? cleanSlug : 'store'),
-          queryParameters: queryParams.isNotEmpty ? queryParams : null,
-        );
-        if (res['data'] != null && res['data'] is Map) {
-          final data = res['data'] as Map<String, dynamic>;
-          if (data['restaurant'] is Map) {
-            restaurant = RestaurantModel.fromJson(Map<String, dynamic>.from(data['restaurant'] as Map));
-          }
-          if (data['categories'] is List) {
-            categories = (data['categories'] as List).map((e) => e.toString()).toList();
-          }
-          if (data['products'] is List) {
-            menuItems = (data['products'] as List)
-                .map((e) => MenuItemModel.fromJson(Map<String, dynamic>.from(e as Map)))
-                .toList();
-          }
-          if (data['addons'] is List) {
-            addOns = (data['addons'] as List)
-                .map((e) => ExtraModel.fromJson(Map<String, dynamic>.from(e as Map)))
-                .toList();
-          }
-          if (data['banners'] is List) {
-            banners = (data['banners'] as List)
-                .map((e) => StorefrontBanner.fromJson(Map<String, dynamic>.from(e as Map)))
-                .toList();
-          }
-          if (data['table'] is Map) {
-            resolvedTableInfo = StorefrontTableInfo.fromJson(Map<String, dynamic>.from(data['table'] as Map));
-          }
-        }
-      } catch (e) {
-        debugPrint('[StorefrontService] Backend fetch note: $e');
-      }
-    }
-
-    // 3. Try loading from Firestore
-    if (restaurant == null) {
-      try {
-        restaurant = await _firestore.getRestaurantBySlug(cleanSlug);
-        if (restaurant != null) {
-          final storeMenu = await _firestore.getStorefrontMenu(restaurant.id);
-          if (storeMenu != null) {
-            if (storeMenu['categories'] is List) {
-              categories = (storeMenu['categories'] as List).map((e) => e.toString()).toList();
-            }
-            if (storeMenu['items'] is List) {
-              menuItems = (storeMenu['items'] as List)
-                  .map((e) => MenuItemModel.fromJson(Map<String, dynamic>.from(e as Map)))
-                  .toList();
-            }
-            if (banners.isEmpty && storeMenu['banners'] is List) {
-              final raw = (storeMenu['banners'] as List)
-                  .map((e) => StorefrontBanner.fromJson(Map<String, dynamic>.from(e as Map)))
-                  .where((b) => b.isActive)
-                  .toList();
-              if (raw.isNotEmpty) banners = raw;
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('[StorefrontService] Firestore fetch note: $e');
-      }
-    }
-
-    // 4. Default / Fallback matching the rich user storefront
-    RestaurantModel resolvedRestaurant = restaurant ??
-        (localRest != null
-            ? localRest.copyWith(
-                name: dynamicStoreName,
-                logoUrl: dynamicLogo ?? localRest.logoUrl,
-              )
-            : RestaurantModel(
-                id: 'pizza-47',
-                name: dynamicStoreName,
-                companyName: dynamicStoreName,
-                slug: cleanSlug.isNotEmpty ? cleanSlug : 'pizza-47',
-                tagline: 'Fresh Ingredients Bigger Happiness',
-                phone: _db.restaurant?.phone.isNotEmpty == true ? _db.restaurant!.phone : '+91 98765 43210',
-                address: _db.restaurant?.address.isNotEmpty == true ? _db.restaurant!.address : 'Sector 62, Noida',
-                cuisineType: _db.restaurant?.cuisineType.isNotEmpty == true ? _db.restaurant!.cuisineType : 'Pizzas • Burgers • Fast Food',
-                taxRate: 5.0,
-                deliveryBaseCharge: 30.0,
-                deliveryChargePerKm: 10.0,
-                freeDeliveryEnabled: true,
-                freeDeliveryMinOrder: 299.0,
-                openingTime: _db.restaurant?.openingTime ?? '10:00 AM',
-                closingTime: _db.restaurant?.closingTime ?? '11:00 PM',
-                logoUrl: dynamicLogo,
-              ));
-
-    if (dynamicLogo != null && (resolvedRestaurant.logoUrl == null || resolvedRestaurant.logoUrl!.isEmpty)) {
-      resolvedRestaurant = resolvedRestaurant.copyWith(logoUrl: dynamicLogo);
-    }
-
-    // Ensure categories are rich and categorized
-    if (categories.isEmpty) {
-      if (_db.categories.isNotEmpty) {
-        categories = List<String>.from(_db.categories);
-      } else {
-        categories = ['All', 'Pizzas', 'Burgers', 'Pastas', 'Sides', 'Beverages'];
-      }
-    }
-    if (!categories.contains('All')) {
-      categories = ['All', ...categories];
-    }
-
-    // Ensure menu items are filled and appetizing
-    if (menuItems.isEmpty) {
-      if (_db.menuItems.isNotEmpty) {
-        menuItems = List<MenuItemModel>.from(_db.menuItems);
-      } else {
-        menuItems = _generateDefaultPizzeriaMenu();
-      }
-    }
-
-    // Ensure addons are filled
-    if (addOns.isEmpty && _db.extras.isNotEmpty) {
-      addOns = List<ExtraModel>.from(_db.extras);
-    }
-
-    // Ensure banners are present if configured in DB
-    if (banners.isEmpty) {
-      if (_db.storefrontBanners.isNotEmpty) {
-        final active = _db.storefrontBanners.where((b) => b.isActive).toList();
-        if (active.isNotEmpty) {
-          banners = List<StorefrontBanner>.from(active);
-        }
-      }
-    }
-
-    if (resolvedTableInfo == null && tableCode != null && tableCode.trim().isNotEmpty) {
-      final clean = tableCode.trim().toUpperCase();
-      final numPart = int.tryParse(clean.replaceAll(RegExp(r'[^0-9]'), ''));
-      final total = _db.tables.isNotEmpty ? _db.tables.length : 20;
-      final matching = _db.tables.where((t) =>
-          t.tableNumber == numPart ||
-          t.name.toUpperCase().replaceAll(' ', '') == clean.replaceAll(' ', '') ||
-          clean == 'T${t.tableNumber.toString().padLeft(2, '0')}').firstOrNull;
-
-      final isWithin = numPart != null && numPart >= 1 && numPart <= total;
-      if (matching != null || isWithin) {
-        final tNum = matching?.tableNumber ?? numPart!;
-        resolvedTableInfo = StorefrontTableInfo(
-          isValid: true,
-          tableCode: 'T${tNum.toString().padLeft(2, '0')}',
-          tableNumber: tNum,
-          name: matching?.name ?? 'Table $tNum',
-          floor: matching?.floor ?? 'Ground Floor',
-          capacity: matching?.capacity ?? 4,
-          totalTables: total,
-        );
-      } else {
-        resolvedTableInfo = StorefrontTableInfo(
-          isValid: false,
-          tableCode: clean,
-          tableNumber: numPart,
-          totalTables: total,
-          error: 'Table \$clean is not available at this outlet. Available tables are Table 1 to Table \$total.',
-        );
-      }
-    }
-
-    cacheCategory(cleanSlug, resolvedRestaurant.cuisineType);
-    if (resolvedRestaurant.slug.isNotEmpty) {
-      cacheCategory(resolvedRestaurant.slug, resolvedRestaurant.cuisineType);
-    }
-
-    return StorefrontData(
-      restaurant: resolvedRestaurant,
-      categories: categories,
-      menuItems: menuItems,
-      addOns: addOns,
-      banners: banners,
-      isOnline: _db.isStorefrontOnline,
-      themeColorHex: _db.storefrontThemeColor,
-      themeColorEndHex: _db.storefrontThemeColorEnd,
-      tableInfo: resolvedTableInfo,
+  final Map<String, StorefrontData> _brandCache = {};
+  StorefrontData? cachedStorefront(String slug) =>
+      _brandCache[slug.trim().toLowerCase()];
+  Future<RestaurantModel> loadBranding(String slug) async {
+    final response = await _apiClient.get(
+      ApiEndpoints.storefront(slug.trim().toLowerCase()),
+      queryParameters: {'brandingOnly': 'true'},
     );
+    final json = Map<String, dynamic>.from(
+      response['data']['restaurant'] as Map,
+    );
+    return RestaurantModel.fromJson({
+      ...json,
+      'openingTime': json['openingTime'] ?? '',
+      'closingTime': json['closingTime'] ?? '',
+      'likesCount': 0,
+    });
+  }
+
+  /// Public storefronts always load from their own API. Local data is preview-only.
+  Future<StorefrontData> loadStorefront(
+    String slug, {
+    String? tableCode,
+    String? restaurantCode,
+    bool preview = false,
+  }) async {
+    final cleanSlug = slug.trim().toLowerCase();
+    final local = _db.restaurant;
+    if (preview &&
+        local != null &&
+        (cleanSlug == 'preview' ||
+            cleanSlug == local.storefrontSlug.toLowerCase() ||
+            cleanSlug == local.id.toLowerCase())) {
+      final localBanners = _db.storefrontBanners.where((b) => b.isActive).toList();
+      final data = StorefrontData(
+        restaurant: local,
+        categories: ['All', ..._db.categories.where((c) => c != 'All')],
+        menuItems: List.of(_db.menuItems),
+        addOns: List.of(_db.extras),
+        banners: localBanners.isNotEmpty
+            ? localBanners
+            : [
+                StorefrontBanner(
+                  id: 'banner_local_default',
+                  tag: 'SUPER SAVER COMBO',
+                  headline: 'COMBO DELIGHT BOX',
+                  subtitle: '${_db.menuItems.isNotEmpty ? _db.menuItems.first.name : "Pizza + Fries + Drink"} at exclusive prices',
+                  ctaText: 'GRAB COMBO',
+                  imageUrl: _db.menuItems.isNotEmpty ? _db.menuItems.first.imageUrl : '',
+                  accentColorHex: _db.storefrontThemeColor,
+                  couponCode: 'COMBO100',
+                  discountText: 'FLAT ₹100 OFF',
+                ),
+              ],
+        isOnline: _db.isStorefrontOnline,
+        themeColorHex: _db.storefrontThemeColor,
+        themeColorEndHex: _db.storefrontThemeColorEnd,
+        rating: 4.6,
+        reviewCount: '1.2k+',
+        deliveryEta: '25–35 mins',
+        pickupEta: '15–20 mins',
+      );
+      return data;
+    }
+    final response = await _apiClient.get(
+      ApiEndpoints.storefront(cleanSlug),
+      queryParameters: {
+        if (tableCode?.trim().isNotEmpty == true) 'T': tableCode!.trim(),
+        if (restaurantCode?.trim().isNotEmpty == true)
+          'R': restaurantCode!.trim(),
+      },
+    );
+    if (response['data'] is! Map)
+      throw StateError('The restaurant menu is unavailable.');
+    final json = Map<String, dynamic>.from(response['data'] as Map);
+    if (json['restaurant'] is! Map)
+      throw StateError('Restaurant profile is missing.');
+    final profile = Map<String, dynamic>.from(json['restaurant'] as Map);
+    profile['openingTime'] ??= '';
+    profile['closingTime'] ??= '';
+    profile['likesCount'] ??= 0;
+    final restaurant = RestaurantModel.fromJson(profile);
+    final items = (json['products'] as List? ?? [])
+        .whereType<Map>()
+        .map(
+          (item) => MenuItemModel.fromJson({
+            ...Map<String, dynamic>.from(item),
+            'rating': item['rating'] ?? 0,
+          }),
+        )
+        .toList();
+    final categories = (json['categories'] as List? ?? [])
+        .map((c) => c.toString())
+        .where((c) => c.trim().isNotEmpty && c != 'All')
+        .toSet();
+    categories.addAll(
+      items.map((item) => item.category).where((c) => c.trim().isNotEmpty),
+    );
+    final data = StorefrontData(
+      restaurant: restaurant,
+      categories: ['All', ...categories],
+      menuItems: items,
+      addOns: (json['addons'] as List? ?? [])
+          .whereType<Map>()
+          .map((a) => ExtraModel.fromJson(Map<String, dynamic>.from(a)))
+          .toList(),
+      banners:
+          (json['banners'] as List? ?? [])
+              .whereType<Map>()
+              .map(
+                (b) => StorefrontBanner.fromJson(Map<String, dynamic>.from(b)),
+              )
+              .where((b) => b.isActive)
+              .toList()
+            ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder)),
+      isOnline: json['isOnline'] as bool? ?? restaurant.isStorefrontOnline,
+      themeColorHex:
+          (json['themeColorHex'] as num?)?.toInt() ??
+          restaurant.storefrontThemeColor,
+      themeColorEndHex:
+          (json['themeColorEndHex'] as num?)?.toInt() ??
+          restaurant.storefrontThemeColorEnd,
+      tableInfo: json['table'] is Map
+          ? StorefrontTableInfo.fromJson(
+              Map<String, dynamic>.from(json['table'] as Map),
+            )
+          : null,
+      rating: (profile['rating'] as num?)?.toDouble() ?? 4.6,
+      reviewCount: (profile['reviewCount']?.toString().isNotEmpty == true ? profile['reviewCount'].toString() : '1.2k+'),
+      deliveryEta: (json['deliveryEta']?.toString().isNotEmpty == true ? json['deliveryEta'].toString() : '25–35 mins'),
+      pickupEta: (json['pickupEta']?.toString().isNotEmpty == true ? json['pickupEta'].toString() : '15–20 mins'),
+    );
+    _brandCache[cleanSlug] = data;
+    if (_brandCache.length > 16) _brandCache.remove(_brandCache.keys.first);
+    cacheCategory(cleanSlug, restaurant.cuisineType);
+    return data;
   }
 
   /// Submit customer online order
@@ -286,12 +180,19 @@ class StorefrontService {
     String specialNote = '',
     String? tableNumber,
   }) async {
-    final orderNumber = 'ONL-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    final orderNumber =
+        'ONL-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
     final nowIso = DateTime.now().toIso8601String();
-    final bool isDineIn = orderType == OrderType.dineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+    final bool isDineIn =
+        orderType == OrderType.dineIn ||
+        (tableNumber != null && tableNumber.trim().isNotEmpty);
     final bool resolvedIsPaid = isDineIn ? false : (paymentMethod == 'UPI');
-    final String resolvedPaymentStatus = isDineIn ? 'pending' : (resolvedIsPaid ? 'paid' : 'pending');
-    final String resolvedPaymentMethod = isDineIn ? 'Pay at Counter / Table' : paymentMethod;
+    final String resolvedPaymentStatus = isDineIn
+        ? 'pending'
+        : (resolvedIsPaid ? 'paid' : 'pending');
+    final String resolvedPaymentMethod = isDineIn
+        ? 'Pay at Counter / Table'
+        : paymentMethod;
 
     final order = OrderModel(
       id: 'ord_onl_${DateTime.now().millisecondsSinceEpoch}',
@@ -307,7 +208,9 @@ class StorefrontService {
       paymentMethod: resolvedPaymentMethod,
       paymentStatus: resolvedPaymentStatus,
       isPaid: resolvedIsPaid,
-      deliveryAddress: orderType == OrderType.delivery ? deliveryAddress : (isDineIn ? 'Table ${tableNumber?.trim() ?? "Dine-In"}' : null),
+      deliveryAddress: orderType == OrderType.delivery
+          ? deliveryAddress
+          : (isDineIn ? 'Table ${tableNumber?.trim() ?? "Dine-In"}' : null),
       createdAt: nowIso,
       customerName: customerName,
       customerPhone: customerPhone,
@@ -326,7 +229,9 @@ class StorefrontService {
         ApiEndpoints.storefrontOrder(slugTarget),
         data: {
           'orderNumber': orderNumber,
-          'orderType': isDineIn ? 'dineIn' : (orderType == OrderType.delivery ? 'delivery' : 'takeaway'),
+          'orderType': isDineIn
+              ? 'dineIn'
+              : (orderType == OrderType.delivery ? 'delivery' : 'takeaway'),
           'tableNumber': tableNumber?.trim(),
           'orderSource': 'storefront',
           'items': order.items.map((i) => i.toJson()).toList(),
@@ -335,7 +240,9 @@ class StorefrontService {
           'deliveryCharge': isDineIn ? 0.0 : deliveryFee,
           'totalAmount': totalAmount,
           'paymentMethod': paymentMethod,
-          'deliveryAddress': isDineIn ? 'Table ${tableNumber?.trim() ?? "Dine-In"}' : deliveryAddress,
+          'deliveryAddress': isDineIn
+              ? 'Table ${tableNumber?.trim() ?? "Dine-In"}'
+              : deliveryAddress,
           'customerName': customerName,
           'customerPhone': customerPhone,
           'notes': specialNote,
@@ -346,113 +253,5 @@ class StorefrontService {
     }
 
     return localSuccess;
-  }
-
-  List<MenuItemModel> _generateDefaultPizzeriaMenu() {
-    return [
-      MenuItemModel(
-        id: 'piz_01',
-        name: 'Paneer Supreme Pizza',
-        category: 'Pizzas',
-        price: 249.0,
-        salePrice: 249.0,
-        description: 'Loaded with fresh paneer, capsicum, onions, olives and 100% mozzarella cheese on our signature sauce.',
-        itemType: 'Veg',
-        emoji: '🍕',
-        imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=600&q=80',
-        variants: const [
-          ProductVariant(name: 'Regular (7")', price: 249.0),
-          ProductVariant(name: 'Medium (10")', price: 349.0),
-          ProductVariant(name: 'Large (12")', price: 449.0),
-        ],
-      ),
-      MenuItemModel(
-        id: 'piz_02',
-        name: 'Margherita Pizza',
-        category: 'Pizzas',
-        price: 199.0,
-        salePrice: 199.0,
-        description: 'Classic delight with 100% mozzarella cheese & fresh basil on a hand-stretched crust.',
-        itemType: 'Veg',
-        emoji: '🍕',
-        imageUrl: 'https://images.unsplash.com/photo-1604382355076-af4b0eb60143?auto=format&fit=crop&w=600&q=80',
-        variants: const [
-          ProductVariant(name: 'Regular (7")', price: 199.0),
-          ProductVariant(name: 'Medium (10")', price: 299.0),
-          ProductVariant(name: 'Large (12")', price: 399.0),
-        ],
-      ),
-      MenuItemModel(
-        id: 'piz_03',
-        name: 'Farmhouse Special Pizza',
-        category: 'Pizzas',
-        price: 269.0,
-        salePrice: 269.0,
-        description: 'Delightful combination of onion, capsicum, tomato, grilled mushroom and melted mozzarella cheese.',
-        itemType: 'Veg',
-        emoji: '🍕',
-        imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=600&q=80',
-        variants: const [
-          ProductVariant(name: 'Regular (7")', price: 269.0),
-          ProductVariant(name: 'Medium (10")', price: 379.0),
-          ProductVariant(name: 'Large (12")', price: 499.0),
-        ],
-      ),
-      MenuItemModel(
-        id: 'brg_01',
-        name: 'Crispy Veg Whopper Burger',
-        category: 'Burgers',
-        price: 149.0,
-        salePrice: 149.0,
-        description: 'Crispy veg patty, fresh lettuce, sliced tomatoes, creamy mayo and spicy sauce on toasted sesame buns.',
-        itemType: 'Veg',
-        emoji: '🍔',
-        imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80',
-      ),
-      MenuItemModel(
-        id: 'pst_01',
-        name: 'Creamy White Sauce Penne Pasta',
-        category: 'Pastas',
-        price: 219.0,
-        salePrice: 219.0,
-        description: 'Authentic Italian penne tossed in rich parmesan bechamel sauce with sweet corn and bell peppers.',
-        itemType: 'Veg',
-        emoji: '🍝',
-        imageUrl: 'https://images.unsplash.com/photo-1621996346565-e3d5d6281096?auto=format&fit=crop&w=600&q=80',
-      ),
-      MenuItemModel(
-        id: 'sds_01',
-        name: 'Cheesy Garlic Breadsticks',
-        category: 'Sides',
-        price: 139.0,
-        salePrice: 139.0,
-        description: 'Freshly baked buttery breadsticks infused with garlic butter and dripping with mozzarella cheese.',
-        itemType: 'Veg',
-        emoji: '🥖',
-        imageUrl: 'https://images.unsplash.com/photo-1619895092538-128341789043?auto=format&fit=crop&w=600&q=80',
-      ),
-      MenuItemModel(
-        id: 'sds_02',
-        name: 'Peri Peri French Fries',
-        category: 'Sides',
-        price: 119.0,
-        salePrice: 119.0,
-        description: 'Golden fried crispy potato fries seasoned generously with spicy African peri peri seasoning.',
-        itemType: 'Veg',
-        emoji: '🍟',
-        imageUrl: 'https://images.unsplash.com/photo-1576107232684-1279f3908594?auto=format&fit=crop&w=600&q=80',
-      ),
-      MenuItemModel(
-        id: 'bev_01',
-        name: 'Chilled Oreo Shake',
-        category: 'Beverages',
-        price: 129.0,
-        salePrice: 129.0,
-        description: 'Thick creamy milkshake blended with crunchy Oreo cookies and crowned with chocolate drizzle.',
-        itemType: 'Beverage',
-        emoji: '🥤',
-        imageUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=600&q=80',
-      ),
-    ];
   }
 }

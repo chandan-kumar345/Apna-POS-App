@@ -9,9 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 class _VideoPlatform extends VideoPlayerPlatform {
+  Size videoSize = const Size(320, 180);
   final streams = <int, StreamController<VideoEvent>>{};
   final disposed = <int>[];
   final played = <int>[];
+  final paused = <int>[];
   final failed = <int>{};
   final pending = <int>{};
 
@@ -31,7 +33,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
         VideoEvent(
           eventType: VideoEventType.initialized,
           duration: const Duration(seconds: 30),
-          size: const Size(320, 180),
+          size: videoSize,
         ),
       );
     }
@@ -51,7 +53,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
   }
 
   @override
-  Future<void> pause(int playerId) async {}
+  Future<void> pause(int playerId) async { paused.add(playerId); }
   @override
   Future<void> setLooping(int playerId, bool looping) async {}
   @override
@@ -81,7 +83,7 @@ MenuItemModel _item(String id) => MenuItemModel(
   videoUrl: 'assets/$id.mp4',
 );
 
-Widget _card(String id, {bool priority = false}) => SizedBox(
+Widget _card(String id, {bool priority = false, bool independent = false}) => SizedBox(
   width: 200,
   height: 150,
   child: PosProductMediaBox(
@@ -89,6 +91,7 @@ Widget _card(String id, {bool priority = false}) => SizedBox(
     item: _item(id),
     autoPlayVideo: !priority,
     priorityPlayback: priority,
+    independentPlayback: independent,
   ),
 );
 
@@ -123,6 +126,58 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pump();
   }
+
+  testWidgets('hidden POS tab pauses all videos and resumes without recreating decoders', (tester) async {
+    Widget host(bool enabled) => MaterialApp(home: TickerMode(enabled: enabled,
+      child: Scaffold(body: Row(children: [
+        _card('one', independent: true), _card('two', independent: true),
+      ]))));
+    await tester.pumpWidget(host(true));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+    expect(platform.played.toSet(), containsAll([0, 1]));
+    platform.paused.clear();
+    await tester.pumpWidget(host(false));
+    await tester.pump();
+    expect(platform.paused.toSet(), containsAll([0, 1]));
+    final playCount = platform.played.length;
+    await tester.pump(const Duration(seconds: 1));
+    expect(platform.played.length, playCount);
+    await tester.pumpWidget(host(true));
+    await tester.pump();
+    expect(platform.played.length, greaterThan(playCount));
+    expect(platform.streams.length, 2);
+    expect(platform.disposed, isEmpty);
+    await cleanUp(tester);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets('initially hidden tab does not allocate a video decoder', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: TickerMode(enabled: false,
+      child: Scaffold(body: _card('hidden', independent: true)))));
+    await tester.pump(const Duration(seconds: 1));
+    expect(platform.streams, isEmpty);
+    await cleanUp(tester);
+  });
+
+  testWidgets('all POS product videos play together without evicting each other', (tester) async {
+    await pumpCards(tester, [
+      _card('first', independent: true),
+      _card('second', independent: true),
+      _card('third', independent: true),
+    ]);
+    expect(platform.played.toSet(), containsAll([0, 1, 2]));
+    expect(platform.disposed, isEmpty);
+    await cleanUp(tester);
+    expect(platform.disposed.toSet(), containsAll([0, 1, 2]));
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets('a priority preview does not stop independent POS videos', (tester) async {
+    await pumpCards(tester, [_card('first', independent: true), _card('second', independent: true)]);
+    await pumpCards(tester, [_card('first', independent: true), _card('second', independent: true), _card('preview', priority: true)]);
+    expect(platform.played.toSet(), containsAll([0, 1, 2]));
+    expect(platform.disposed, isEmpty);
+    await cleanUp(tester);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   testWidgets('failed native initialization disposes its allocated decoder', (
     tester,
@@ -197,4 +252,29 @@ void main() {
     expect(find.byKey(const ValueKey('video-1')), findsOneWidget);
     await cleanUp(tester);
   });
+
+  for (final size in [const Size(1920, 1080), const Size(1080, 1920)]) {
+    testWidgets('contained preview keeps the full video frame at $size', (tester) async {
+      platform.videoSize = size;
+      await pumpCards(tester, [SizedBox(
+        width: 300, height: 180,
+        child: PosProductMediaBox(
+          item: _item('full-frame'), fit: BoxFit.contain,
+          priorityPlayback: true, independentPlayback: true,
+        ),
+      )]);
+      final video = find.byKey(const ValueKey('video-0'));
+      expect(video, findsOneWidget);
+      final frame = tester.getRect(video);
+      final canvas = tester.getRect(find.byType(PosProductMediaBox));
+      expect(frame.width / frame.height, closeTo(size.width / size.height, .001));
+      expect(frame.left, greaterThanOrEqualTo(canvas.left - .1));
+      expect(frame.top, greaterThanOrEqualTo(canvas.top - .1));
+      expect(frame.right, lessThanOrEqualTo(canvas.right + .1));
+      expect(frame.bottom, lessThanOrEqualTo(canvas.bottom + .1));
+      expect(platform.played, contains(0));
+      expect(tester.takeException(), isNull);
+      await cleanUp(tester);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+  }
 }

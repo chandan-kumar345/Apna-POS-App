@@ -596,3 +596,265 @@ limited that await to actual pending drafts. Final focused checks above pass.
 A baseline-compare harness initially hit Flutter custom package metadata errors;
 using an absolute package configuration plus graph/pubspec metadata produced the
 successful before-source comparison recorded above. No commit was requested.
+
+
+## 2026-11-14 ? Center splash handwriting and captions
+
+Centered the actual Apna/POS letter bounds while they write, then eased that
+centering into the complete glossy logo as the emblem appears. Updated the
+Android startup vector from the same measured glyph bounds. Portrait/tablet
+layouts anchor the logo to the screen center; changing captions or the preparing
+footer no longer move it. Short screens and enlarged text use a centered,
+scrollable composition. Caption rows reserve complete line heights but center
+only the visible letters, removing the leftward offset from transparent suffixes.
+Text measurement now inherits the same font/style as the rendered text.
+
+Validation: 16 splash/alignment tests passed (alignment-tests.log) over phone and
+tablet viewports, multiple reveal phases, enlarged text, initialization and route
+changes. Targeted analysis: No issues found. Visually reviewed Roboto-rendered
+frames centered-65.png and centered-100.png. Pixel measurement on 780x1688:
+wordmark phase 65% center (390,844), exactly the screen center; finished logo
+center (388,846.5), a 2px horizontal / 2.5px vertical optical difference.
+Evidence: build/splash_alignment/pixel-centering.json and preview PNGs.
+The phone is currently disconnected, so the rebuilt APK cannot be installed here.
+
+
+Centered splash final build: assembleProfile 129.9s; Built app-profile.apk (91.5MB)
+(build/splash_alignment/final-apk-build.log). Copied the finished artifact to
+build/splash_alignment/apna-pos-centered-splash.apk for this task. Preview:
+build/splash_alignment/centered-100.png. Device installation unavailable because
+ADB device inventory is empty. Build, 16 focused tests, analysis and visual QA pass.
+
+## 2026-11-14: Concurrent POS product videos
+
+Request: every video product on the POS grid should stream concurrently.
+Added opt-in independentPlayback for POS product media, including previews. Independent clients retain controller ownership and cleanup but do not consume or evict clients in the existing shared playback budget. Storefront retains its existing default coordination policy. No checkout or cart logic changed in this task.
+
+Evidence: flutter test test/pos_product_media_playback_test.dart --reporter expanded: 7 passed, including three concurrent Android product videos, preview without stopping grid videos, cleanup on removal, and previous timeout/cancellation recovery. Player platform is mocked; physical Android decoder capacity is not exercised.
+flutter test test/pos_checkout_recovery_test.dart test/checkout_roundoff_test.dart --reporter expanded: 5 passed.
+flutter analyze --no-fatal-infos lib/features/pos/widgets/pos_product_media_box.dart test/pos_product_media_playback_test.dart: no errors or warnings; three pre-existing style infos. git diff --check passed.
+
+## 2026-11-15: Chotu startup, access and transparent screen
+
+Read-only diagnosis found Pizza 47 subscribed through 17 November but without
+the separate canonical AI access flag. Python 3.11.0 passed
+`node src/scripts/startChotuAgent.js --check`. The client previously swallowed
+the access error and cached a failed startup for the same account/backend.
+
+Added scoped readiness/error state, coalesced health requests and retry after
+denied/unavailable health. Late 401/403 responses revoke client readiness. The
+overlay starts voice after successful authorization and uses only the server
+automation flow for both text and finalized speech; no local cart mutation
+fallback. Removed the full opaque background, large robot, provider badge,
+examples and instruction sections. The compact glass panel keeps table,
+language, one status/result area, microphone and typed input. Async audio stop
+and release setup failures are handled. Manual POS code was not edited here.
+
+Verification: 32 Flutter checks passed across chotu_access_overlay_test,
+chotu_voice_test, chotu_automation_snapshot_test and chotu_automation_client_test.
+Access denial creates no order; retry works in the same business; startup checks
+coalesce; text and finalized voice dispatch once; small keyboard/landscape
+layouts do not overflow. The optional screenshot capture renders the actual
+Chotu widget over a representative POS backdrop using Roboto and Material
+icons. Evidence: build/chotu_validation/flutter-tests.log and PNG capture.
+The first widget run needed a permission-channel fixture; the capture run
+also exposed an unmocked global audio event channel. Added explicit platform
+fixtures and reran successfully; these are simulated voice checks.
+
+Backend command: npm test -- --runTestsByPath
+tests/chotu_automation_agent.test.js tests/entitlement_access.test.js.
+Both suites passed, 58 tests. Actual temporary-database lifecycle evidence:
+2 cart lines, KOT preparing, unpaid bill 336, paid true, table free, one sale.
+No production order was used. Existing server public /api/v1/health also
+returned status ok. Targeted analysis reports No issues found.
+
+After the user explicitly approved enabling Chotu AI, a guarded native Mongo
+update matched/modified exactly one business. Full before/after comparison
+showed the only changed key was isChotuAiActive. Expiry stayed
+2026-11-17T06:43:19.746Z; calculated subscription and chotuAiAccess both true.
+Audit: build/chotu_validation/ai-access-repair.json. No migration, extension,
+provider configuration, role or other production data changed.
+
+ARM64 profile build succeeded (initial assembleProfile 136.2s, 91.3 MB),
+installed with adb install -r: Success. The phone opened normally to welcome
+and Login. The user chose Finish without live microphone test; sign-in and
+physical voice recognition therefore remain unverified. No credentials were
+requested and no authentication token was issued. Preserve unrelated splash
+and POS product-video edits. No commit/deployment requested.
+
+Final verification after language font styling: all 12 overlay checks including
+the rendered screenshot passed (final-overlay-tests.log); five-file analysis
+clean (analyze.log). Final assembleProfile completed in 231.1s and produced the
+91.4 MB APK; copied to build/chotu_validation/apna-pos-chotu.apk. Final capture
+chotu-transparent.png was visually checked with readable controls and no extra
+sections. The connected phone received the final build with adb install -r.
+
+
+## Smooth splash handwriting
+
+Confirmed the reported rough finish with a pixel regression: a 0.2ms step over
+letter completion abruptly filled missing silhouette areas. Original mean RGBA
+changes peaked at 0.601 (before-tests.log, failing). The revised painter eases
+those edges in before completion, uses steady pen progress and slight letter
+overlap, softly resolves the receipt instead of clipping it into a wedge, and
+crossfades the ink out as the glossy logo appears. Centered layout is retained.
+Android startup vectors now use matching linear timing, contour-length-based
+stroke pacing and a gradual silhouette fill. Flutter's background and logo widget
+instances remain stable on animation ticks, with separate repaint boundaries for
+logo/captions/footer instead of rebuilding the full scaffold each frame.
+
+Validation: 18 focused tests passed (final-tests.log); includes old and new letter
+boundaries, receipt/gloss transition, centered layouts, retained widget instances,
+startup handoff and session routing. Letter-boundary changes are below 0.01 after
+fixing; all 17 boundary checks are below 0.05 (preview/letter-completion-deltas.json).
+Targeted analysis: No issues found (final-analyze.log). Inspected motion-review.png
+and created 217 rendered frames, 50fps GIF and 60fps MP4 previews. Preview rates
+are rendered output rates, not measured device playback frame rates.
+
+Final ARM64 profile APK built in 146.5s, 91.4MB (final-apk-build.log), copied as
+apna-pos-smooth-splash.apk, installed with Success and cold-launched Status ok,
+PID 14823. Device log counts 0 unhandled exceptions, fatal errors, ANRs or native
+inflation errors. Evidence is under build/splash_smoothness/.
+Device thermal status remains 3, so no controlled on-device FPS claim is made.
+A native screenrecord attempt produced no frames and timed out; the sleeping
+orphan recorder (PID 9008, CPU time 00:00:00) could not be signaled because Android
+denied both normal stop and kill. No recording performance figures were used.
+
+
+## Complete the splash logo before navigation
+
+Two new regression tests failed on the prior code: native elapsed time could
+jump directly to 1.0, skipping Flutter's receipt/gloss phase; normal completion
+could navigate before the full artwork had a readable hold. Capped native handoff
+at the receipt reveal start (2680/3600), preserving the ending animation after a
+slow launch. The final painted frame now holds for 650ms before navigation.
+The hold runs independently of initialization, with no extra wait once it has
+already elapsed, and is skipped for reduced-motion/muted-ticker paths.
+
+20 focused completion/splash/alignment/smoothness tests pass (final-tests.log).
+Targeted analysis: No issues found (analyze.log). ARM64 profile build succeeded
+in 159.9s (91.4MB), copied to apna-pos-complete-logo.apk and installed with Success.
+Cold launch Status ok, TotalTime 2894ms / WaitTime 3141ms. Real phone screenshots
+final-stage-1.png and final-stage-2.png visibly show the entire glossy original
+logo, including receipt and flourish; final-stage-3.png shows the subsequent POS.
+Evidence and installable artifact: build/splash_completion/.
+
+## Restore the receipt in Android's launch animation (2026-11-15)
+
+The user's small startup-logo screenshot exposed a separate native-artwork bug:
+`tool/generate_android_startup_writing.py` explicitly skipped glyph 8 (receipt).
+Flutter's complete glossy artwork was correct, but Android only drew the words
+and right flourish. Removed the skip and traced the original atlas into blue
+receipt border, white paper and navy print layers. All three reveal together at
+2680-3040ms. The native artwork eases from wordmark-centered to full-logo-centered
+coordinates, keeping the receipt inside Android's safe circular icon area.
+Flutter's late-native handoff cap now reserves the glossy resolve at 3000/3600
+without replaying the completed native receipt from invisible.
+
+Evidence: build/native_receipt/. Three native XML regression checks failed
+before the change and pass afterward (native-tests.log). The generated-vector
+preview contains all three receipt layers and zero pixels outside the safe icon
+circle (visual-check.log, native-screen-preview.png). 20 focused Flutter tests
+pass (flutter-tests.log); the strengthened late-handoff test also passes
+(handoff-tests.log). Targeted Dart analysis has no issues (analyze.log).
+ARM64 profile APK built successfully in 182.1s (final-apk-build.log), copied to
+apna-pos-receipt-logo.apk and installed with Success (final-install.log).
+Cold launch Status ok, Activity 2734ms / WaitTime 2807ms (final-launch.log).
+Inspected final-device-startup.png: full glossy receipt/paper/three printed lines
+remain visible in Flutter. Native artwork verified through generated XML,
+packaged resources and its rendered preview; the phone capture is the Flutter
+stage. Startup log scan found no fatal, unhandled, ANR or XML inflation errors.
+
+## 2026-11-15: POS and Business Settings tab-switch work reduction
+
+User reports glitches when switching screens and opening dialogs, particularly POS and Business Settings. Preserved concurrent Chotu, splash, and product-video edits.
+
+Changes: product media now respects the existing tab TickerMode, pauses native videos and slide timers while hidden, avoids starting decoders for initially hidden tabs, and resumes existing controllers on return. Multiple visible POS videos still play concurrently. In-flight initialization checks visibility before starting playback. POS skips database-driven catalog redraws while its tab is hidden and reads current shared data on return. No cart mutation, checkout calculation, KOT, or settings save rules changed.
+
+Settings hub logos now decode at their actual display size times device pixel ratio (up to 1024 pixels) for memory/network/file/asset sources. Bounded the existing base64 cache to eight entries instead of retaining every edited logo indefinitely. UI appearance, form fields and controls are preserved.
+
+Verification: combined media, quantity-performance, checkout-recovery and checkout-roundoff suites returned 25 passed. Includes two-video tab hide/resume without decoder recreation, initially hidden tab with zero decoder allocation, three-video simultaneous playback, hidden DB-update catalog test, quantity bursts, draft/table isolation, cancellation recovery and totals. Five selected Settings hub checks pass: profile edit/save, compact mobile layout, POS View, payment modal and PIN modal. Updated old test assumptions to allow both existing ONLINE badges and scroll the payment card into view before tapping. Targeted six-file analysis: no errors/warnings; three existing brace style infos. git diff --check passed.
+
+Limits: no physical phone FPS/thermal profiling or installation was performed. These changes remove demonstrated background work; they do not establish that all reported device glitches are resolved. No new APK was built or deployed in this task.
+
+## 2026-11-15: Compact professional product detail popup
+
+Replaced the dense, glowing POS popup with a white card, smaller title/price
+and secondary type, restrained stock/GST labels, equal-width size options and
+one neutral nutrition panel. Photo/video and original nutritional estimates
+remain; estimates are labeled. Quantity/Add are in a fixed footer, with scroll
+in the body and responsive two-column tablet layout. Close remains reachable.
+
+Extracted presentation to pos_product_detail_dialog.dart. The register retains
+its original variant MenuItemModel mapping and _addToCart call. Comparison
+against a pre-edit snapshot confirms all register code outside this method and
+its replacement import is unchanged (Unrelated register source preserved: True).
+No backend or production order changes. Other dirty files preserved.
+
+Evidence: dialog-tests.log reports 11 tests passed: selected size/quantity and
+exactly one callback; quantity floor and stock cap; out-of-stock denial; close
+without cart mutation; single-price discount/Non-GST; 320x568, 390x844,
+640x360, 1024x768 and 2x text scaling. The footer stays fixed while details
+scroll. pos-regressions.log reports 14 media/checkout checks passed.
+analyze.log reports No issues found for the new widget, register and tests.
+The first stock test finder matched Flutter's RawTooltip instead of IconButton;
+corrected the finder and reran. Capture initially needed an awaited memory
+image decode; final capture asserts the photo is decoded before saving.
+
+Visually reviewed product-details-390.png with the actual product photo,
+Roboto and Material icons. Tablet layout also rendered at 1024x768. Evidence:
+build/product_details_validation/. Android APK build pending at this entry.
+
+Final product popup delivery: assembleProfile succeeded in 344.3s and produced
+app-profile.apk (91.4 MB). Copied to
+build/product_details_validation/apna-pos-product-details.apk. Verified the
+product-detail-add, product-detail-scroll and Close product details markers
+inside the packaged ARM64 libapp.so. adb install -r returned Success. Both
+phone and tablet final photo previews were visually reviewed. No production
+cart, KOT, bill or payment was submitted for verification.
+
+## 2026-11-15: Reduce product popup height and whitespace
+
+Shortened mobile media from 140-184 to 104-132 logical pixels and wide media
+from 280 to 220. Reduced body/section/footer padding, combined category and
+availability, tightened size choices and moved the health score into the
+nutrition heading. Four metrics share a row on ordinary narrow phones; large
+text retains two columns. Information, cart callback and stock rules preserved.
+
+All 11 existing dialog/render checks passed (compact-tests.log), including
+quantity/variant outcomes, stock cap, 320x568, landscape, tablet and 2x text.
+Widget analysis: No issues found (compact-analyze.log). Visually reviewed final
+phone capture with the actual pizza photo. PNG center-column bounds comparison
+at 390x844: card height 679 -> 499 logical pixels, a 26.5% reduction. Evidence:
+build/product_details_validation/compact-height-comparison.json and
+product-details-390.png. Android profile build in progress at this entry.
+
+Compact follow-up final delivery: assembleProfile succeeded in 252.2s,
+91.4 MB. Copied to build/product_details_validation/apna-pos-product-details-compact.apk.
+adb install -r returned Success on the connected phone. Phone and tablet
+previews reviewed; all information and existing cart behavior retained.
+
+## 2026-11-15: Correct product photo/video proportions
+
+The very shallow compact frame plus cover fitting clipped the food. Also found
+all seven image paths decoding to fixed 480x480, which changes non-square source
+proportions. Kept the tight details but gave the popup a bounded 16:9-based media
+frame (140-180 on phones), contain fitting and 960px photo decoding. Grid stays
+cover/480px. Removed fixed decode height to retain natural aspect ratios for
+asset, base64, network, local and fallback images. Contained initialized video
+uses a neutral canvas, preventing a different thumbnail showing through the
+video margins. No playback allocation, cart, quantity or backend changes.
+
+Final tests: 24 passed across dialog, image fitting and media playback suites
+(media-fitting-tests.log). New portrait/landscape photo checks verify actual
+decoded proportions; portrait/landscape video checks verify the rendered frame
+stays inside the canvas and preserves its ratio. Existing concurrent playback,
+cancellation, failure recovery, quantity, variant and enlarged-text checks pass.
+Initial real-image capture fixture needed precaching before opening the dialog;
+loading the file inside fake async had stalled the fixture. Corrected it and
+reran successfully. Final captures now use the actual PosProductMediaBox rather
+than a stand-in Image widget. Visually reviewed product-details-390.png with
+the full pizza photo visible. Build and analysis under
+build/product_details_validation/ (media-fitting-*). Android build pending.
+Media fitting analysis: no errors or warnings; three existing brace-style
+infos in pos_product_media_box.dart. Other in-progress changes preserved.

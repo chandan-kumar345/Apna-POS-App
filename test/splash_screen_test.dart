@@ -20,7 +20,9 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   Future<void> finishTransition(WidgetTester tester) async {
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(
+      SplashScreen.completedLogoHoldDuration + const Duration(milliseconds: 20),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pump();
@@ -333,8 +335,12 @@ void main() {
           ),
           findsNothing,
         );
-        await tester.pump(const Duration(milliseconds: 450));
+        await tester.pump(
+          SplashScreen.completedLogoHoldDuration +
+              const Duration(milliseconds: 450),
+        );
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
         expect(
           find.byType(GetStartedScreen),
           restored ? findsNothing : findsOneWidget,

@@ -238,6 +238,35 @@ class ProfileController {
         changedFields.push('phone');
       }
       if (req.body.tagline !== undefined) allowedUpdates['profile.tagline'] = req.body.tagline;
+      if (req.body.slug !== undefined) {
+        const slug = String(req.body.slug).trim().toLowerCase();
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw ApiError.badRequest('Invalid storefront slug');
+        const duplicate = await Business.exists({ _id: { $ne: business._id }, 'profile.slug': slug });
+        if (duplicate) throw ApiError.badRequest('This storefront URL is already in use');
+        allowedUpdates['profile.slug'] = slug;
+      }
+      for (const field of ['openingTime', 'closingTime']) {
+        if (req.body[field] !== undefined) allowedUpdates[`orderSettings.${field}`] = String(req.body[field]).slice(0, 30);
+      }
+      if (req.body.storefrontOnline !== undefined) {
+        if (typeof req.body.storefrontOnline !== 'boolean') throw ApiError.badRequest('Invalid storefront online status');
+        allowedUpdates['storefront.isOnline'] = req.body.storefrontOnline;
+      }
+      for (const field of ['storefrontThemeColor', 'storefrontThemeColorEnd']) {
+        if (req.body[field] !== undefined) {
+          const value = req.body[field];
+          if (value !== null && (!Number.isInteger(value) || value < 0 || value > 0xFFFFFFFF)) throw ApiError.badRequest('Invalid storefront color');
+          if (field === 'storefrontThemeColor' && value === null) throw ApiError.badRequest('Primary color is required');
+          allowedUpdates[field === 'storefrontThemeColor' ? 'storefront.themeColorHex' : 'storefront.themeColorEndHex'] = value;
+        }
+      }
+      if (req.body.storefrontBanners !== undefined) {
+        if (!Array.isArray(req.body.storefrontBanners) || req.body.storefrontBanners.length > 50) throw ApiError.badRequest('Invalid storefront banners');
+        allowedUpdates['storefront.banners'] = req.body.storefrontBanners.map((banner) => {
+          if (!banner || typeof banner !== 'object') throw ApiError.badRequest('Invalid banner');
+          return Object.fromEntries(['id', 'tag', 'headline', 'subtitle', 'ctaText', 'imageUrl', 'accentColorHex', 'couponCode', 'discountText', 'isActive', 'displayOrder'].filter((key) => banner[key] !== undefined).map((key) => [key, banner[key]]));
+        });
+      }
       if (req.body.address !== undefined) allowedUpdates['address.addressLine'] = req.body.address;
       if (req.body.taxRate !== undefined) allowedUpdates['orderSettings.tax.percentage'] = req.body.taxRate;
       if (req.body.upiId !== undefined) allowedUpdates['orderSettings.upiId'] = req.body.upiId;
@@ -291,8 +320,10 @@ class ProfileController {
       const updatedBusiness = await Business.findOneAndUpdate(
         { ownerId: req.user._id },
         {
-          $set: allowedUpdates,
-          ...(business.profileHistory?.length ? { $set: { profileHistory: business.profileHistory } } : {}),
+          $set: {
+            ...allowedUpdates,
+            ...(business.profileHistory?.length ? { profileHistory: business.profileHistory } : {}),
+          },
         },
         { new: true, upsert: true }
       );

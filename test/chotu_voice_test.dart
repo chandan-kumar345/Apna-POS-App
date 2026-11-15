@@ -128,7 +128,7 @@ void main() {
       expect(find.byType(Image), findsNothing);
     });
 
-    testWidgets('Tapping ChotuMicButton opens growing robot overlay with BackdropFilter blur', (WidgetTester tester) async {
+    testWidgets('Tapping ChotuMicButton opens transparent Chotu overlay', (WidgetTester tester) async {
       final db = DatabaseService();
       db.restaurant = RestaurantModel(
         id: 'test_rest',
@@ -157,10 +157,11 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify full-screen overlay opens with BackdropFilter blur and robot
+      // Verify the assistant opens over the POS with glass and one title.
       expect(find.byType(BackdropFilter), findsWidgets);
       expect(find.byType(ChotuVoiceSheet), findsOneWidget);
-      expect(find.byType(Image), findsWidgets);
+      expect(find.text('Chotu AI'), findsOneWidget);
+      expect(find.byKey(const ValueKey('chotu-glass-panel')), findsOneWidget);
 
       // Verify tapping blurred background dismisses overlay
       await tester.tapAt(const Offset(20, 20));

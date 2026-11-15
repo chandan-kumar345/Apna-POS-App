@@ -25,6 +25,8 @@ const businessSchema = new mongoose.Schema(
       index: true,
     },
     profile: {
+      slug: { type: String, default: '', trim: true, lowercase: true },
+      tagline: { type: String, default: '', trim: true },
       profileImage: { type: String, default: '' },
       name: { type: String, default: '', trim: true },
       phone: { type: String, default: '', trim: true },
@@ -78,6 +80,8 @@ const businessSchema = new mongoose.Schema(
       },
     },
     orderSettings: {
+      openingTime: { type: String, default: '' },
+      closingTime: { type: String, default: '' },
       services: {
         dineIn: { type: Boolean, default: true },
         takeaway: { type: Boolean, default: false },
@@ -120,6 +124,20 @@ const businessSchema = new mongoose.Schema(
         freeDeliveryMinOrder: { type: Number, default: 0 },
         maxDistanceKm: { type: Number, default: 10 },
       },
+    },
+    storefront: {
+      isOnline: { type: Boolean, default: true },
+      themeColorHex: { type: Number, default: 0xFFE65100 },
+      themeColorEndHex: { type: Number, default: null },
+      deliveryEta: { type: String, default: '' },
+      pickupEta: { type: String, default: '' },
+      banners: [{
+        id: String, tag: String, headline: String, subtitle: String,
+        ctaText: String, imageUrl: String, accentColorHex: Number,
+        couponCode: String, discountText: String,
+        isActive: { type: Boolean, default: true },
+        displayOrder: { type: Number, default: 0 },
+      }],
     },
     whatsappSettings: {
       enabled: { type: Boolean, default: false },

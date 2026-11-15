@@ -135,6 +135,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
 
   /// Neumorphic Profile Logo / Avatar Widget Resolver
   Widget _buildLogoImageWidget(String? logo, {String? fallbackName, double size = 78}) {
+    final decodeSize = (size * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(1, 1024);
     if (logo == 'none') {
       return Container(
         color: _NeumorphicTheme.sunkenSurface,
@@ -210,10 +211,13 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
           final commaIdx = trimmed.indexOf(',');
           final clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
           bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          if (_base64Cache.length >= 8) _base64Cache.remove(_base64Cache.keys.first);
           _base64Cache[trimmed] = bytes;
         }
         return Image.memory(
           bytes,
+          cacheWidth: decodeSize,
+          cacheHeight: decodeSize,
           width: size,
           height: size,
           fit: BoxFit.cover,
@@ -230,6 +234,8 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return Image.network(
         trimmed,
+        cacheWidth: decodeSize,
+        cacheHeight: decodeSize,
         width: size,
         height: size,
         fit: BoxFit.cover,
@@ -243,6 +249,8 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     if (trimmed.startsWith('assets/')) {
       return Image.asset(
         trimmed,
+        cacheWidth: decodeSize,
+        cacheHeight: decodeSize,
         width: size,
         height: size,
         fit: BoxFit.cover,
@@ -259,6 +267,8 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
         if (f.existsSync()) {
           return Image.file(
             f,
+            cacheWidth: decodeSize,
+            cacheHeight: decodeSize,
             width: size,
             height: size,
             fit: BoxFit.cover,

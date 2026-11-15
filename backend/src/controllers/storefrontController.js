@@ -30,7 +30,7 @@ class StorefrontController {
         $or: [
           { 'profile.slug': rawSlug },
           { slug: rawSlug },
-          { 'profile.companyName': { $regex: new RegExp(`^${rawSlug.replace(/-/g, ' ')}$`, 'i') } },
+          { 'profile.companyName': { $regex: new RegExp('^' + rawSlug.replace(/-/g, ' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') } },
         ],
       }).lean();
 
@@ -39,12 +39,44 @@ class StorefrontController {
         business = await Business.findById(rawSlug).lean();
       }
 
-      // If still not found, check if any business exists to provide fallback preview data
-      if (!business) {
-        business = await Business.findOne().lean();
-      }
+      if (!business) throw new ApiError(404, 'Storefront business not found');
+      const businessId = business._id;
 
-      const businessId = business ? business._id : null;
+      const config = business.storefront || {};
+      const settings = business.orderSettings || {};
+      const services = Object.entries(settings.services || {})
+        .filter(([, enabled]) => enabled === true)
+        .map(([key]) => ({ dineIn: 'Dine In', takeaway: 'Takeaway', delivery: 'Delivery' }[key]))
+        .filter(Boolean);
+      const restaurant = {
+        id: String(business._id),
+        name: business.profile?.companyName || business.profile?.name || '',
+        companyName: business.profile?.companyName || '',
+        slug: business.profile?.slug || business.slug || rawSlug,
+        tagline: business.profile?.tagline || '',
+        cuisineType: business.profile?.cuisineType || business.business?.businessType || 'Indian & Continental',
+        phone: business.profile?.phone || '',
+        address: [business.address?.addressLine, business.address?.city, business.address?.state, business.address?.postalCode].filter(Boolean).join(', '),
+        logoUrl: business.profile?.profileImage || '',
+        currencySymbol: ({ INR: '₹', USD: '$', EUR: '€', GBP: '£' })[business.business?.currency] || business.business?.currency || '₹',
+        openingTime: settings.openingTime || '09:00 AM', closingTime: settings.closingTime || '11:00 PM',
+        services,
+        taxRate: settings.tax?.type === 'no_gst' ? 0 : (settings.tax?.percentage ?? 0),
+        billingType: settings.tax?.type === 'no_gst' ? 'Non-GST' : 'GST',
+        upiId: settings.upiId || '', tableCount: settings.tableCount ?? 0,
+        deliveryBaseCharge: settings.deliverySettings?.baseCharge ?? 0,
+        deliveryChargePerKm: settings.deliverySettings?.chargePerKm ?? 0,
+        freeDeliveryEnabled: settings.deliverySettings?.freeDeliveryEnabled ?? false,
+        freeDeliveryMinOrder: settings.deliverySettings?.freeDeliveryMinOrder ?? 0,
+        maxDeliveryDistanceKm: settings.deliverySettings?.maxDistanceKm ?? 0,
+        isStorefrontOnline: config.isOnline ?? true,
+        storefrontThemeColor: config.themeColorHex ?? 0xFFE65100,
+        storefrontThemeColorEnd: config.themeColorEndHex ?? null,
+        likesCount: 0,
+        rating: business.profile?.rating ?? 4.6,
+        reviewCount: business.profile?.reviewCount ?? '1.2k+',
+      };
+      if (req.query.brandingOnly === 'true') return ApiResponse.success(res, { restaurant }, 'Restaurant branding loaded');
 
       // 2. Fetch categories & products
       let categories = [];
@@ -59,62 +91,30 @@ class StorefrontController {
         ]);
       }
 
-      // Default fallback categories if empty
-      const categoryNames = categories.length > 0 
-        ? categories.map(c => c.name) 
-        : (products.length > 0 
-            ? [...new Set(products.map(p => p.category || 'General'))] 
-            : ['Pizzas', 'Burgers', 'Pastas', 'Sides', 'Beverages']);
+      const categoryNames = [...new Set(categories.length
+        ? categories.map(c => c.name).filter(Boolean)
+        : products.map(p => p.category).filter(Boolean))];
+      let banners = (config.banners || []).filter(b => b.isActive !== false)
+        .sort((a,b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 
-      // Formatted restaurant profile
-      const restaurant = {
-        id: business?._id?.toString() || 'store_preview',
-        name: business?.profile?.companyName || business?.profile?.name || 'Pizza 47',
-        companyName: business?.profile?.companyName || 'Pizza 47',
-        slug: rawSlug,
-        tagline: business?.profile?.tagline || 'Pizzas • Burgers • Fast Food',
-        cuisineType: business?.business?.businessType || 'Pizzas • Burgers • Fast Food',
-        phone: business?.profile?.phone || '+91 98765 43210',
-        address: business?.address?.addressLine 
-          ? `${business.address.addressLine}, ${business.address.city || ''}`.trim() 
-          : 'Sector 62, Noida',
-        logoUrl: business?.profile?.profileImage || '',
-        currencySymbol: business?.business?.currency === 'USD' ? '$' : '₹',
-        rating: 4.6,
-        reviewCount: '1.2k+',
-        status: 'Open',
-        openingTime: '10:00 AM',
-        closingTime: '11:00 PM',
-        deliveryBaseCharge: business?.orderSettings?.deliverySettings?.baseCharge || 0,
-        deliveryChargePerKm: business?.orderSettings?.deliverySettings?.chargePerKm || 0,
-        freeDeliveryEnabled: business?.orderSettings?.deliverySettings?.freeDeliveryEnabled || false,
-        freeDeliveryMinOrder: business?.orderSettings?.deliverySettings?.freeDeliveryMinOrder || 299,
-        deliveryEta: '25–35 mins',
-        pickupEta: '15–20 mins',
-        services: ['Takeaway', 'Delivery'],
-      };
-
-      // Promotional Banners
-      const banners = [
-        {
-          id: 'banner_1',
-          tag: 'HOT & CHEESY',
-          headline: 'PIZZA LOVERS',
-          subtitle: 'Fresh Ingredients Bigger Happiness',
-          ctaText: 'ORDER NOW',
-          imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1200&q=80',
-          accentColor: '#E65100',
-        },
-        {
-          id: 'banner_2',
-          tag: 'WEEKEND SPECIAL',
-          headline: 'BUY 1 GET 1 FREE',
-          subtitle: 'On all Large Gourmet Pizzas',
-          ctaText: 'EXPLORE DEALS',
-          imageUrl: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=1200&q=80',
-          accentColor: '#D84315',
-        },
-      ];
+      if (banners.length === 0) {
+        const topDish = products[0];
+        banners = [
+          {
+            id: 'banner_combo_1',
+            tag: 'SUPER SAVER COMBO',
+            headline: 'COMBO DELIGHT BOX',
+            subtitle: `${topDish ? topDish.name : 'Delicious Food'} + Fries + Cold Drink at exclusive prices`,
+            ctaText: 'GRAB COMBO',
+            imageUrl: topDish?.imageUrl || (topDish?.images && topDish.images[0]) || 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800',
+            accentColorHex: 0xFFE65100,
+            couponCode: 'COMBO100',
+            discountText: 'FLAT ₹100 OFF',
+            isActive: true,
+            displayOrder: 0,
+          }
+        ];
+      }
 
       // Parse optional table ordering query parameters (e.g. ?R=R1&T=T01)
       const tableQuery = (req.query.T || req.query.t || req.query.table || req.query.tableNumber || '').toString().trim();
@@ -132,7 +132,7 @@ class StorefrontController {
         }
         const configuredCount = (business?.orderSettings?.tableCount && business.orderSettings.tableCount > 0)
           ? business.orderSettings.tableCount
-          : (tables.length > 0 ? tables.length : 12);
+          : tables.length;
         const maxDbTableNum = tables.length > 0
           ? Math.max(...tables.map((t) => t.tableNumber || 0))
           : configuredCount;
@@ -180,6 +180,8 @@ class StorefrontController {
           ...p,
           id: p._id ? p._id.toString() : (p.id || p.productId),
           productId: p.productId || (p._id ? p._id.toString() : p.id),
+          itemType: p.itemType || p.foodType || 'Veg',
+          rating: p.rating || 4.8,
           variants: Array.isArray(p.variants) ? p.variants : [],
         })),
         addons: addons.map((a) => ({
@@ -187,6 +189,11 @@ class StorefrontController {
           id: a._id ? a._id.toString() : a.id,
         })),
         banners,
+        isOnline: restaurant.isStorefrontOnline,
+        themeColorHex: restaurant.storefrontThemeColor,
+        themeColorEndHex: restaurant.storefrontThemeColorEnd,
+        deliveryEta: config.deliveryEta || (business.orderSettings?.deliverySettings?.estimatedTimeMinutes ? `${business.orderSettings.deliverySettings.estimatedTimeMinutes} mins` : '25–35 mins'),
+        pickupEta: config.pickupEta || '15–20 mins',
         table: tableInfo,
       }, 'Storefront loaded successfully');
     } catch (error) {
@@ -208,10 +215,6 @@ class StorefrontController {
       }
 
       if (!business) {
-        business = await Business.findOne();
-      }
-
-      if (!business) {
         throw new ApiError(404, 'Storefront business not found');
       }
 
@@ -229,7 +232,7 @@ class StorefrontController {
         const tables = await Table.find({ businessId }).lean();
         const configuredCount = (business?.orderSettings?.tableCount && business.orderSettings.tableCount > 0)
           ? business.orderSettings.tableCount
-          : (tables.length > 0 ? tables.length : 12);
+          : tables.length;
         const maxDbTableNum = tables.length > 0
           ? Math.max(...tables.map((t) => t.tableNumber || 0))
           : configuredCount;

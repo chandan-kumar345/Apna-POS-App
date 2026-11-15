@@ -44,13 +44,11 @@ abstract class _PosPlaybackClient {
   void onPlaybackSlotRevoked();
   void onPlaybackSlotAvailable();
   bool get isMountedClient;
+  bool get usesIndependentPlayback;
 }
 
-/// Global Playback Coordinator to enforce strict hardware video decoder limits.
-/// Android/iOS hardware video decoders (MediaCodec / Codec2) have strict hardware instance
-/// and surface buffer pool limits. This coordinator ensures at most 1 decoder on mobile
-/// and 2 decoders on desktop/web are active simultaneously, automatically disposing
-/// inactive decoders to avoid GPU buffer timeouts and frame stutter.
+/// Default playback budget for shared media clients. POS product cards explicitly
+/// opt into independent playback so they do not queue behind or evict one another.
 class _PosMediaPlaybackCoordinator {
   static final _PosMediaPlaybackCoordinator instance =
       _PosMediaPlaybackCoordinator._();
@@ -71,7 +69,10 @@ class _PosMediaPlaybackCoordinator {
   bool isCurrentSlot(_PosPlaybackClient client) =>
       _activeClients.contains(client);
 
-  bool get hasSlotAvailable => _activeClients.length < _maxActiveDecoders;
+  int get _coordinatedCount =>
+      _activeClients.where((client) => !client.usesIndependentPlayback).length;
+
+  bool get hasSlotAvailable => _coordinatedCount < _maxActiveDecoders;
 
   /// Acquires a hardware decoder slot with LRU eviction.
   /// When slots are exhausted, the least recently used decoder is evicted cleanly
@@ -87,15 +88,16 @@ class _PosMediaPlaybackCoordinator {
       return true;
     }
 
-    if (!forcePriority && _activeClients.length >= _maxActiveDecoders) {
+    if (!client.usesIndependentPlayback && !forcePriority && !hasSlotAvailable) {
       if (!_waitingClients.contains(client)) _waitingClients.add(client);
       return false;
     }
 
     _waitingClients.remove(client);
     _activeClients.add(client);
-    while (_activeClients.length > _maxActiveDecoders) {
-      final evicted = _activeClients.removeAt(0);
+    while (_coordinatedCount > _maxActiveDecoders) {
+      final evicted = _activeClients.firstWhere((c) => !c.usesIndependentPlayback);
+      _activeClients.remove(evicted);
       if (evicted != client && evicted.isMountedClient) {
         evicted.onPlaybackSlotRevoked();
       }
@@ -133,6 +135,7 @@ class _PosMediaPlaybackCoordinator {
 class PosProductMediaBox extends StatefulWidget {
   final MenuItemModel item;
   final BoxFit fit;
+  final int imageCacheWidth;
   final double? width;
   final double? height;
   final BorderRadius? borderRadius;
@@ -142,12 +145,15 @@ class PosProductMediaBox extends StatefulWidget {
   final bool autoSlide;
   final bool priorityPlayback;
   final bool autoPlayVideo;
+  /// Allow this card to play alongside other POS products without slot eviction.
+  final bool independentPlayback;
   final VoidCallback? onTap;
 
   const PosProductMediaBox({
     super.key,
     required this.item,
     this.fit = BoxFit.cover,
+    this.imageCacheWidth = 480,
     this.width,
     this.height,
     this.borderRadius,
@@ -157,6 +163,7 @@ class PosProductMediaBox extends StatefulWidget {
     this.autoSlide = false,
     this.priorityPlayback = false,
     this.autoPlayVideo = false,
+    this.independentPlayback = false,
     this.onTap,
   });
 
@@ -188,6 +195,8 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
   }
 
   final List<PosMediaItem> _mediaList = [];
+  @override
+  bool get usesIndependentPlayback => widget.independentPlayback;
   PageController? _pageController;
   int _currentPage = 0;
 
@@ -196,6 +205,43 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
   bool _isVideoInitialized = false;
   bool _isVideoLoading = false;
   bool _isVideoError = false;
+  bool _playbackEnabled = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final enabled = TickerMode.valuesOf(context).enabled;
+    if (_playbackEnabled == enabled) return;
+    _playbackEnabled = enabled;
+    if (!enabled) {
+      _streamInitDebounceTimer?.cancel();
+      _autoSlideTimer?.cancel();
+      _resumeAutoSlideTimer?.cancel();
+      final controller = _videoController;
+      if (controller != null) {
+        unawaited(controller.pause().catchError((Object error) {
+          debugPrint('[PosProductMediaBox] Hidden video pause: $error');
+        }));
+      }
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_playbackEnabled || widget.isMini) return;
+        if (_mediaList[_currentPage].type == PosMediaType.video &&
+            (widget.autoPlayVideo || widget.priorityPlayback)) {
+          final controller = _videoController;
+          if (controller != null && _isVideoInitialized) {
+            unawaited(controller.play().catchError((Object error) {
+              debugPrint('[PosProductMediaBox] Visible video resume: $error');
+            }));
+          } else if (!_isVideoLoading && !_isVideoError) {
+            _scheduleVideoStreamInit(_mediaList[_currentPage].url);
+          }
+        } else if (widget.autoSlide) {
+          _scheduleAutoSlideForImages();
+        }
+      });
+    }
+  }
 
   // Concurrency & Cancellation Control
   int _initGeneration = 0;
@@ -402,7 +448,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
 
   void _scheduleVideoStreamInit(String videoUrl, {bool forcePriority = false}) {
     _streamInitDebounceTimer?.cancel();
-    if (widget.isMini) return;
+    if (widget.isMini || !_playbackEnabled) return;
 
     // Use fast 25ms delay if priority playback is requested, or 120ms debounce for passive cards
     final debounceDuration = forcePriority || widget.priorityPlayback
@@ -410,7 +456,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
         : const Duration(milliseconds: 120);
 
     _streamInitDebounceTimer = Timer(debounceDuration, () {
-      if (!mounted) return;
+      if (!mounted || !_playbackEnabled) return;
       if (_currentPage >= 0 &&
           _currentPage < _mediaList.length &&
           _mediaList[_currentPage].type == PosMediaType.video) {
@@ -534,7 +580,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
       _videoController!.addListener(_videoListener);
 
       // Auto-play immediately if active slide is currently on Video
-      if (_mediaList.isNotEmpty &&
+      if (_playbackEnabled && _mediaList.isNotEmpty &&
           _currentPage < _mediaList.length &&
           _mediaList[_currentPage].type == PosMediaType.video) {
         try {
@@ -634,7 +680,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
 
     // Small delay on final frame before sliding smoothly to next slide
     Future.delayed(const Duration(milliseconds: 200), () {
-      if (!mounted || _isUserInteracting || _mediaList.length <= 1) {
+      if (!mounted || !_playbackEnabled || _isUserInteracting || _mediaList.length <= 1) {
         _isVideoFinishingSlide = false;
         return;
       }
@@ -661,7 +707,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
       _autoSlideTimer?.cancel();
       _isVideoFinishingSlide = false;
       // Auto-slide or user switched to video: acquire decoder slot and play if enabled
-      if (widget.autoPlayVideo || widget.priorityPlayback) {
+      if (_playbackEnabled && (widget.autoPlayVideo || widget.priorityPlayback)) {
         final acquired = _PosMediaPlaybackCoordinator.instance.acquireSlot(
           this,
           forcePriority: true,
@@ -695,7 +741,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
 
   void _scheduleAutoSlideForImages() {
     _autoSlideTimer?.cancel();
-    if (_mediaList.length <= 1 || widget.isMini) return;
+    if (!_playbackEnabled || _mediaList.length <= 1 || widget.isMini) return;
 
     // If currently on video slide, do NOT slide via timer; let the video play fully first!
     if (_currentPage < _mediaList.length &&
@@ -920,8 +966,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
       return Stack(
         fit: StackFit.expand,
         children: [
-          // Guaranteed background photo (underneath video)
-          baseThumb,
+          // Contained videos need a clean canvas; a different thumbnail behind
+          // the video would show through its letterbox margins.
+          if (widget.fit == BoxFit.contain)
+            const ColoredBox(color: Color(0xFFF1F4F8))
+          else
+            baseThumb,
 
           // Smooth High Quality Video Render
           SizedBox.expand(
@@ -958,8 +1008,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
         alignment: Alignment.center,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: 480,
-        cacheHeight: 480,
+        cacheWidth: widget.imageCacheWidth,
         filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) => fallback,
       );
@@ -981,8 +1030,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
           width: double.infinity,
           height: double.infinity,
           gaplessPlayback: true,
-          cacheWidth: 480,
-          cacheHeight: 480,
+          cacheWidth: widget.imageCacheWidth,
           filterQuality: FilterQuality.medium,
           errorBuilder: (context, error, stackTrace) => fallback,
         );
@@ -1005,8 +1053,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
           width: double.infinity,
           height: double.infinity,
           gaplessPlayback: true,
-          cacheWidth: 480,
-          cacheHeight: 480,
+          cacheWidth: widget.imageCacheWidth,
           filterQuality: FilterQuality.medium,
           errorBuilder: (context, error, stackTrace) => fallback,
         );
@@ -1022,8 +1069,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
         alignment: Alignment.center,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: 480,
-        cacheHeight: 480,
+        cacheWidth: widget.imageCacheWidth,
         filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) {
           debugPrint(
@@ -1040,8 +1086,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
                   alignment: Alignment.center,
                   width: double.infinity,
                   height: double.infinity,
-                  cacheWidth: 480,
-                  cacheHeight: 480,
+                  cacheWidth: widget.imageCacheWidth,
                   filterQuality: FilterQuality.medium,
                   errorBuilder: (context, error, stackTrace) => fallback,
                 );
@@ -1063,8 +1108,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
             alignment: Alignment.center,
             width: double.infinity,
             height: double.infinity,
-            cacheWidth: 480,
-            cacheHeight: 480,
+            cacheWidth: widget.imageCacheWidth,
             filterQuality: FilterQuality.medium,
             errorBuilder: (context, error, stackTrace) => fallback,
           );
@@ -1086,8 +1130,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox>
         alignment: Alignment.center,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: 480,
-        cacheHeight: 480,
+        cacheWidth: widget.imageCacheWidth,
         filterQuality: FilterQuality.high,
         errorBuilder: (context, error, stackTrace) {
           return Container(

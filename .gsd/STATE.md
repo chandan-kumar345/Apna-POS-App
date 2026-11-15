@@ -1,5 +1,41 @@
 # Current task state
 
+2026-11-15: Product popup compact follow-up complete. Shorter photo, inline
+category/stock, tighter size/section/footer spacing and compact nutrition.
+Phone render height 679 -> 499 (26.5% shorter). All 11 dialog checks passed;
+widget analysis clean. ARM64 profile build 252.2s / 91.4 MB, adb install Success.
+APK: build/product_details_validation/apna-pos-product-details-compact.apk.
+Preview/measurement/logs in the same folder. No cart or backend logic changed.
+
+2026-11-15: POS product detail popup redesigned per the user's screenshot.
+Smaller type (title 15, price 20, body 11.5), neutral card, no glow, aligned
+size choices and compact estimated nutrition. Photo/video and stock/tax data
+retained. Quantity/Add footer stays visible while body scrolls. Presentation
+extracted into PosProductDetailDialog; existing register cart/variant callback
+mapping preserved. Snapshot comparison confirms all unrelated register source
+unchanged. 11 dialog/render checks and 14 media/checkout regressions pass;
+three-file analysis clean. Previews and logs: build/product_details_validation/.
+ARM64 profile APK built (344.3s, 91.4 MB), with the new widget markers verified
+inside libapp.so, and installed on the connected phone (Success).
+Artifact: build/product_details_validation/apna-pos-product-details.apk.
+Preserve other uncommitted user/session work; no commit requested.
+
+2026-11-15: Chotu access/startup and compact transparent overlay implemented.
+Root cause for Pizza 47: active subscription, absent canonical AI permission.
+After explicit user approval, a native Mongo compare-and-set changed only
+isChotuAiActive to true; original expiry 2026-11-17T06:43:19.746Z preserved.
+Read-back now reports chotuAiAccess true. Audit:
+build/chotu_validation/ai-access-repair.json.
+Health checks retry/coalesce and distinguish auth/subscription/AI/runtime errors.
+Voice starts after verified access; typed and voice use the server agent. No
+manual POS edits in this task. Glass overlay removes illustration/setup badges,
+examples and extra sections. Client/widget/receipt checks: 32 pass including
+render capture; backend access/lifecycle: 58 pass. Targeted analysis clean.
+ARM64 profile APK built and installed on OPPO CPH2637. Phone is at Login;
+the user explicitly chose to finish without a live microphone test. No real
+production order was submitted. Details: docs/chotu-ai/ACCESS_AND_SCREEN_2026-11-15.md.
+Preserve concurrent splash and product-video changes; no commit/deploy requested.
+
 2026-11-14: Rapid POS quantity lag fix implemented and installed on connected
 OPPO CPH2637 as an ARM64 profile APK (build 140.0s, install Success, PID 8919).
 30 taps: requests reduced 30 -> 1; unchanged card rebuilds 30 -> 0. Local cart
@@ -104,3 +140,5 @@ Completed launcher/splash task: Android debug APK built successfully (56.6s), an
 2026-11-13: Applied the reviewed handwriting splash and Get Started branding.
 A-p-n-a and P-O-S write in isolated brand-colored ink, followed by the receipt and a blend into the original glossy logo. The 3600ms writing sequence ends with a fade-through to Get Started for both new and restored sessions, while preserving saved user data. Get Started uses the new transparent logo, stays readable on wider layouts, respects reduced motion and does not request permissions on entry.
 Validation: 23 focused/navigation/permission tests pass, focused analysis is clean, actual Flutter animation and handoff frames were visually inspected, and the final Android debug build passed in 63.1s. APK verification confirms the original logo, new ink atlas and compiled kernel match the final build. APK: build/app/outputs/flutter-apk/app-debug.apk. Animation: build/splash_validation/writing_animation.gif. Welcome preview: build/splash_validation/get_started_new_logo.png. Exact evidence is in JOURNAL.md.
+
+2026-11-15 POS/Business Settings performance: hidden tab video pause/resume and suppressed hidden catalog redraws implemented; logo decoding sized to display and base64 cache bounded. 25 POS/media/cart/checkout checks and five selected Settings hub checks pass. Targeted analysis has no errors/warnings, three existing style infos. No physical FPS verification, install, or deployment. Details appended to JOURNAL.md.

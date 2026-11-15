@@ -24,7 +24,7 @@ import 'widgets/pos_product_media_box.dart';
 import 'widgets/chotu_mic_button.dart';
 import '../../core/services/chotu_service.dart';
 import '../../core/services/coupon_service.dart';
-import '../../core/utils/ai_nutrition_estimator.dart';
+import 'widgets/pos_product_detail_dialog.dart';
 
 enum ManualItemPersistenceMode { temporary, permanent }
 
@@ -353,8 +353,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     super.dispose();
   }
 
+  bool _tabIsVisible = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tabIsVisible = TickerMode.valuesOf(context).enabled;
+  }
+
   void _onDbChange() {
-    if (mounted && !_publishingCart && !db.isPublishingDraftChange) setState(() {});
+    if (mounted && _tabIsVisible && !_publishingCart && !db.isPublishingDraftChange) setState(() {});
   }
 
   void _onChotuCommandReceived(ChotuParsedCommand cmd) {
@@ -1184,792 +1192,49 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   void _showProductDetailsModal(MenuItemModel item) {
-    final currency = db.restaurant?.currencySymbol ?? '₹';
+    final currency = db.restaurant?.currencySymbol ?? '\u20b9';
     final defaultGstRate = (db.restaurant?.billingType == 'Non-GST') ? 0.0 : (db.restaurant?.taxRate ?? 5.0);
-
     showDialog(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      builder: (ctx) {
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-          child: StatefulBuilder(
-            builder: (context, setModalState) {
-              final screenWidth = MediaQuery.of(context).size.width;
-              final isTwoColumn = screenWidth >= 640;
-              final dialogWidth = isTwoColumn ? 640.0 : (screenWidth * 0.92).clamp(320.0, 440.0);
-
-              // State inside the modal
-              int quantity = 1;
-              ProductVariant? selectedVariant = item.variants.isNotEmpty ? item.variants.first : null;
-
-              return Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                child: StatefulBuilder(
-                  builder: (context, setInnerState) {
-                    final double unitPrice = selectedVariant != null ? selectedVariant!.effectivePrice : item.effectivePrice;
-                    final double originalPrice = selectedVariant != null ? selectedVariant!.price : item.price;
-                    final bool hasDiscount = selectedVariant != null ? selectedVariant!.hasDiscount : item.hasDiscount;
-                    final double discountPercent = selectedVariant != null ? selectedVariant!.discountPercent : item.discountPercent;
-                    final double effectiveTax = item.gstPercent ?? defaultGstRate;
-
-                    // Available stock/portions
-                    final int available = item.availablePortions;
-                    final bool isOutOfStock = item.stockStatus == 'out_of_stock' || (item.trackInventory && available <= 0);
-                    final int maxAllowed = available > 0 ? available : 999;
-
-                    Widget buildMediaBox() {
-                      return Stack(
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            height: isTwoColumn ? 320 : 180,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: _buildPosProductImage(item, priorityPlayback: true),
-                          ),
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.95),
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: const [
-                                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _buildFoodTypeIcon(item.itemType),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    item.itemType.toUpperCase(),
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (hasDiscount && discountPercent > 0)
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981),
-                                  borderRadius: BorderRadius.circular(8),
-                                  boxShadow: const [
-                                    BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
-                                  ],
-                                ),
-                                child: Text(
-                                  '${discountPercent.toStringAsFixed(0)}% OFF',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    }
-
-                    Widget buildStockIndicator() {
-                      Color bg;
-                      Color border;
-                      Color textColor;
-                      IconData icon;
-                      String text;
-
-                      if (item.stockStatus == 'in_stock') {
-                        bg = const Color(0xFFECFDF5);
-                        border = const Color(0xFFA7F3D0);
-                        textColor = const Color(0xFF059669);
-                        icon = Icons.check_circle_rounded;
-                        text = '$available portions available';
-                      } else if (item.stockStatus == 'low_stock') {
-                        bg = const Color(0xFFFFFBEB);
-                        border = const Color(0xFFFDE68A);
-                        textColor = const Color(0xFFD97706);
-                        icon = Icons.warning_amber_rounded;
-                        text = 'Only $available portions left';
-                      } else if (item.stockStatus == 'out_of_stock' || isOutOfStock) {
-                        bg = const Color(0xFFFEF2F2);
-                        border = const Color(0xFFFECACA);
-                        textColor = const Color(0xFFDC2626);
-                        icon = Icons.cancel_rounded;
-                        text = 'Out of Stock';
-                      } else {
-                        bg = const Color(0xFFF1F5F9);
-                        border = const Color(0xFFCBD5E1);
-                        textColor = const Color(0xFF64748B);
-                        icon = Icons.info_outline_rounded;
-                        text = 'Stock not tracked';
-                      }
-
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: border),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(icon, size: 14, color: textColor),
-                            const SizedBox(width: 5),
-                            Flexible(
-                              child: Text(
-                                text,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: textColor,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    Widget buildNutritionMiniPill({
-                      required String label,
-                      required String value,
-                      required IconData icon,
-                      required Color iconColor,
-                      required Color bgColor,
-                    }) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: bgColor,
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(icon, size: 13, color: iconColor),
-                            const SizedBox(width: 4.5),
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    label,
-                                    style: const TextStyle(
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                  Text(
-                                    value,
-                                    style: const TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    Widget buildAiNutritionCard() {
-                      final stats = AiNutritionEstimator.estimate(item);
-                      return Container(
-                        margin: const EdgeInsets.only(top: 10, bottom: 4),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x0A000000),
-                              blurRadius: 4,
-                              offset: Offset(0, 1.5),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                                    ),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 11),
-                                      SizedBox(width: 3.5),
-                                      Text(
-                                        'AI Nutrition & Health',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 0.2,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Spacer(),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: stats.healthColor.withValues(alpha: 0.10),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: stats.healthColor.withValues(alpha: 0.25)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.favorite_rounded, size: 9.5, color: stats.healthColor),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        'Score: ${stats.healthScore}/100',
-                                        style: TextStyle(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: stats.healthColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-
-                            // 4 Core Nutrients
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: buildNutritionMiniPill(
-                                    label: 'Calories',
-                                    value: '${stats.calories} kcal',
-                                    icon: Icons.local_fire_department_rounded,
-                                    iconColor: const Color(0xFFEA580C),
-                                    bgColor: const Color(0xFFFFF7ED),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: buildNutritionMiniPill(
-                                    label: 'Cholesterol',
-                                    value: '${stats.cholesterol} mg',
-                                    icon: Icons.favorite_border_rounded,
-                                    iconColor: const Color(0xFF0284C7),
-                                    bgColor: const Color(0xFFF0F9FF),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 5),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: buildNutritionMiniPill(
-                                    label: 'Protein',
-                                    value: '${stats.protein.toStringAsFixed(1)}g',
-                                    icon: Icons.fitness_center_rounded,
-                                    iconColor: const Color(0xFF059669),
-                                    bgColor: const Color(0xFFECFDF5),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: buildNutritionMiniPill(
-                                    label: 'Carbs',
-                                    value: '${stats.carbs.toStringAsFixed(1)}g',
-                                    icon: Icons.grain_rounded,
-                                    iconColor: const Color(0xFF8B5CF6),
-                                    bgColor: const Color(0xFFF5F3FF),
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            if (stats.highlights.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 4,
-                                runSpacing: 3,
-                                children: stats.highlights.take(3).map((h) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF1F5F9),
-                                      borderRadius: BorderRadius.circular(5),
-                                    ),
-                                    child: Text(
-                                      '• $h',
-                                      style: const TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF475569),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    }
-
-                    Widget buildDetailsContent() {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Header: Name and Close
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  item.name,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                    letterSpacing: -0.3,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap: () => Navigator.pop(context),
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.6),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF475569)),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-
-                          // Category and SubCategory Badges
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE2E8F0),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  item.category,
-                                  style: const TextStyle(fontSize: 11, color: Color(0xFF334155), fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                              if (item.subCategory != null && item.subCategory!.isNotEmpty)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE2E8F0),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    item.subCategory!,
-                                    style: const TextStyle(fontSize: 11, color: Color(0xFF334155), fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                              buildStockIndicator(),
-                            ],
-                          ),
-
-                          if (item.description.trim().isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              item.description,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF64748B),
-                                height: 1.35,
-                              ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-
-                          const SizedBox(height: 12),
-
-                          // Price and Tax Info
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
-                            children: [
-                              Text(
-                                '$currency${unitPrice.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF051C48),
-                                ),
-                              ),
-                              if (hasDiscount && originalPrice > unitPrice) ...[
-                                const SizedBox(width: 8),
-                                Text(
-                                  '$currency${originalPrice.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF94A3B8),
-                                    decoration: TextDecoration.lineThrough,
-                                  ),
-                                ),
-                              ],
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                                ),
-                                child: Text(
-                                  effectiveTax > 0 ? '${effectiveTax.toStringAsFixed(0)}% GST' : 'Non-GST',
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          // Variants Selector (if any)
-                          if (item.variants.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Select Variant',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF334155),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: item.variants.map((v) {
-                                final isSelected = selectedVariant?.name == v.name;
-                                return InkWell(
-                                  onTap: () {
-                                    setInnerState(() {
-                                      selectedVariant = v;
-                                    });
-                                  },
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 180),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: isSelected ? const Color(0xFF051C48) : Colors.white,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: isSelected ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
-                                        width: isSelected ? 1.5 : 1.0,
-                                      ),
-                                      boxShadow: isSelected
-                                          ? [
-                                              BoxShadow(
-                                                color: const Color(0xFF051C48).withValues(alpha: 0.25),
-                                                blurRadius: 4,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ]
-                                          : const [
-                                              BoxShadow(
-                                                color: Color(0xFFE2E8F0),
-                                                blurRadius: 2,
-                                                offset: Offset(0, 1),
-                                              ),
-                                            ],
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          v.name,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                            color: isSelected ? Colors.white : const Color(0xFF1E293B),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '$currency${v.effectivePrice.toStringAsFixed(0)}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: isSelected ? const Color(0xFF93C5FD) : const Color(0xFF64748B),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-
-                          // AI Health & Nutrition Insights
-                          buildAiNutritionCard(),
-
-                          const SizedBox(height: 14),
-
-                          // Quantity and Add to Cart Section
-                          Row(
-                            children: [
-                              // Quantity Stepper
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0xFFE2E8F0),
-                                      blurRadius: 4,
-                                      offset: Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.remove_rounded, size: 18),
-                                      color: quantity > 1 ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
-                                      padding: const EdgeInsets.all(6),
-                                      constraints: const BoxConstraints(),
-                                      onPressed: quantity > 1
-                                          ? () {
-                                              setInnerState(() {
-                                                quantity--;
-                                              });
-                                            }
-                                          : null,
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                                      child: Text(
-                                        '$quantity',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF0F172A),
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.add_rounded, size: 18),
-                                      color: quantity < maxAllowed ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
-                                      padding: const EdgeInsets.all(6),
-                                      constraints: const BoxConstraints(),
-                                      onPressed: quantity < maxAllowed
-                                          ? () {
-                                              setInnerState(() {
-                                                quantity++;
-                                              });
-                                            }
-                                          : () {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(
-                                                  content: Text('Cannot add more than $maxAllowed portion(s) currently available.'),
-                                                  duration: const Duration(seconds: 1),
-                                                  behavior: SnackBarBehavior.floating,
-                                                ),
-                                              );
-                                            },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-
-                              // Primary Add to Cart Button
-                              Expanded(
-                                child: SizedBox(
-                                  height: 44,
-                                  child: ElevatedButton(
-                                    onPressed: isOutOfStock
-                                        ? null
-                                        : () {
-                                            if (selectedVariant != null) {
-                                              final variantId = '${item.id}_var_${selectedVariant!.name}';
-                                              final variantItem = MenuItemModel(
-                                                id: variantId,
-                                                productId: item.productId.isNotEmpty ? item.productId : item.id,
-                                                name: '${item.name} (${selectedVariant!.name})',
-                                                category: item.category,
-                                                subCategory: item.subCategory,
-                                                price: selectedVariant!.price,
-                                                salePrice: selectedVariant!.hasDiscount ? selectedVariant!.effectivePrice : null,
-                                                hasDiscount: selectedVariant!.hasDiscount,
-                                                discountPercent: selectedVariant!.discountPercent,
-                                                description: item.description,
-                                                imageUrl: item.imageUrl,
-                                                images: item.images,
-                                                videoUrl: item.videoUrl,
-                                                emoji: item.emoji,
-                                                itemType: item.itemType,
-                                                gstPercent: item.gstPercent ?? defaultGstRate,
-                                                trackInventory: item.trackInventory,
-                                                stockStatus: item.stockStatus,
-                                                availablePortions: item.availablePortions,
-                                                inventoryType: item.inventoryType,
-                                              );
-                                              _addToCart(variantItem, variantName: selectedVariant!.name, quantity: quantity);
-                                            } else {
-                                              _addToCart(item, quantity: quantity);
-                                            }
-                                            Navigator.pop(context);
-                                          },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF051C48),
-                                      disabledBackgroundColor: const Color(0xFF94A3B8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      elevation: 2,
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 16),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            isOutOfStock
-                                                ? 'Out of Stock'
-                                                : 'Add • $currency${(unitPrice * quantity).toStringAsFixed(0)}',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 13,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    }
-
-                    return ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: dialogWidth,
-                        maxHeight: MediaQuery.of(context).size.height * 0.90,
-                      ),
-                      child: Container(
-                        width: dialogWidth,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFD),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: Colors.white, width: 1.5),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.white,
-                              offset: Offset(-3, -3),
-                              blurRadius: 8,
-                            ),
-                            BoxShadow(
-                              color: Color(0xFFCBD5E1),
-                              offset: Offset(4, 4),
-                              blurRadius: 12,
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(16),
-                        child: isTwoColumn
-                            ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    flex: 5,
-                                    child: SingleChildScrollView(
-                                      physics: const BouncingScrollPhysics(),
-                                      child: buildMediaBox(),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    flex: 6,
-                                    child: SingleChildScrollView(
-                                      physics: const BouncingScrollPhysics(),
-                                      child: buildDetailsContent(),
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : SingleChildScrollView(
-                                physics: const BouncingScrollPhysics(),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    buildMediaBox(),
-                                    const SizedBox(height: 12),
-                                    buildDetailsContent(),
-                                  ],
-                                ),
-                              ),
-                      ),
-                    );
-                  },
-                ),
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        child: PosProductDetailDialog(
+          item: item,
+          currency: currency,
+          defaultGstRate: defaultGstRate,
+          mediaBuilder: (_) => _buildPosProductImage(item, priorityPlayback: true),
+          onAdd: (selectedVariant, quantity) {
+            if (selectedVariant != null) {
+              final variantItem = MenuItemModel(
+                id: '${item.id}_var_${selectedVariant.name}',
+                productId: item.productId.isNotEmpty ? item.productId : item.id,
+                name: '${item.name} (${selectedVariant.name})',
+                category: item.category,
+                subCategory: item.subCategory,
+                price: selectedVariant.price,
+                salePrice: selectedVariant.hasDiscount ? selectedVariant.effectivePrice : null,
+                hasDiscount: selectedVariant.hasDiscount,
+                discountPercent: selectedVariant.discountPercent,
+                description: item.description,
+                imageUrl: item.imageUrl,
+                images: item.images,
+                videoUrl: item.videoUrl,
+                emoji: item.emoji,
+                itemType: item.itemType,
+                gstPercent: item.gstPercent ?? defaultGstRate,
+                trackInventory: item.trackInventory,
+                stockStatus: item.stockStatus,
+                availablePortions: item.availablePortions,
+                inventoryType: item.inventoryType,
               );
-            },
-          ),
-        );
-      },
+              _addToCart(variantItem, variantName: selectedVariant.name, quantity: quantity);
+            } else {
+              _addToCart(item, quantity: quantity);
+            }
+          },
+        ),
+      ),
     );
   }
   OrderCalculationResult get currentOrderCalculation => OrderCalculator.calculate(
@@ -2650,10 +1915,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     return PosProductMediaBox(
       key: ValueKey('media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}'),
       item: item,
-      fit: BoxFit.cover,
-      showDots: false,
+      fit: priorityPlayback ? BoxFit.contain : BoxFit.cover,
+      imageCacheWidth: priorityPlayback ? 960 : 480,
+      showDots: priorityPlayback,
       autoSlide: false,
       autoPlayVideo: !priorityPlayback,
+      independentPlayback: true,
       priorityPlayback: priorityPlayback,
       borderRadius: BorderRadius.circular(12),
     );

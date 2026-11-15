@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 /// wordmark into the original glossy logo without changing its letter shapes.
 class LogoWritingReveal extends StatefulWidget {
   static const duration = Duration(milliseconds: 3600);
+  // Android draws the wordmark and receipt. Keep the final glossy resolve in
+  // Flutter without replaying an emblem Android has already completed.
+  static const fullLogoRevealStartProgress = 3000 / 3600;
   static const assetPath = 'assets/images/android_launcher_logo.png';
   static const inkAssetPath = 'assets/images/apna_pos_logo_ink_atlas.png';
 
@@ -100,27 +103,31 @@ class _LogoWritingRevealState extends State<LogoWritingReveal> {
       image: true,
       child: SizedBox.square(
         dimension: widget.size,
-        child: _frame == null || _inkFrame == null
-            // A visible brand is present even during the first image decode.
-            ? const Center(
-                child: Text(
-                  'Apna\nPOS',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF0758F5),
-                    fontSize: 48,
-                    fontWeight: FontWeight.w800,
-                    height: 0.95,
+        child: RepaintBoundary(
+          child: _frame == null || _inkFrame == null
+              // A visible brand is present even during the first image decode.
+              ? const Center(
+                  child: Text(
+                    'Apna\nPOS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF0758F5),
+                      fontSize: 48,
+                      fontWeight: FontWeight.w800,
+                      height: 0.95,
+                    ),
+                  ),
+                )
+              : CustomPaint(
+                  isComplex: true,
+                  willChange: true,
+                  painter: _LogoInkPainter(
+                    image: _frame!.image,
+                    inkAtlas: _inkFrame!.image,
+                    animation: widget.animation,
                   ),
                 ),
-              )
-            : CustomPaint(
-                painter: _LogoInkPainter(
-                  image: _frame!.image,
-                  inkAtlas: _inkFrame!.image,
-                  animation: widget.animation,
-                ),
-              ),
+        ),
       ),
     );
   }
@@ -242,7 +249,9 @@ class _LogoInkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final time = animation.value * _timelineMilliseconds;
-    final glossyFinish = ((time - 3020) / 420).clamp(0.0, 1.0);
+    final glossyFinish = Curves.easeInOutCubic.transform(
+      ((time - 3000) / 500).clamp(0.0, 1.0),
+    );
     final source = Rect.fromLTWH(
       0,
       0,
@@ -252,6 +261,16 @@ class _LogoInkPainter extends CustomPainter {
     const artwork = Rect.fromLTWH(0, 0, 1254, 1254);
     canvas.save();
     canvas.scale(size.width / 1254, size.height / 1254);
+    // Center the actual Apna/POS lettering while it is written. The original
+    // square artwork has reserved space above it for the receipt emblem.
+    // Ease into the full artwork's center as the flourish/emblem are added.
+    final emblemProgress = Curves.easeInOutCubic.transform(
+      ((time - 2390) / 630).clamp(0.0, 1.0),
+    );
+    canvas.translate(
+      57.75 * (1 - emblemProgress),
+      -155.85 * (1 - emblemProgress),
+    );
 
     if (glossyFinish >= 1) {
       canvas.drawImageRect(
@@ -264,13 +283,17 @@ class _LogoInkPainter extends CustomPainter {
       return;
     }
 
-    for (var index = 0; index < _glyphs.length; index++) {
-      // Each character settles before the next begins. The emblem follows POS.
-      final start = index < 7 ? 100 + index * 320 : (index == 7 ? 2390 : 2680);
-      final duration = index < 7 ? 280 : (index == 7 ? 350 : 360);
-      final amount = Curves.easeOutCubic.transform(
-        ((time - start) / duration).clamp(0.0, 1.0),
+    if (glossyFinish > 0) {
+      canvas.saveLayer(
+        artwork,
+        Paint()..color = Color.fromRGBO(255, 255, 255, 1 - glossyFinish),
       );
+    }
+    for (var index = 0; index < _glyphs.length; index++) {
+      // A steady pen and a small overlap avoid stopping at every character.
+      final start = index < 7 ? 100 + index * 320 : (index == 7 ? 2390 : 2680);
+      final duration = index < 7 ? 360 : (index == 7 ? 350 : 360);
+      final amount = ((time - start) / duration).clamp(0.0, 1.0);
       if (amount == 0) break;
       final glyph = _glyphs[index];
       final tile = Rect.fromLTWH(
@@ -282,18 +305,46 @@ class _LogoInkPainter extends CustomPainter {
       final inkPaint = Paint()..filterQuality = FilterQuality.high;
       canvas.save();
       canvas.clipRect(glyph.bounds);
-      if (amount == 1) {
+      if (index == 8) {
+        // The receipt is a detailed emblem, not a letter stroke. Resolve it as
+        // a single soft fade rather than exposing a large wedge of the image.
+        canvas.drawImageRect(
+          inkAtlas,
+          tile,
+          glyph.bounds,
+          Paint()
+            ..filterQuality = FilterQuality.high
+            ..color = Color.fromRGBO(
+              255,
+              255,
+              255,
+              Curves.easeInOut.transform(amount),
+            ),
+        );
+      } else if (amount == 1) {
         canvas.drawImageRect(inkAtlas, tile, glyph.bounds, inkPaint);
       } else {
         canvas.saveLayer(glyph.bounds, Paint());
         canvas.drawImageRect(inkAtlas, tile, glyph.bounds, inkPaint);
         canvas.saveLayer(glyph.bounds, Paint()..blendMode = BlendMode.dstIn);
+        // Ease residual edges into the ink before the stroke finishes. Drawing
+        // the entire tile only at amount==1 made the final frame visibly pop.
+        final settling = Curves.easeInOut.transform(
+          ((amount - 0.72) / 0.28).clamp(0.0, 1.0),
+        );
+        if (settling > 0) {
+          canvas.drawRect(
+            glyph.bounds,
+            Paint()..color = Color.fromRGBO(255, 255, 255, settling),
+          );
+        }
         final ink = Paint()
           ..color = Colors.white
           ..style = PaintingStyle.stroke
           ..strokeWidth = glyph.width
           ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+          ..strokeJoin = StrokeJoin.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
         var remaining = glyph.length * amount;
         for (final metric in glyph.metrics) {
           final length = math.min(remaining, metric.length);
@@ -306,6 +357,7 @@ class _LogoInkPainter extends CustomPainter {
       }
       canvas.restore();
     }
+    if (glossyFinish > 0) canvas.restore();
     if (glossyFinish > 0) {
       canvas.drawImageRect(
         image,

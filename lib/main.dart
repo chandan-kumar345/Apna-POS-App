@@ -66,11 +66,27 @@ StorefrontRouteParams? _extractStorefrontParams() {
     } catch (_) {}
   }
 
-  // 1. Query parameter: ?store=company-name or ?slug=company-name
+  // 1. Query parameter: ?store=company-name or ?slug=company-name, ?table=T02, ?t=2, etc.
   final querySlug =
       Uri.base.queryParameters['store'] ?? Uri.base.queryParameters['slug'];
   if (querySlug != null && querySlug.trim().isNotEmpty) {
     slug = querySlug.trim().toLowerCase();
+  }
+  final queryTable = Uri.base.queryParameters['table'] ??
+      Uri.base.queryParameters['t'] ??
+      Uri.base.queryParameters['tableNumber'] ??
+      Uri.base.queryParameters['tableCode'] ??
+      Uri.base.queryParameters['tableno'] ??
+      Uri.base.queryParameters['T'];
+  if (queryTable != null && queryTable.trim().isNotEmpty) {
+    tCode ??= queryTable.trim();
+  }
+  final queryRestaurant = Uri.base.queryParameters['restaurant'] ??
+      Uri.base.queryParameters['r'] ??
+      Uri.base.queryParameters['restaurantCode'] ??
+      Uri.base.queryParameters['R'];
+  if (queryRestaurant != null && queryRestaurant.trim().isNotEmpty) {
+    rCode ??= queryRestaurant.trim();
   }
 
   // 2. Direct Path: /company-name or /company-name/R=R1&T=T01

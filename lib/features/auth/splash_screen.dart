@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -12,6 +13,7 @@ import 'widgets/splash_brand_view.dart';
 /// Writes the brand, then opens the destination for the restored session.
 class SplashScreen extends StatefulWidget {
   static const writingDuration = LogoWritingReveal.duration;
+  static const completedLogoHoldDuration = Duration(milliseconds: 650);
   final Widget? targetScreenOverride;
   final Future<void> Function()? initialize;
   static bool isSplashActive = true;
@@ -29,8 +31,10 @@ class _SplashScreenState extends State<SplashScreen>
   bool _navigated = false;
   bool _startupComplete = false;
   bool _writingComplete = false;
+  bool _completedLogoHeld = false;
   bool _navigationScheduled = false;
   Timer? _fallbackTimer;
+  Timer? _logoHoldTimer;
 
   @override
   void initState() {
@@ -45,8 +49,11 @@ class _SplashScreenState extends State<SplashScreen>
     _startupChannel.setMethodCallHandler((call) async {
       if (call.method == 'continueWriting' && mounted && !_writingComplete) {
         final elapsed = (call.arguments as num).toDouble();
-        final progress = (elapsed / SplashScreen.writingDuration.inMilliseconds)
-            .clamp(_animController.value, 1.0);
+        final nativeProgress = math.min(
+          elapsed / SplashScreen.writingDuration.inMilliseconds,
+          LogoWritingReveal.fullLogoRevealStartProgress,
+        );
+        final progress = nativeProgress.clamp(_animController.value, 1.0);
         _animController.value = progress;
         if (progress < 1) _animController.forward();
       }
@@ -54,8 +61,26 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
+        if (_writingComplete) return;
         _writingComplete = true;
         _fallbackTimer?.cancel();
+        // Start the hold after the final frame has painted, rather than pushing
+        // the next route from the same tick that completes the artwork.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final skipHold =
+              MediaQuery.disableAnimationsOf(context) ||
+              !TickerMode.valuesOf(context).enabled;
+          _logoHoldTimer = Timer(
+            skipHold ? Duration.zero : SplashScreen.completedLogoHoldDuration,
+            () {
+              if (!mounted) return;
+              _completedLogoHeld = true;
+              _continueWhenReady();
+            },
+          );
+        });
+        WidgetsBinding.instance.scheduleFrame();
         _continueWhenReady();
       }
     });
@@ -93,6 +118,7 @@ class _SplashScreenState extends State<SplashScreen>
   void _continueWhenReady() {
     if (!_startupComplete ||
         !_writingComplete ||
+        !_completedLogoHeld ||
         _navigationScheduled ||
         !mounted) {
       return;
@@ -157,6 +183,7 @@ class _SplashScreenState extends State<SplashScreen>
   void dispose() {
     SplashScreen.isSplashActive = false;
     _fallbackTimer?.cancel();
+    _logoHoldTimer?.cancel();
     _startupChannel.setMethodCallHandler(null);
     _animController.dispose();
     super.dispose();

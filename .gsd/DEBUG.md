@@ -256,3 +256,67 @@ real authenticated cloud-cart sync remains unverified. The queue/ordering/cloud
 error cases pass against a mocked HTTP transport. Fresh sign-in requested from
 user without bypassing authentication. Read-only backend check: T-5 Free, no
 current order/total and no matching server cart. No entitlement changes made.
+
+
+### Splash roughness ? resolved visible letter completion jumps
+
+Hypothesis 1 confirmed: the previous amount==1 branch replaced an incompletely
+covered stroke mask with the full glyph in one frame. Pixel test failed before
+(mean RGBA change up to 0.601 across 0.2ms), passes after gradual edge settlement
+(letter changes below 0.01). Hypothesis 2 confirmed structurally: the entire
+Scaffold was rebuilt by the animation builder. The static backdrop now sits
+outside the builder and the retained logo repaints independently. Hypothesis 3:
+thermal/device frame scheduling remains a possible contributor; phone reports
+thermal status 3, so test image deltas are not described as FPS measurements.
+Steady overlapping strokes, a soft receipt reveal and a true ink-to-gloss fade
+replace stop/start easing and the cut-out receipt reveal. Native vectors match.
+18 tests pass, targeted analysis has no issues. Final build/install/launch passed;
+PID 14823 has no unhandled/fatal/ANR/native-inflation errors in captured logs.
+Motion preview: build/splash_smoothness/apna-pos-smooth-writing.gif.
+APK: build/splash_smoothness/apna-pos-smooth-splash.apk.
+
+
+### Missing completed logo after handwriting
+
+Confirmed two timing faults with new failing tests (build/splash_completion/before-tests.log):
+- A slow native launch could send elapsed=12000ms, setting the Flutter controller
+  directly to 1.0. Android's vector draws only the wordmark/flourish, so that
+  bypassed Flutter's receipt and glossy-logo resolution.
+- At normal completion, the next route was constructed immediately, with no
+  readable hold of the finished original artwork.
+
+Fix: cap native handoff at 2680/3600, reserving Flutter's final receipt/gloss phase
+without replaying completed letters. After completion, wait until its frame has
+painted, then hold the completed logo for 650ms before navigation. Hold starts
+independently of initialization so slow startup does not add a redundant delay.
+Reduced-motion/muted-ticker paths skip the timed hold. Hold timer is canceled on
+dispose. The existing smooth renderer, centered layout and session routing remain.
+
+20 splash/handwriting/alignment/completion tests pass (final-tests.log); targeted
+analysis: No issues found (analyze.log). The late-handoff regression checks the
+reserved reveal, completed frame, hold and eventual navigation end to end.
+Android profile build is being checked before device verification.
+
+
+Completed-logo fix verified on the phone: profile APK built in 159.9s and
+installed with Success; cold launch Status ok (2894ms Activity time). Inspected
+final-stage-1.png and final-stage-2.png: complete receipt, Apna/POS lettering and
+flourish in the original glossy artwork. final-stage-3.png: POS after the hold.
+20 tests pass; analysis has no issues. Artifact and evidence are under
+build/splash_completion/. No renderer or handwriting speed changes in this fix.
+
+## Native receipt omission resolved (2026-11-15)
+
+Root cause: Android vector generator skipped receipt glyph index 8, relying on
+Flutter to supply it. Added original-atlas receipt border/paper/print contours
+and fill animations. Added native centering translation as the emblem appears;
+rendered final artwork has zero pixels outside Android's safe icon circle.
+Advanced the native-to-Flutter continuation floor to the glossy resolve stage
+so a completed native receipt does not disappear at handoff.
+
+Proof: 3 native regression tests fail before/pass after, 20 Flutter splash tests
+pass, strengthened handoff test passes, targeted Dart analysis clean. Final
+ARM64 profile APK builds and installs successfully; phone cold launch Status ok,
+full glossy receipt visible. No fatal/unhandled/ANR/inflation errors in captured
+startup log. Native-specific preview, XML/package checks and phone screenshot
+are kept separately under build/native_receipt/ to distinguish evidence stages.

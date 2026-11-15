@@ -252,6 +252,20 @@ class LocalNotificationService with WidgetsBindingObserver {
         );
 
         if (isOrder && !isDineInOrLocalPos) {
+          if (DatabaseService.isOrderDismissed(orderId, orderNum)) {
+            debugPrint('[LocalNotificationService] Order $orderNum / $orderId is already dismissed. Suppressing popup.');
+            return;
+          }
+          final localOrder = DatabaseService().orders.where((o) =>
+              (orderId.isNotEmpty && o.id == orderId) ||
+              (orderNum.isNotEmpty && o.orderNumber == orderNum)
+          ).firstOrNull;
+          if (localOrder != null && localOrder.status != OrderStatus.pending) {
+            DatabaseService.markOrderDismissed(orderId, orderNum);
+            debugPrint('[LocalNotificationService] Order $orderNum / $orderId is already ${localOrder.status}. Suppressing popup.');
+            return;
+          }
+
           if (IncomingOrderAcceptScreen.isShowing &&
               (IncomingOrderAcceptScreen.currentShowingOrderId == orderId ||
                IncomingOrderAcceptScreen.currentShowingOrderNumber == orderNum)) {
@@ -576,6 +590,15 @@ class LocalNotificationService with WidgetsBindingObserver {
               debugPrint('[LocalNotificationService] Discarding already dismissed order payload: $ordNum / $ordId');
               return;
             }
+            final localOrder = DatabaseService().orders.where((o) =>
+                (ordId.isNotEmpty && o.id == ordId) ||
+                (ordNum.isNotEmpty && o.orderNumber == ordNum)
+            ).firstOrNull;
+            if (localOrder != null && localOrder.status != OrderStatus.pending) {
+              DatabaseService.markOrderDismissed(ordId, ordNum);
+              debugPrint('[LocalNotificationService] Discarding already handled order payload: $ordNum / $ordId');
+              return;
+            }
             final createdAtStr = m['createdAt']?.toString();
             if (createdAtStr != null && createdAtStr.isNotEmpty) {
               final parsed = DateTime.tryParse(createdAtStr);
@@ -602,6 +625,20 @@ class LocalNotificationService with WidgetsBindingObserver {
       if (!IncomingOrderAcceptScreen.isShowing) {
         final pendingDbOrder = await DatabaseService().findPendingExternalOrderForPrompt();
         if (pendingDbOrder != null && !IncomingOrderAcceptScreen.isShowing) {
+          final pId = (pendingDbOrder['orderId'] ?? '').toString();
+          final pNum = (pendingDbOrder['orderNumber'] ?? '').toString();
+          if (DatabaseService.isOrderDismissed(pId, pNum)) {
+            return;
+          }
+          final localOrder = DatabaseService().orders.where((o) =>
+              (pId.isNotEmpty && o.id == pId) ||
+              (pNum.isNotEmpty && o.orderNumber == pNum)
+          ).firstOrNull;
+          if (localOrder != null && localOrder.status != OrderStatus.pending) {
+            DatabaseService.markOrderDismissed(pId, pNum);
+            return;
+          }
+
           final ctx = navigatorKey.currentContext;
           if (ctx != null && ctx.mounted) {
             IncomingOrderAcceptScreen.openFromPayload(ctx, pendingDbOrder);

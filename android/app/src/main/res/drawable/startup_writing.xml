@@ -3,12 +3,24 @@
     android:drawable="@drawable/startup_ink">
 <target android:name="ink_0_0" android:animation="@animator/startup_ink_0_0"/>
 <target android:name="ink_0_1" android:animation="@animator/startup_ink_0_1"/>
+<target android:name="fill_0" android:animation="@animator/startup_fill_0"/>
 <target android:name="ink_1_0" android:animation="@animator/startup_ink_1_0"/>
+<target android:name="fill_1" android:animation="@animator/startup_fill_1"/>
 <target android:name="ink_2_0" android:animation="@animator/startup_ink_2_0"/>
+<target android:name="fill_2" android:animation="@animator/startup_fill_2"/>
 <target android:name="ink_3_0" android:animation="@animator/startup_ink_3_0"/>
 <target android:name="ink_3_1" android:animation="@animator/startup_ink_3_1"/>
+<target android:name="fill_3" android:animation="@animator/startup_fill_3"/>
 <target android:name="ink_4_0" android:animation="@animator/startup_ink_4_0"/>
+<target android:name="fill_4" android:animation="@animator/startup_fill_4"/>
 <target android:name="ink_5_0" android:animation="@animator/startup_ink_5_0"/>
+<target android:name="fill_5" android:animation="@animator/startup_fill_5"/>
 <target android:name="ink_6_0" android:animation="@animator/startup_ink_6_0"/>
+<target android:name="fill_6" android:animation="@animator/startup_fill_6"/>
 <target android:name="ink_7_0" android:animation="@animator/startup_ink_7_0"/>
+<target android:name="fill_7" android:animation="@animator/startup_fill_7"/>
+<target android:name="receipt_outline" android:animation="@animator/startup_receipt_outline"/>
+<target android:name="receipt_paper" android:animation="@animator/startup_receipt_paper"/>
+<target android:name="receipt_ink" android:animation="@animator/startup_receipt_ink"/>
+<target android:name="brand_position" android:animation="@animator/startup_brand_position"/>
 </animated-vector>
