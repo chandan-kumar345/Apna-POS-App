@@ -264,7 +264,11 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   int get _totalCartCount => _cartItems.fold(0, (sum, i) => sum + i.quantity);
   double get _totalCartAmount =>
       _cartItems.fold(0.0, (sum, i) => sum + i.totalPrice);
-  Color get _themeColor => Color(_data?.themeColorHex ?? 0xFFE65100);
+  Color get _themeColor => Color(
+    _data?.themeColorHex ??
+        _loadingRestaurant?.storefrontThemeColor ??
+        0xFFE65100,
+  );
   Color? get _themeColorEnd =>
       _data?.themeColorEndHex != null ? Color(_data!.themeColorEndHex!) : null;
   bool get _isStoreOnline =>
@@ -303,6 +307,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
               backgroundColor: _themeColor,
               duration: const Duration(seconds: 1),
               behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 110),
             ),
           );
 
@@ -449,7 +454,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                   restaurant.closingTime.isNotEmpty)
                 _buildInfoRow(
                   Icons.schedule,
-                  '${restaurant.openingTime} ? ${restaurant.closingTime}',
+                  '${restaurant.openingTime} - ${restaurant.closingTime}',
                 ),
               const SizedBox(height: 14),
               TextButton(
@@ -488,7 +493,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   Widget _buildRestaurantAvatar(String? logo, String name, {double size = 50}) {
     final effectiveLogo = (logo != null && logo.trim().isNotEmpty)
         ? logo.trim()
-        : DatabaseService().companyLogoPath?.trim();
+        : null;
 
     return RepaintBoundary(
       child: Container(
@@ -520,6 +525,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   }
 
   Widget _buildAvatarImage(String? path, String name, double size) {
+    if (path?.startsWith('/uploads/') == true) {
+      path = ApiEndpoints.resolveMediaUrl(path!);
+    }
     if (path != null && path.isNotEmpty) {
       // 1. Data URI / Base64 image
       if (path.startsWith('data:image') ||
@@ -548,7 +556,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                 _buildFallbackImage(name, size),
           );
         } catch (_) {}
-      } else if (path.startsWith('http://') || path.startsWith('https://')) {
+      } else if (path.startsWith('http://') ||
+          path.startsWith('https://') ||
+          path.startsWith('/uploads/')) {
         return Image.network(
           ApiEndpoints.resolveMediaUrl(path),
           width: size,
@@ -589,15 +599,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   }
 
   Widget _buildFallbackImage(String name, double size) {
-    return Image.asset(
-      'assets/images/logo.png',
-      width: size,
-      height: size,
-      fit: BoxFit.cover,
-      gaplessPlayback: true,
-      errorBuilder: (context, error, stackTrace) =>
-          _buildEmblemLogo(name, size),
-    );
+    return _buildEmblemLogo(name, size);
   }
 
   Widget _buildEmblemLogo(String name, double size) {
@@ -641,10 +643,22 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       color: Color(0xFF8B9BA9),
                     ),
                     const SizedBox(height: 16),
-                    Text(_loadError!, textAlign: TextAlign.center),
+                    Text(
+                      _loadError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF334155),
+                        fontSize: 14,
+                        height: 1.45,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: _loadData,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F172A),
+                        foregroundColor: Colors.white,
+                      ),
                       child: const Text('Try again'),
                     ),
                   ],

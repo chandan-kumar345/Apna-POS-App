@@ -350,16 +350,13 @@ class WhatsAppChatService {
     }
 
     const business = bId ? await Business.findById(bId) : null;
-    const phoneNumberId = user?.whatsappSettings?.phoneNumberId ||
-      chat.phoneNumberId ||
-      business?.whatsappSettings?.phoneNumberId ||
-      whatsappService.phoneNumberId;
-    const accessToken = user?.whatsappSettings?.accessToken ||
-      business?.whatsappSettings?.accessToken ||
-      whatsappService.accessToken;
-    const appSecret = user?.whatsappSettings?.appSecret ||
-      business?.whatsappSettings?.appSecret ||
-      whatsappService.appSecret;
+    const wa = business?.whatsappSettings || {};
+    if (!wa.enabled || !wa.phoneNumberId || !wa.accessToken) {
+      throw new ApiError(409, 'Connect and enable this business WhatsApp number before sending.');
+    }
+    const phoneNumberId = wa.phoneNumberId;
+    const accessToken = wa.accessToken;
+    const appSecret = wa.appSecret || whatsappService.appSecret;
 
     // Send via Meta WhatsApp Cloud API
     const waResult = await whatsappService.sendChatMessage({
@@ -412,215 +409,10 @@ class WhatsAppChatService {
    * Templates bypass the 24-hour customer service window restriction.
    */
   async getApprovedTemplates(businessId, userId = null) {
-    const bId = mongoose.Types.ObjectId.isValid(businessId)
-      ? new mongoose.Types.ObjectId(businessId)
-      : businessId;
-
-    const business = bId ? await Business.findById(bId) : null;
-    const isDefaultSeedAccount = bId && (
-      bId.toString() === '6ad46853ea47d6b3e13d633d' ||
-      (process.env.NODE_ENV === 'test' && bId.toString() === 'rest_001')
-    );
-
-    const wabaId = (
-      business?.whatsappSettings?.wabaId ||
-      business?.metaPartnerSettings?.wabaId ||
-      (isDefaultSeedAccount ? '2525727467906581' : '')
-    ).trim();
-
-    const accessToken = (
-      business?.whatsappSettings?.accessToken ||
-      (isDefaultSeedAccount ? whatsappService.accessToken : '')
-    ).trim();
-
-    const appSecret = (
-      business?.whatsappSettings?.appSecret ||
-      (isDefaultSeedAccount ? whatsappService.appSecret : '')
-    ).trim();
-
-    const cacheKey = `templates_${wabaId}`;
-    const cached = this._templatesCache?.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
-      return {
-        wabaId,
-        templates: cached.templates,
-        cached: true,
-      };
-    }
-
-    const defaultApprovedTemplates = [
-      {
-        id: 'tmpl_apna_pos_auth_otp_en',
-        name: 'apna_pos_auth_otp',
-        status: 'APPROVED',
-        category: 'AUTHENTICATION',
-        language: 'en',
-        header: '',
-        body: '“{{1}}” is your verification code. For your security, do not share this code with anyone.',
-        footer: 'Knowwu / APNA POS',
-        parameters: [
-          { key: '1', label: 'OTP Code', example: '123456' },
-        ],
-      },
-      {
-        id: 'tmpl_apna_pos_auth_otp_en_us',
-        name: 'apna_pos_auth_otp',
-        status: 'APPROVED',
-        category: 'AUTHENTICATION',
-        language: 'en_US',
-        header: '',
-        body: '“{{1}}” is your verification code. For your security, do not share this code with anyone.',
-        footer: 'Knowwu / APNA POS',
-        parameters: [
-          { key: '1', label: 'OTP Code', example: '123456' },
-        ],
-      },
-      {
-        id: 'tmpl_customer_support_reopen',
-        name: 'customer_support_reopen',
-        status: 'APPROVED',
-        category: 'UTILITY',
-        language: 'en',
-        header: 'Customer Support',
-        body: 'Hello! Thank you for connecting with us. Please reply to this message to continue our conversation with our team.',
-        footer: business?.name || 'Customer Care',
-        parameters: [],
-      },
-      {
-        id: 'tmpl_order_update_reconnect',
-        name: 'order_update_reconnect',
-        status: 'APPROVED',
-        category: 'UTILITY',
-        language: 'en',
-        header: 'Order Update',
-        body: 'Hello {{1}}, we are reaching out regarding your inquiry or order with {{2}}. Please reply to this message if you need any assistance.',
-        footer: business?.name || 'Customer Support',
-        parameters: [
-          { key: '1', label: 'Customer Name', example: 'Valued Customer' },
-          { key: '2', label: 'Store Name', example: business?.name || 'Our Store' },
-        ],
-      },
-      {
-        id: 'tmpl_ebill_receipt',
-        name: 'ebill_receipt',
-        status: 'APPROVED',
-        category: 'UTILITY',
-        language: 'en',
-        header: 'Your Digital Bill',
-        body: 'Hello {{1}},\n\nYour bill from {{2}} has been generated successfully.\n\nBill Number: {{3}}\nBill Date: {{4}}\nTotal Amount: ₹{{5}}\nPayment Status: {{6}}\nPayment Mode: {{7}}\n\nThank you for your purchase. Please keep this message for your records.',
-        footer: 'Thank you for shopping with us.',
-        parameters: [
-          { key: '1', label: 'Customer Name', example: 'Valued Customer' },
-          { key: '2', label: 'Store Name', example: business?.name || 'Our Store' },
-          { key: '3', label: 'Bill Number', example: 'INV-1001' },
-          { key: '4', label: 'Bill Date', example: new Date().toLocaleDateString('en-IN') },
-          { key: '5', label: 'Total Amount', example: '250.00' },
-          { key: '6', label: 'Payment Status', example: 'Paid' },
-          { key: '7', label: 'Payment Mode', example: 'UPI' },
-        ],
-      },
-      {
-        id: 'tmpl_special_discount_offer',
-        name: 'special_discount_offer',
-        status: 'APPROVED',
-        category: 'MARKETING',
-        language: 'en',
-        header: 'Special Offer Just For You!',
-        body: 'Hello {{1}}! Enjoy a special {{2}}% discount on your next visit at {{3}}. Use coupon code {{4}} at checkout!',
-        footer: 'Valid for a limited time. Terms apply.',
-        parameters: [
-          { key: '1', label: 'Customer Name', example: 'Valued Customer' },
-          { key: '2', label: 'Discount %', example: '20' },
-          { key: '3', label: 'Store Name', example: business?.name || 'Our Store' },
-          { key: '4', label: 'Coupon Code', example: 'SAVE20' },
-        ],
-      },
-    ];
-
-    try {
-      const url = whatsappService.buildGraphUrl(`${wabaId}/message_templates`, {
-        accessToken,
-        appSecret,
-        queryParams: { status: 'APPROVED', limit: 100 },
-      });
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const data = await response.json();
-
-      if (response.ok && Array.isArray(data?.data)) {
-        const approvedList = data.data.map(t => {
-          let headerText = '';
-          let bodyText = '';
-          let footerText = '';
-          const params = [];
-
-          if (Array.isArray(t.components)) {
-            for (const c of t.components) {
-              if (c.type === 'HEADER' && c.text) {
-                headerText = c.text;
-              } else if (c.type === 'BODY' && c.text) {
-                bodyText = c.text;
-                // Parse {{1}}, {{2}}...
-                const matches = bodyText.match(/\{\{(\d+)\}\}/g) || [];
-                const distinctIndices = [...new Set(matches.map(m => m.replace(/\D/g, '')))];
-                distinctIndices.sort((a, b) => Number(a) - Number(b));
-
-                distinctIndices.forEach(idx => {
-                  let label = `Parameter {{${idx}}}`;
-                  let example = '';
-                  if (t.name === 'ebill_receipt') {
-                    const ebillLabels = ['Customer Name', 'Store Name', 'Bill Number', 'Bill Date', 'Total Amount', 'Payment Status', 'Payment Mode'];
-                    label = ebillLabels[Number(idx) - 1] || `Param ${idx}`;
-                  } else if (c.example?.body_text?.[0]?.[Number(idx) - 1]) {
-                    example = c.example.body_text[0][Number(idx) - 1];
-                    label = `Value (${example})`;
-                  }
-                  params.push({ key: idx, label, example });
-                });
-              } else if (c.type === 'FOOTER' && c.text) {
-                footerText = c.text;
-              }
-            }
-          }
-
-          return {
-            id: t.id || t.name,
-            name: t.name,
-            status: t.status,
-            category: t.category,
-            language: t.language,
-            header: headerText,
-            body: bodyText,
-            footer: footerText,
-            parameters: params,
-          };
-        });
-
-        // Exclude 'hello_world' sample test template because Meta restricts it on live registered phone numbers
-        const sanitizedApprovedList = approvedList.filter(t => t.name !== 'hello_world');
-        const finalTemplates = sanitizedApprovedList.length > 0 ? sanitizedApprovedList : defaultApprovedTemplates;
-        this._templatesCache = this._templatesCache || new Map();
-        this._templatesCache.set(cacheKey, {
-          timestamp: Date.now(),
-          templates: finalTemplates,
-        });
-
-        return {
-          wabaId,
-          templates: finalTemplates,
-          cached: false,
-        };
-      }
-    } catch (err) {
-      console.warn('[whatsappChatService] Error fetching Meta templates:', err.message);
-    }
-
-    return {
-      wabaId,
-      templates: defaultApprovedTemplates,
-      fallback: true,
-    };
+    const result = await require('./metaPartnerService').getTemplates(businessId);
+    const business = await Business.findById(businessId).lean();
+    return { wabaId: business?.whatsappSettings?.wabaId || '', cached: false,
+      templates: result.templates.filter(template => template.isLiveSynced && template.status === 'APPROVED') };
   }
 
   /**
@@ -649,16 +441,13 @@ class WhatsAppChatService {
     }
 
     const business = bId ? await Business.findById(bId) : null;
-    const phoneNumberId = user?.whatsappSettings?.phoneNumberId ||
-      chat.phoneNumberId ||
-      business?.whatsappSettings?.phoneNumberId ||
-      whatsappService.phoneNumberId;
-    const accessToken = user?.whatsappSettings?.accessToken ||
-      business?.whatsappSettings?.accessToken ||
-      whatsappService.accessToken;
-    const appSecret = user?.whatsappSettings?.appSecret ||
-      business?.whatsappSettings?.appSecret ||
-      whatsappService.appSecret;
+    const wa = business?.whatsappSettings || {};
+    if (!wa.enabled || !wa.phoneNumberId || !wa.accessToken) {
+      throw new ApiError(409, 'Connect and enable this business WhatsApp number before sending.');
+    }
+    const phoneNumberId = wa.phoneNumberId;
+    const accessToken = wa.accessToken;
+    const appSecret = wa.appSecret || whatsappService.appSecret;
 
     const normalizedPhone = whatsappService.normalizePhoneNumber(chat.customerPhone);
     if (!whatsappService.isValidPhoneNumber(normalizedPhone)) {
@@ -1046,111 +835,17 @@ class WhatsAppChatService {
    * Get connection info for the user / business
    */
   async getConnectionStatus(businessId, userId = null) {
-    const bId = mongoose.Types.ObjectId.isValid(businessId)
-      ? new mongoose.Types.ObjectId(businessId)
-      : businessId;
-
-    const business = bId ? await Business.findById(bId) : null;
-    let bizSettings = business?.whatsappSettings;
-    const partnerSettings = business?.metaPartnerSettings;
-
-    // Strict multi-tenant isolation: Never leak credentials from one business into another!
-    // Only the default seed account (Pizza 47 / rest_001 in tests) receives default sandbox credentials.
-    const isDefaultSeedAccount = bId && (
-      bId.toString() === '6ad46853ea47d6b3e13d633d' ||
-      (process.env.NODE_ENV === 'test' && bId.toString() === 'rest_001')
-    );
-
-    let activePhoneNumberId = bizSettings?.phoneNumberId || '';
-    let activePhoneNumber = bizSettings?.phoneNumber || '';
-    let activeWabaId = bizSettings?.wabaId || partnerSettings?.wabaId || '';
-    let activeToken = bizSettings?.accessToken || '';
-    let activeAppSecret = bizSettings?.appSecret || '';
-    let connectedAt = bizSettings?.connectedAt || partnerSettings?.connectedAt || null;
-
-    // Active multi-tenant purge: If this non-seed business was previously contaminated with Pizza 47's credentials,
-    // and Meta Partner Channel has NOT explicitly connected it, purge the leaked credentials immediately!
-    if (!isDefaultSeedAccount && business &&
-        (activePhoneNumberId === '1284061438133660' || (activePhoneNumber && activePhoneNumber.replace(/\s+/g, '') === '+917303632949')) &&
-        !partnerSettings?.isPartnerManaged) {
-      business.whatsappSettings = {
-        enabled: false,
-        phoneNumberId: '',
-        phoneNumber: '',
-        wabaId: '',
-        accessToken: '',
-        appSecret: '',
-        connectedAt: null,
-      };
-      await business.save();
-      bizSettings = business.whatsappSettings;
-      activePhoneNumberId = '';
-      activePhoneNumber = '';
-      activeWabaId = '';
-      activeToken = '';
-      activeAppSecret = '';
-      connectedAt = null;
-    }
-
-    // Default seed account fallback
-    if (!activePhoneNumberId && isDefaultSeedAccount) {
-      activePhoneNumberId = whatsappService.phoneNumberId || '1284061438133660';
-      activePhoneNumber = '+91 73036 32949';
-      activeWabaId = '2525727467906581';
-      activeToken = whatsappService.accessToken || '';
-      activeAppSecret = whatsappService.appSecret || '';
-      connectedAt = new Date('2026-10-18T00:00:00Z');
-    }
-
-    // Determine connection state:
-    // A business is connected ONLY IF:
-    // 1. It is the seed account, OR
-    // 2. Its own Meta Partner channel is verified/active (partnerSettings.isPartnerManaged), OR
-    // 3. It has explicitly enabled custom WhatsApp credentials (bizSettings.enabled && activePhoneNumberId)
-    const isExplicitlyConnected = Boolean(bizSettings?.enabled && activePhoneNumberId);
-    const isPartnerConnected = Boolean(partnerSettings?.isPartnerManaged && (activePhoneNumberId || partnerSettings?.phoneNumberId));
-    const isConnected = isDefaultSeedAccount || isExplicitlyConnected || isPartnerConnected;
-
-    if (!isConnected) {
-      return {
-        connected: false,
-        phoneNumberId: '',
-        phoneNumber: '',
-        wabaId: '',
-        accessToken: '',
-        hasCustomToken: false,
-        hasAppSecret: false,
-        connectedAt: null,
-      };
-    }
-
-    // Update userDoc ONLY if it's the user's primary business (or in tests), never across different businesses
-    if (userId && isConnected) {
-      const u = await User.findById(userId);
-      if (u && (u.businessId?.toString() === bId?.toString() || process.env.NODE_ENV === 'test')) {
-        u.whatsappSettings = {
-          enabled: true,
-          phoneNumberId: activePhoneNumberId,
-          phoneNumber: activePhoneNumber,
-          wabaId: activeWabaId,
-          accessToken: activeToken,
-          appSecret: activeAppSecret,
-          webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
-          connectedAt: connectedAt || new Date(),
-        };
-        await u.save();
-      }
-    }
-
+    const business = businessId ? await Business.findById(businessId) : null;
+    const wa = business?.whatsappSettings || {};
+    const connected = Boolean(wa.enabled && wa.phoneNumberId && wa.wabaId && wa.accessToken);
     return {
-      connected: true,
-      phoneNumberId: activePhoneNumberId,
-      phoneNumber: activePhoneNumber,
-      wabaId: activeWabaId,
-      accessToken: activeToken,
-      hasCustomToken: Boolean(activeToken),
-      hasAppSecret: Boolean(activeAppSecret),
-      connectedAt,
+      connected,
+      phoneNumberId: connected ? wa.phoneNumberId : '',
+      phoneNumber: connected ? wa.phoneNumber || '' : '',
+      wabaId: connected ? wa.wabaId : '',
+      hasCustomToken: connected,
+      hasAppSecret: Boolean(connected && wa.appSecret),
+      connectedAt: connected ? wa.connectedAt || null : null,
     };
   }
 

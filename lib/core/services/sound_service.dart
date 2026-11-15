@@ -101,6 +101,7 @@ class SoundService {
       orderRingtoneType =
           prefs.getString('pref_order_ringtone_type') ?? 'default';
       orderVolume = prefs.getDouble('pref_order_volume') ?? 1.0;
+      unawaited(_syncNativeOrderSource());
 
       notificationSoundUrl =
           prefs.getString('pref_notif_sound_url') ??
@@ -247,36 +248,59 @@ class SoundService {
   bool _isStartingRingtone = false;
 
   /// Play incoming order receive ringtone continuously in a loop at full volume until accepted or rejected
+  static int _orderPlaybackGeneration = 0;
   static void playOrderRingtone() {
-    if (!soundEnabled || orderVolume <= 0) return;
-
     final now = DateTime.now().millisecondsSinceEpoch;
-    // Debounce to prevent overlapping triggers while ringtone is already looping
-    if (_isRingtonePlaying && (now - _lastRingtonePlayTime < 3000)) {
-      return;
-    }
+    if (_isRingtonePlaying && now - _lastRingtonePlayTime < 3000) return;
     _isRingtonePlaying = true;
     _lastRingtonePlayTime = now;
+    final generation = ++_orderPlaybackGeneration;
+    unawaited(_startSavedOrderRingtone(generation));
+  }
 
-    try {
-      HapticFeedback.heavyImpact();
-    } catch (_) {}
-
-    // Force Android hardware alarm and media streams to 100% full volume
-    boostHardwareVolume();
-
-    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+  static Future<void> _startSavedOrderRingtone(int generation) async {
+    await _instance.init();
+    if (generation != _orderPlaybackGeneration || !_isRingtonePlaying) return;
+    if (!soundEnabled || orderVolume <= 0) {
+      _isRingtonePlaying = false;
       return;
     }
-
-    if (_instance._isInitialized) {
-      _instance._playOrderRingtoneAsset();
-    } else {
-      _instance
-          .init()
-          .then((_) => _instance._playOrderRingtoneAsset())
-          .catchError((_) {});
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        if (await _nativeAlertChannel.invokeMethod<bool>(
+              'startOrderRingtone',
+            ) ==
+            true) {
+          return;
+        }
+      } on MissingPluginException {
+        // A background FCM isolate has no activity channel. Native FCM owns playback.
+        return;
+      } catch (_) {}
     }
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (generation == _orderPlaybackGeneration && _isRingtonePlaying) {
+      _instance._playOrderRingtoneAsset();
+    }
+  }
+
+  static Future<void> _syncNativeOrderSource() async {
+    if (kIsWeb) return;
+    final source = orderRingtoneUrl;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString('pref_order_native_url') != source) {
+      await prefs.setString('pref_order_native_url', source);
+      await prefs.setString('pref_order_native_source', source);
+    }
+    unawaited(
+      prefetchAndCacheAudio(source).then((cached) async {
+        if (cached != null &&
+            orderRingtoneUrl == source &&
+            prefs.getString('pref_order_ringtone_url') == source) {
+          await prefs.setString('pref_order_native_source', cached);
+        }
+      }),
+    );
   }
 
   static final Map<String, String> _memoryAudioCache = {};
@@ -473,6 +497,12 @@ class SoundService {
   /// Stop incoming order ringtone
   static void stopOrderRingtone() async {
     _isRingtonePlaying = false;
+    _orderPlaybackGeneration++;
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _nativeAlertChannel.invokeMethod('stopOrderRingtone');
+      } catch (_) {}
+    }
     try {
       await _instance._ringtonePlayer?.stop();
     } catch (_) {}
@@ -622,6 +652,7 @@ class SoundService {
       if (effectiveSoundEnabled != null) {
         await prefs.setBool(_prefKeySoundEnabled, effectiveSoundEnabled);
       }
+      await _syncNativeOrderSource();
       if (_ringtonePlayer != null) {
         await _ringtonePlayer?.setVolume(SoundService.orderVolume);
       }

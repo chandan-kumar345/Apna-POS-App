@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -15,39 +16,50 @@ import 'sound_service.dart';
 import 'fcm_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../database/database_service.dart';
+import '../models/order_model.dart';
+import '../models/incoming_order_payload.dart';
+import '../models/incoming_order_alert.dart';
 
 /// Top-level background notification tap entrypoint invoked by OS when app is in background/terminated
 @pragma('vm:entry-point')
-void notificationTapBackground(NotificationResponse notificationResponse) {
-  debugPrint('[LocalNotificationService] 🔔 Background notification action tapped: ${notificationResponse.actionId}, payload: ${notificationResponse.payload}');
+Future<void> notificationTapBackground(
+  NotificationResponse notificationResponse,
+) async {
+  debugPrint(
+    '[LocalNotificationService] 🔔 Background notification action tapped: ${notificationResponse.actionId}, payload: ${notificationResponse.payload}',
+  );
   try {
-    SharedPreferences.getInstance().then((prefs) {
-      final payload = notificationResponse.payload;
-      if (payload != null && payload.isNotEmpty) {
-        prefs.setString('pending_incoming_order_payload', payload);
-      }
-      if (notificationResponse.actionId == 'accept_order') {
-        prefs.setString('pending_notification_action', 'accept');
-      } else if (notificationResponse.actionId == 'reject_order') {
-        prefs.setString('pending_notification_action', 'reject');
-      } else {
-        prefs.setString('pending_notification_action', 'view');
-      }
-    });
+    final prefs = await SharedPreferences.getInstance();
+    final payload = notificationResponse.payload;
+    if (payload != null && payload.isNotEmpty) {
+      await prefs.setString('pending_incoming_order_payload', payload);
+    }
+    if (notificationResponse.actionId == 'accept_order') {
+      await prefs.setString('pending_notification_action', 'accept');
+    } else if (notificationResponse.actionId == 'reject_order') {
+      await prefs.setString('pending_notification_action', 'reject');
+    } else {
+      await prefs.setString('pending_notification_action', 'view');
+    }
   } catch (e) {
-    debugPrint('[LocalNotificationService] Error storing background notification response: $e');
+    debugPrint(
+      '[LocalNotificationService] Error storing background notification response: $e',
+    );
   }
 }
 
 class LocalNotificationService with WidgetsBindingObserver {
-  static final LocalNotificationService _instance = LocalNotificationService._internal();
+  static final LocalNotificationService _instance =
+      LocalNotificationService._internal();
   factory LocalNotificationService() => _instance;
   LocalNotificationService._internal();
 
   /// Global Navigator key for deep-linking into WhatsApp chats or screens on notification tap
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
-  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
   static final Map<String, int> _staticDedupeMemoryCache = {};
   bool _isInitialized = false;
 
@@ -69,9 +81,16 @@ class LocalNotificationService with WidgetsBindingObserver {
 
     final Set<String> keys = {};
 
-    final cleanType = (type ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final cleanTag = (tag ?? '').toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final isDailySummary = cleanType.contains('dailysalessummary') ||
+    final cleanType = (type ?? '').toLowerCase().replaceAll(
+      RegExp(r'[-_\s]'),
+      '',
+    );
+    final cleanTag = (tag ?? '').toLowerCase().replaceAll(
+      RegExp(r'[-_\s]'),
+      '',
+    );
+    final isDailySummary =
+        cleanType.contains('dailysalessummary') ||
         cleanType.contains('salesreport') ||
         cleanTag.contains('dailysalessummary');
 
@@ -107,11 +126,21 @@ class LocalNotificationService with WidgetsBindingObserver {
 
     // Normalized alphanumeric content fingerprint (ignores emojis, spaces, punctuation, case)
     if (title != null && title.trim().isNotEmpty) {
-      final cleanTitle = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-      final cleanBody = (body ?? '').toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final cleanTitle = title.toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]'),
+        '',
+      );
+      final cleanBody = (body ?? '').toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]'),
+        '',
+      );
       if (cleanTitle.isNotEmpty) {
-        final titlePart = cleanTitle.length > 25 ? cleanTitle.substring(0, 25) : cleanTitle;
-        final bodyPart = cleanBody.length > 35 ? cleanBody.substring(0, 35) : cleanBody;
+        final titlePart = cleanTitle.length > 25
+            ? cleanTitle.substring(0, 25)
+            : cleanTitle;
+        final bodyPart = cleanBody.length > 35
+            ? cleanBody.substring(0, 35)
+            : cleanBody;
         keys.add('content_${titlePart}_$bodyPart');
       }
     }
@@ -120,7 +149,9 @@ class LocalNotificationService with WidgetsBindingObserver {
     if (body != null && body.trim().isNotEmpty) {
       final cleanBody = body.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
       if (cleanBody.isNotEmpty) {
-        final bodyPart = cleanBody.length > 30 ? cleanBody.substring(0, 30) : cleanBody;
+        final bodyPart = cleanBody.length > 30
+            ? cleanBody.substring(0, 30)
+            : cleanBody;
         if (entityId != null && entityId.trim().isNotEmpty) {
           keys.add('body_${entityId.trim().toLowerCase()}_$bodyPart');
         }
@@ -140,7 +171,9 @@ class LocalNotificationService with WidgetsBindingObserver {
       if (_staticDedupeMemoryCache.containsKey(k)) {
         final last = _staticDedupeMemoryCache[k]!;
         if (nowMs - last < effectiveDebounceMs) {
-          debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate (in-memory key: $k, elapsed: ${nowMs - last}ms < ${effectiveDebounceMs}ms)');
+          debugPrint(
+            '[LocalNotificationService] 🚫 Suppressed duplicate (in-memory key: $k, elapsed: ${nowMs - last}ms < ${effectiveDebounceMs}ms)',
+          );
           return true;
         }
       }
@@ -154,7 +187,9 @@ class LocalNotificationService with WidgetsBindingObserver {
         final last = prefs.getInt(prefKey);
         if (last != null && (nowMs - last < effectiveDebounceMs)) {
           _staticDedupeMemoryCache[k] = last;
-          debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate (SharedPreferences key: $k, elapsed: ${nowMs - last}ms < ${effectiveDebounceMs}ms)');
+          debugPrint(
+            '[LocalNotificationService] 🚫 Suppressed duplicate (SharedPreferences key: $k, elapsed: ${nowMs - last}ms < ${effectiveDebounceMs}ms)',
+          );
           return true;
         }
       }
@@ -166,10 +201,14 @@ class LocalNotificationService with WidgetsBindingObserver {
       }
 
       if (_staticDedupeMemoryCache.length > 80) {
-        _staticDedupeMemoryCache.removeWhere((_, time) => nowMs - time > 180000);
+        _staticDedupeMemoryCache.removeWhere(
+          (_, time) => nowMs - time > 180000,
+        );
       }
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error checking deduplication in SharedPreferences: $e');
+      debugPrint(
+        '[LocalNotificationService] Error checking deduplication in SharedPreferences: $e',
+      );
     }
 
     return false;
@@ -177,6 +216,55 @@ class LocalNotificationService with WidgetsBindingObserver {
 
   /// In-memory queue for incoming order payloads received while SplashScreen is animating
   static Map<String, dynamic>? _pendingIncomingOrderPayload;
+  static String? _pendingIncomingOrderAction;
+  static const _incomingOrderChannel = MethodChannel(
+    'com.apnapos.app/incoming_order',
+  );
+
+  static void handleOrderUpdate(Map<String, dynamic> payload) {
+    final alert = IncomingOrderAlert(payload);
+    if (!alert.isChat && alert.isHandled) {
+      DatabaseService.markOrderDismissed(alert.orderId, alert.orderNumber);
+      IncomingOrderAcceptScreen.dismissIfShowing(
+        orderId: alert.orderId,
+        orderNumber: alert.orderNumber,
+        action: 'handled',
+      );
+    }
+  }
+
+  /// Native onNewIntent also fires while Flutter is already resumed. A lifecycle
+  /// observer alone cannot deliver that warm-launch notification to the screen.
+  static Future<void> initializeIncomingOrderBridge() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    _incomingOrderChannel.setMethodCallHandler((call) async {
+      if (call.method != 'incomingOrder' || call.arguments is! Map) return;
+      final event = Map<String, dynamic>.from(call.arguments as Map);
+      final payload = event['payload']?.toString();
+      _handleNotificationPayload(
+        payload,
+        autoAccept: event['action'] == 'accept',
+        autoReject: event['action'] == 'reject',
+      );
+    });
+    try {
+      final pending = await _incomingOrderChannel
+          .invokeMapMethod<String, dynamic>('getPendingOrder');
+      final payload = pending?['payload']?.toString();
+      if (payload != null && payload.isNotEmpty) {
+        _pendingIncomingOrderPayload = IncomingOrderPayload.decodeMap(payload);
+        _pendingIncomingOrderAction = pending?['action']?.toString() ?? 'view';
+        await checkAndShowPendingIncomingOrder();
+      }
+    } on MissingPluginException {
+      // Shared preferences remain the fallback on older/native-less builds.
+    } on PlatformException catch (error) {
+      debugPrint(
+        '[IncomingOrderBridge] Pending launch check failed: ${error.code}',
+      );
+    }
+  }
+
   static Timer? _retryShowOrderTimer;
 
   bool get _isSupportedPlatform =>
@@ -194,41 +282,91 @@ class LocalNotificationService with WidgetsBindingObserver {
   }) {
     if (payload == null || payload.isEmpty) return;
     try {
-      final decoded = jsonDecode(payload);
-      if (decoded is Map<String, dynamic>) {
+      final rawDecoded = jsonDecode(payload);
+      if (rawDecoded is Map<String, dynamic>) {
+        final decoded = IncomingOrderPayload.normalize(rawDecoded);
+        final alert = IncomingOrderAlert(decoded);
+        final created = DateTime.tryParse(
+          decoded['createdAt']?.toString() ?? '',
+        );
+        if (alert.isIncoming &&
+            created != null &&
+            DateTime.now().difference(created).inSeconds > 900) {
+          return;
+        }
+        if (alert.isIncoming &&
+            IncomingOrderAcceptScreen.handleNotificationAction(
+              orderId: alert.orderId,
+              orderNumber: alert.orderNumber,
+              accept: autoAccept,
+              reject: autoReject,
+            )) {
+          return;
+        }
+        if (alert.isOrder && !alert.isIncoming) {
+          if (alert.isHandled) {
+            handleOrderUpdate(decoded);
+          }
+          return;
+        }
         final type = decoded['type']?.toString();
         final entityType = decoded['entityType']?.toString();
         final metadata = decoded['metadata'] as Map<String, dynamic>? ?? {};
 
         // Incoming WhatsApp & Urgent Order Alert handling
-        final isOrder = type == 'whatsapp_order_request' ||
-            type == 'whatsapp_new_order' ||
-            type == 'whatsapp_order' ||
-            type == 'new_order' ||
-            type == 'newOrder' ||
-            type == 'order_created' ||
-            type == 'order' ||
-            entityType == 'whatsapp_order' ||
-            entityType == 'order' ||
-            decoded['orderId'] != null ||
-            metadata['orderId'] != null;
+        final isOrder =
+            alert.isIncoming &&
+            (type == 'whatsapp_order_request' ||
+                type == 'whatsapp_new_order' ||
+                type == 'whatsapp_order' ||
+                type == 'new_order' ||
+                type == 'newOrder' ||
+                type == 'order_created' ||
+                type == 'order' ||
+                entityType == 'whatsapp_order' ||
+                entityType == 'order' ||
+                decoded['orderId'] != null ||
+                metadata['orderId'] != null ||
+                type == 'table_order' ||
+                type == 'qr_order');
 
-        final orderId = (decoded['orderId'] ?? metadata['orderId'] ?? '').toString().trim();
-        final orderNum = (decoded['orderNumber'] ?? metadata['orderNumber'] ?? '').toString().trim();
-        final rawType = (decoded['orderType'] ?? metadata['orderType'] ?? '').toString().toLowerCase();
+        final orderId = (decoded['orderId'] ?? metadata['orderId'] ?? '')
+            .toString()
+            .trim();
+        final orderNum =
+            (decoded['orderNumber'] ?? metadata['orderNumber'] ?? '')
+                .toString()
+                .trim();
+        final rawType = (decoded['orderType'] ?? metadata['orderType'] ?? '')
+            .toString()
+            .toLowerCase();
         final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-        final rawSource = (decoded['orderSource'] ?? metadata['orderSource'] ?? '').toString().toLowerCase();
-        final pm = (decoded['paymentMethod'] ?? metadata['paymentMethod'] ?? '').toString().toLowerCase();
-        final isKot = pm.contains('kot') || decoded['isKot'] == true || metadata['isKot'] == true || (decoded['status'] ?? '').toString().toLowerCase() == 'preparing';
+        final rawSource =
+            (decoded['orderSource'] ?? metadata['orderSource'] ?? '')
+                .toString()
+                .toLowerCase();
+        final pm = (decoded['paymentMethod'] ?? metadata['paymentMethod'] ?? '')
+            .toString()
+            .toLowerCase();
+        final isKot =
+            pm.contains('kot') ||
+            decoded['isKot'] == true ||
+            metadata['isKot'] == true ||
+            (decoded['status'] ?? '').toString().toLowerCase() == 'preparing';
 
-        final tblNum = (decoded['tableNumber'] ?? metadata['tableNumber'] ?? decoded['table'] ?? metadata['table'])?.toString().trim();
-        final bool isTableOrder = (tblNum != null && tblNum.isNotEmpty) ||
+        final tblNum = IncomingOrderPayload.tableNumber(decoded);
+        final bool isTableOrder =
+            (tblNum != null && tblNum.isNotEmpty) ||
             rawSource.contains('qr') ||
             rawSource.contains('table') ||
             cleanType.contains('table') ||
-            (decoded['deliveryAddress'] ?? metadata['deliveryAddress'] ?? '').toString().toLowerCase().contains('table');
+            (decoded['deliveryAddress'] ?? metadata['deliveryAddress'] ?? '')
+                .toString()
+                .toLowerCase()
+                .contains('table');
 
-        final bool isExplicitExternal = rawSource == 'whatsapp' ||
+        final bool isExplicitExternal =
+            rawSource == 'whatsapp' ||
             rawSource == 'profile' ||
             rawSource == 'storefront' ||
             rawSource == 'online' ||
@@ -242,78 +380,108 @@ class LocalNotificationService with WidgetsBindingObserver {
             type == 'table_order' ||
             type == 'qr_order';
 
-        final bool isDineInOrLocalPos = !isExplicitExternal && (
-            isKot ||
-            rawSource == 'pos' ||
-            rawSource == 'counter' ||
-            rawSource == 'local' ||
-            DatabaseService.isKnownPosOrder(orderId) ||
-            DatabaseService.isKnownPosOrder(orderNum)
-        );
+        final bool isDineInOrLocalPos =
+            !isExplicitExternal &&
+            (isKot ||
+                rawSource == 'pos' ||
+                rawSource == 'counter' ||
+                rawSource == 'local' ||
+                DatabaseService.isKnownPosOrder(orderId) ||
+                DatabaseService.isKnownPosOrder(orderNum));
 
         if (isOrder && !isDineInOrLocalPos) {
           if (DatabaseService.isOrderDismissed(orderId, orderNum)) {
-            debugPrint('[LocalNotificationService] Order $orderNum / $orderId is already dismissed. Suppressing popup.');
+            debugPrint(
+              '[LocalNotificationService] Order $orderNum / $orderId is already dismissed. Suppressing popup.',
+            );
             return;
           }
-          final localOrder = DatabaseService().orders.where((o) =>
-              (orderId.isNotEmpty && o.id == orderId) ||
-              (orderNum.isNotEmpty && o.orderNumber == orderNum)
-          ).firstOrNull;
+          final localOrder = DatabaseService().orders
+              .where(
+                (o) =>
+                    (orderId.isNotEmpty && o.id == orderId) ||
+                    (orderNum.isNotEmpty && o.orderNumber == orderNum),
+              )
+              .firstOrNull;
           if (localOrder != null && localOrder.status != OrderStatus.pending) {
             DatabaseService.markOrderDismissed(orderId, orderNum);
-            debugPrint('[LocalNotificationService] Order $orderNum / $orderId is already ${localOrder.status}. Suppressing popup.');
+            debugPrint(
+              '[LocalNotificationService] Order $orderNum / $orderId is already ${localOrder.status}. Suppressing popup.',
+            );
             return;
           }
 
           if (IncomingOrderAcceptScreen.isShowing &&
               (IncomingOrderAcceptScreen.currentShowingOrderId == orderId ||
-               IncomingOrderAcceptScreen.currentShowingOrderNumber == orderNum)) {
-            debugPrint('[LocalNotificationService] Incoming order screen already showing for order  / . Suppressing duplicate open.');
+                  IncomingOrderAcceptScreen.currentShowingOrderNumber ==
+                      orderNum)) {
+            debugPrint(
+              '[LocalNotificationService] Incoming order screen already showing for order  / . Suppressing duplicate open.',
+            );
             return;
           }
 
           SoundService.boostHardwareVolume();
-          SoundService.bringAppToFront(payload: jsonEncode(decoded), isUrgent: true);
+          SoundService.bringAppToFront(
+            payload: jsonEncode(decoded),
+            isUrgent: true,
+          );
           if (SplashScreen.isSplashActive) {
-            debugPrint('[LocalNotificationService] ⏳ SplashScreen active. Queueing order payload for display post-splash.');
+            debugPrint(
+              '[LocalNotificationService] ⏳ SplashScreen active. Queueing order payload for display post-splash.',
+            );
             _pendingIncomingOrderPayload = decoded;
+            _pendingIncomingOrderAction = autoAccept
+                ? 'accept'
+                : autoReject
+                ? 'reject'
+                : 'view';
             return;
           }
 
           _pendingIncomingOrderPayload = decoded;
+          _pendingIncomingOrderAction = autoAccept
+              ? 'accept'
+              : autoReject
+              ? 'reject'
+              : 'view';
           _retryShowOrderTimer?.cancel();
           int attempts = 0;
-          _retryShowOrderTimer = Timer.periodic(const Duration(milliseconds: 350), (timer) {
-            attempts++;
-            if (SplashScreen.isSplashActive) {
-              _pendingIncomingOrderPayload = decoded;
-              timer.cancel();
-              return;
-            }
-            final ctx = navigatorKey.currentContext;
-            if (ctx != null && ctx.mounted) {
-              timer.cancel();
-              _pendingIncomingOrderPayload = null;
-              IncomingOrderAcceptScreen.openFromPayload(
-                ctx,
-                decoded,
-                autoAccept: autoAccept,
-                autoReject: autoReject,
-              );
-            } else if (attempts >= 15) {
-              // Phone might be locked or unmounted. Keep payload stored so unlock triggers it!
-              timer.cancel();
-              _pendingIncomingOrderPayload = decoded;
-            }
-          });
+          _retryShowOrderTimer = Timer.periodic(
+            const Duration(milliseconds: 350),
+            (timer) {
+              attempts++;
+              if (SplashScreen.isSplashActive) {
+                _pendingIncomingOrderPayload = decoded;
+                timer.cancel();
+                return;
+              }
+              final ctx = navigatorKey.currentContext;
+              if (ctx != null && ctx.mounted) {
+                timer.cancel();
+                _pendingIncomingOrderPayload = null;
+                _pendingIncomingOrderAction = null;
+                IncomingOrderAcceptScreen.openFromPayload(
+                  ctx,
+                  decoded,
+                  autoAccept: autoAccept,
+                  autoReject: autoReject,
+                );
+              } else if (attempts >= 15) {
+                // Phone might be locked or unmounted. Keep payload stored so unlock triggers it!
+                timer.cancel();
+                _pendingIncomingOrderPayload = decoded;
+              }
+            },
+          );
           return;
         }
 
         if (type == 'whatsappMessage' ||
             type == 'whatsapp_message' ||
             entityType == 'whatsapp_chat') {
-          final phone = metadata['customerPhone']?.toString() ??
+          final phone =
+              metadata['customerPhone']?.toString() ??
               metadata['phone']?.toString() ??
               decoded['entityId']?.toString();
           final name = metadata['customerName']?.toString();
@@ -336,19 +504,26 @@ class LocalNotificationService with WidgetsBindingObserver {
   }
 
   /// Directly handle payload map from FCM or Socket background handlers
-  static void handlePayloadDirectly(Map<String, dynamic> data, {bool autoAccept = false}) {
+  static void handlePayloadDirectly(
+    Map<String, dynamic> data, {
+    bool autoAccept = false,
+  }) {
     try {
       final jsonStr = jsonEncode(data);
       _pendingIncomingOrderPayload = data;
-      SharedPreferences.getInstance().then((prefs) {
-        prefs.setString('pending_incoming_order_payload', jsonStr);
-      }).catchError((_) {});
+      SharedPreferences.getInstance()
+          .then((prefs) {
+            prefs.setString('pending_incoming_order_payload', jsonStr);
+          })
+          .catchError((_) {});
 
       SoundService.boostHardwareVolume();
       SoundService.bringAppToFront(payload: jsonStr, isUrgent: true);
       _handleNotificationPayload(jsonStr, autoAccept: autoAccept);
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error in handlePayloadDirectly: $e');
+      debugPrint(
+        '[LocalNotificationService] Error in handlePayloadDirectly: $e',
+      );
     }
   }
 
@@ -384,14 +559,16 @@ class LocalNotificationService with WidgetsBindingObserver {
     if (_isInitialized || !_isSupportedPlatform) return;
 
     try {
+      await initializeIncomingOrderBridge();
       const AndroidInitializationSettings androidSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
-      const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
-        requestAlertPermission: false,
-        requestBadgePermission: false,
-        requestSoundPermission: false,
-      );
+      const DarwinInitializationSettings iosSettings =
+          DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+          );
 
       const InitializationSettings initSettings = InitializationSettings(
         android: androidSettings,
@@ -401,7 +578,9 @@ class LocalNotificationService with WidgetsBindingObserver {
       await _notificationsPlugin.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          debugPrint('[LocalNotificationService] Notification tapped in foreground/background: ${response.payload} (action: ${response.actionId})');
+          debugPrint(
+            '[LocalNotificationService] Notification tapped in foreground/background: ${response.payload} (action: ${response.actionId})',
+          );
           _handleNotificationResponse(response);
         },
         onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
@@ -410,14 +589,17 @@ class LocalNotificationService with WidgetsBindingObserver {
       // Explicitly register Android Notification Channels so background/terminated push notifications are never dropped
       if (defaultTargetPlatform == TargetPlatform.android) {
         final androidPlugin = _notificationsPlugin
-            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
         if (androidPlugin != null) {
           // WhatsApp Orders & Urgent Alerts Channel - Highest Importance, Sound, Vibration, Full Screen Intent
           await androidPlugin.createNotificationChannel(
             const AndroidNotificationChannel(
               'apna_pos_whatsapp_orders_v2',
               'WhatsApp Orders & Alerts',
-              description: 'Urgent incoming WhatsApp customer orders with instant alert and popup',
+              description:
+                  'Urgent incoming WhatsApp customer orders with instant alert and popup',
               importance: Importance.max,
               playSound: true,
               sound: RawResourceAndroidNotificationSound('notification_sound'),
@@ -431,7 +613,8 @@ class LocalNotificationService with WidgetsBindingObserver {
             const AndroidNotificationChannel(
               'apna_pos_whatsapp_messages_v1',
               'WhatsApp Messages',
-              description: 'Real-time notifications for incoming WhatsApp customer messages',
+              description:
+                  'Real-time notifications for incoming WhatsApp customer messages',
               importance: Importance.max,
               playSound: true,
               sound: RawResourceAndroidNotificationSound('notification_sound'),
@@ -445,7 +628,8 @@ class LocalNotificationService with WidgetsBindingObserver {
             const AndroidNotificationChannel(
               'apna_pos_general_v2',
               'General Alerts & Orders',
-              description: 'Real-time notifications for orders, leads, and daily summaries',
+              description:
+                  'Real-time notifications for orders, leads, and daily summaries',
               importance: Importance.max,
               playSound: true,
               sound: RawResourceAndroidNotificationSound('notification_sound'),
@@ -459,7 +643,8 @@ class LocalNotificationService with WidgetsBindingObserver {
             const AndroidNotificationChannel(
               'apna_pos_sales_v2',
               'Daily Sales Reports',
-              description: 'Visual end-of-day sales summary and performance metrics',
+              description:
+                  'Visual end-of-day sales summary and performance metrics',
               importance: Importance.max,
               playSound: true,
               sound: RawResourceAndroidNotificationSound('notification_sound'),
@@ -475,12 +660,15 @@ class LocalNotificationService with WidgetsBindingObserver {
       } catch (_) {}
 
       // Check if launched by tapping a local notification or via FullScreenIntent
-      final launchDetails = await _notificationsPlugin.getNotificationAppLaunchDetails();
+      final launchDetails = await _notificationsPlugin
+          .getNotificationAppLaunchDetails();
       if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
         final payload = launchDetails.notificationResponse?.payload;
         if (payload != null && payload.isNotEmpty) {
-          debugPrint('[LocalNotificationService] App launched via local notification fullScreenIntent: $payload');
-          _handleNotificationPayload(payload);
+          debugPrint(
+            '[LocalNotificationService] App launched via local notification fullScreenIntent: $payload',
+          );
+          _handleNotificationResponse(launchDetails.notificationResponse!);
         }
       }
 
@@ -488,7 +676,9 @@ class LocalNotificationService with WidgetsBindingObserver {
       checkAndShowPendingIncomingOrder();
 
       _isInitialized = true;
-      debugPrint('[LocalNotificationService] Initialized with all Android channels successfully');
+      debugPrint(
+        '[LocalNotificationService] Initialized with all Android channels successfully',
+      );
     } catch (e) {
       debugPrint('[LocalNotificationService] Initialization error: $e');
     }
@@ -511,7 +701,6 @@ class LocalNotificationService with WidgetsBindingObserver {
       try {
         FcmService().registerTokenWithBackend();
       } catch (_) {}
-
     }
   }
 
@@ -520,27 +709,52 @@ class LocalNotificationService with WidgetsBindingObserver {
     if (payload == null || payload.isEmpty) return;
     final isAccept = response.actionId == 'accept_order';
     final isReject = response.actionId == 'reject_order';
-    _handleNotificationPayload(payload, autoAccept: isAccept, autoReject: isReject);
+    _handleNotificationPayload(
+      payload,
+      autoAccept: isAccept,
+      autoReject: isReject,
+    );
   }
 
   /// Check if a high-priority WhatsApp or online order was received while the phone was locked or app was killed
   static Future<void> checkAndShowPendingIncomingOrder() async {
     try {
       if (SplashScreen.isSplashActive) {
-        debugPrint('[LocalNotificationService] checkAndShowPendingIncomingOrder deferred (splash active)');
+        debugPrint(
+          '[LocalNotificationService] checkAndShowPendingIncomingOrder deferred (splash active)',
+        );
         return;
       }
-      if (IncomingOrderAcceptScreen.isShowing) {
-        return;
-      }
-
       final prefs = await SharedPreferences.getInstance();
+
+      // Android and the FCM background isolate update a different preferences
+      // cache. Read the persisted launch payload before consuming this queue.
+      await prefs.reload();
+      final handledKeys = IncomingOrderPayload.decodeMap(
+        prefs.getString('apna_handled_order_keys'),
+      );
+      for (final entry in handledKeys.entries) {
+        final handledAt = int.tryParse(entry.value.toString());
+        if (handledAt != null &&
+            DateTime.now().millisecondsSinceEpoch - handledAt < 86400000) {
+          DatabaseService.markOrderDismissed(entry.key);
+          IncomingOrderAcceptScreen.dismissIfShowing(
+            orderId: entry.key,
+            orderNumber: entry.key,
+            action: 'handled',
+          );
+        }
+      }
+      if (IncomingOrderAcceptScreen.isShowing) return;
 
       // Check in-memory pending payload first
       if (_pendingIncomingOrderPayload != null) {
         final payload = _pendingIncomingOrderPayload!;
         _pendingIncomingOrderPayload = null;
-        final pendingAction = prefs.getString('pending_notification_action');
+        final pendingAction =
+            _pendingIncomingOrderAction ??
+            prefs.getString('pending_notification_action');
+        _pendingIncomingOrderAction = null;
         if (pendingAction != null) {
           await prefs.remove('pending_notification_action');
         }
@@ -569,50 +783,69 @@ class LocalNotificationService with WidgetsBindingObserver {
             final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
             final ordId = (m['orderId'] ?? '').toString();
             final ordNum = (m['orderNumber'] ?? '').toString();
-            final bool isExplicitExternal = rawSrc == 'whatsapp' ||
+            final bool isExplicitExternal =
+                rawSrc == 'whatsapp' ||
                 rawSrc == 'profile' ||
                 rawSrc == 'storefront' ||
                 rawSrc == 'online' ||
                 rawSrc == 'qr' ||
                 cleanType.contains('whatsapp') ||
                 cleanType.contains('profile');
-            final isPos = !isExplicitExternal && (
-                rawSrc == 'pos' ||
-                rawSrc == 'counter' ||
-                rawSrc == 'local' ||
-                DatabaseService.isKnownPosOrder(ordId) ||
-                DatabaseService.isKnownPosOrder(ordNum));
+            final isPos =
+                !isExplicitExternal &&
+                (rawSrc == 'pos' ||
+                    rawSrc == 'counter' ||
+                    rawSrc == 'local' ||
+                    DatabaseService.isKnownPosOrder(ordId) ||
+                    DatabaseService.isKnownPosOrder(ordNum));
             if (isPos) {
-              debugPrint('[LocalNotificationService] Discarding pending POS order payload from prefs');
+              debugPrint(
+                '[LocalNotificationService] Discarding pending POS order payload from prefs',
+              );
               return;
             }
             if (DatabaseService.isOrderDismissed(ordId, ordNum)) {
-              debugPrint('[LocalNotificationService] Discarding already dismissed order payload: $ordNum / $ordId');
+              debugPrint(
+                '[LocalNotificationService] Discarding already dismissed order payload: $ordNum / $ordId',
+              );
               return;
             }
-            final localOrder = DatabaseService().orders.where((o) =>
-                (ordId.isNotEmpty && o.id == ordId) ||
-                (ordNum.isNotEmpty && o.orderNumber == ordNum)
-            ).firstOrNull;
-            if (localOrder != null && localOrder.status != OrderStatus.pending) {
+            final localOrder = DatabaseService().orders
+                .where(
+                  (o) =>
+                      (ordId.isNotEmpty && o.id == ordId) ||
+                      (ordNum.isNotEmpty && o.orderNumber == ordNum),
+                )
+                .firstOrNull;
+            if (localOrder != null &&
+                localOrder.status != OrderStatus.pending) {
               DatabaseService.markOrderDismissed(ordId, ordNum);
-              debugPrint('[LocalNotificationService] Discarding already handled order payload: $ordNum / $ordId');
+              debugPrint(
+                '[LocalNotificationService] Discarding already handled order payload: $ordNum / $ordId',
+              );
               return;
             }
             final createdAtStr = m['createdAt']?.toString();
             if (createdAtStr != null && createdAtStr.isNotEmpty) {
               final parsed = DateTime.tryParse(createdAtStr);
               if (parsed != null) {
-                final ageSec = DateTime.now().difference(parsed).inSeconds.abs();
+                final ageSec = DateTime.now()
+                    .difference(parsed)
+                    .inSeconds
+                    .abs();
                 if (ageSec > 900) {
-                  debugPrint('[LocalNotificationService] Discarding stale order payload from prefs (age: ${ageSec}s)');
+                  debugPrint(
+                    '[LocalNotificationService] Discarding stale order payload from prefs (age: ${ageSec}s)',
+                  );
                   return;
                 }
               }
             }
           }
         } catch (_) {}
-        debugPrint('[LocalNotificationService] Found pending background order in SharedPreferences: $pendingJson (Action: $pendingAction)');
+        debugPrint(
+          '[LocalNotificationService] Found pending background order in SharedPreferences: $pendingJson (Action: $pendingAction)',
+        );
         _handleNotificationPayload(
           pendingJson,
           autoAccept: pendingAction == 'accept',
@@ -623,17 +856,21 @@ class LocalNotificationService with WidgetsBindingObserver {
 
       // Check database for any unhandled pending external order placed within last 15 mins
       if (!IncomingOrderAcceptScreen.isShowing) {
-        final pendingDbOrder = await DatabaseService().findPendingExternalOrderForPrompt();
+        final pendingDbOrder = await DatabaseService()
+            .findPendingExternalOrderForPrompt();
         if (pendingDbOrder != null && !IncomingOrderAcceptScreen.isShowing) {
           final pId = (pendingDbOrder['orderId'] ?? '').toString();
           final pNum = (pendingDbOrder['orderNumber'] ?? '').toString();
           if (DatabaseService.isOrderDismissed(pId, pNum)) {
             return;
           }
-          final localOrder = DatabaseService().orders.where((o) =>
-              (pId.isNotEmpty && o.id == pId) ||
-              (pNum.isNotEmpty && o.orderNumber == pNum)
-          ).firstOrNull;
+          final localOrder = DatabaseService().orders
+              .where(
+                (o) =>
+                    (pId.isNotEmpty && o.id == pId) ||
+                    (pNum.isNotEmpty && o.orderNumber == pNum),
+              )
+              .firstOrNull;
           if (localOrder != null && localOrder.status != OrderStatus.pending) {
             DatabaseService.markOrderDismissed(pId, pNum);
             return;
@@ -648,92 +885,61 @@ class LocalNotificationService with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error checking pending incoming order: $e');
+      debugPrint(
+        '[LocalNotificationService] Error checking pending incoming order: $e',
+      );
     }
   }
 
   /// Display a native system notification from an incoming FCM RemoteMessage (invoked in foreground, background, and terminated states)
-  static Future<void> showNotificationFromRemoteMessage(RemoteMessage message) async {
+  static Future<void> showNotificationFromRemoteMessage(
+    RemoteMessage message,
+  ) async {
     try {
       final notification = message.notification;
-      final data = message.data;
+      final data = IncomingOrderPayload.normalize(message.data);
 
-      final rawTitle = notification?.title ?? data['title']?.toString() ?? 'Apna POS Notification';
+      final rawTitle =
+          notification?.title ??
+          data['title']?.toString() ??
+          'Apna POS Notification';
       final rawBody = notification?.body ?? data['message']?.toString() ?? '';
       final typeStr = data['type']?.toString() ?? 'system';
 
-      final orderId = (data['orderId'] ?? '').toString().trim();
-      final orderNum = (data['orderNumber'] ?? '').toString().trim();
-      final rawType = (data['orderType'] ?? '').toString().toLowerCase();
-      final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-      final rawSource = (data['orderSource'] ?? '').toString().toLowerCase();
-      final pm = (data['paymentMethod'] ?? '').toString().toLowerCase();
-      final isKot = pm.contains('kot') || data['isKot'] == true || data['isKot'] == 'true' || (data['status'] ?? '').toString().toLowerCase() == 'preparing';
-
-      final bool isExplicitChatMessage = typeStr == 'whatsapp_message' ||
-          typeStr == 'chat_message' ||
-          data['entityType'] == 'whatsapp_chat' ||
-          data['entityType'] == 'whatsapp_message' ||
-          data['type'] == 'whatsapp_message' ||
-          data['type'] == 'chat_message';
-
-      final bool isExplicitExternal = !isExplicitChatMessage && (
-          rawSource == 'whatsapp' ||
-          rawSource == 'profile' ||
-          rawSource == 'storefront' ||
-          rawSource == 'online' ||
-          rawSource == 'qr' ||
-          cleanType.contains('whatsapp') ||
-          cleanType.contains('profile') ||
-          typeStr == 'whatsapp_order_request'
-      );
-
-      final bool isDineInOrLocalPos = isKot ||
-          (!isExplicitExternal && (
-            rawSource == 'pos' ||
-            rawSource == 'counter' ||
-            rawSource == 'local' ||
-            DatabaseService.isKnownPosOrder(orderId) ||
-            DatabaseService.isKnownPosOrder(orderNum)
-          ));
-
-      if (isDineInOrLocalPos) {
-        debugPrint('[LocalNotificationService] Background push suppressed for POS/Dine-In order: $orderNum / $orderId');
-        return;
-      }
-
-      final isWhatsAppOrder = !isExplicitChatMessage && !isDineInOrLocalPos && (
-          typeStr == 'whatsapp_order_request' ||
-          typeStr == 'whatsapp_new_order' ||
-          typeStr == 'whatsapp_order' ||
-          (typeStr == 'new_order' && rawSource != 'pos') ||
-          (typeStr == 'newOrder' && rawSource != 'pos') ||
-          (typeStr == 'order_created' && rawSource != 'pos') ||
-          (data['entityType'] == 'whatsapp_order') ||
-          (isExplicitExternal && (orderId.isNotEmpty || orderNum.isNotEmpty))
-      );
+      final alert = IncomingOrderAlert(data);
+      if (alert.isLocal || (alert.isOrder && !alert.isIncoming)) return;
+      final isWhatsAppOrder = alert.isIncoming;
 
       String finalTitle = rawTitle;
       String finalBody = rawBody;
       StyleInformation? bigTextStyle;
 
       if (isWhatsAppOrder) {
-        final orderNum = data['orderNumber']?.toString() ?? data['orderId']?.toString() ?? '';
+        final orderNum =
+            data['orderNumber']?.toString() ??
+            data['orderId']?.toString() ??
+            '';
         final cleanNum = orderNum.isNotEmpty
             ? (orderNum.startsWith('#') ? orderNum : '#$orderNum')
             : '';
         final amount = data['totalAmount']?.toString() ?? '';
         final custName = data['customerName']?.toString();
-        final cleanName = (custName != null && custName.isNotEmpty && custName != 'Customer')
+        final cleanName =
+            (custName != null && custName.isNotEmpty && custName != 'Customer')
             ? custName
             : 'Customer';
-        final oType = (data['orderType']?.toString() ?? 'takeaway').toUpperCase();
+        final oType = (data['orderType']?.toString() ?? 'takeaway')
+            .toUpperCase();
 
         // 1. High-impact short title that NEVER truncates
         if (cleanNum.isNotEmpty) {
-          finalTitle = amount.isNotEmpty ? '🔔 $cleanNum • ₹$amount' : '🔔 New Order: $cleanNum';
+          finalTitle = amount.isNotEmpty
+              ? '🔔 $cleanNum • ₹$amount'
+              : '🔔 New Order: $cleanNum';
         } else {
-          finalTitle = amount.isNotEmpty ? '🔔 New Order • ₹$amount' : '🔔 New Order Received';
+          finalTitle = amount.isNotEmpty
+              ? '🔔 New Order • ₹$amount'
+              : '🔔 New Order Received';
         }
 
         // 2. Parse items for expanded preview
@@ -743,8 +949,13 @@ class LocalNotificationService with WidgetsBindingObserver {
           if (rawItems is String && rawItems.isNotEmpty) {
             final decoded = jsonDecode(rawItems);
             if (decoded is List && decoded.isNotEmpty) {
-              final names = decoded.map((i) => '${i['name'] ?? 'Item'} x${i['quantity'] ?? 1}').take(3).join(', ');
-              final extra = decoded.length > 3 ? ' +${decoded.length - 3} more' : '';
+              final names = decoded
+                  .map((i) => '${i['name'] ?? 'Item'} x${i['quantity'] ?? 1}')
+                  .take(3)
+                  .join(', ');
+              final extra = decoded.length > 3
+                  ? ' +${decoded.length - 3} more'
+                  : '';
               itemsSummary = '$names$extra';
             }
           }
@@ -767,7 +978,8 @@ class LocalNotificationService with WidgetsBindingObserver {
         );
       }
 
-      final isDailySummary = typeStr == 'daily_sales_summary' ||
+      final isDailySummary =
+          typeStr == 'daily_sales_summary' ||
           data['entityType'] == 'sales_report' ||
           data['type'] == 'daily_sales_summary';
 
@@ -776,8 +988,8 @@ class LocalNotificationService with WidgetsBindingObserver {
       final notifId = isDailySummary
           ? 9991
           : (isWhatsAppOrder && data['orderId'] != null
-              ? data['orderId'].toString().hashCode.abs().remainder(100000)
-              : 0);
+                ? data['orderId'].toString().hashCode.abs().remainder(100000)
+                : 0);
 
       final instance = LocalNotificationService();
       await instance.init();
@@ -793,16 +1005,20 @@ class LocalNotificationService with WidgetsBindingObserver {
         type: isWhatsAppOrder
             ? NotificationType.whatsappOrderRequest
             : (isDailySummary
-                ? NotificationType.dailySalesSummary
-                : instance.resolveNotificationType(typeStr)),
+                  ? NotificationType.dailySalesSummary
+                  : instance.resolveNotificationType(typeStr)),
         channelId: isDailySummary
             ? 'apna_pos_sales_v2'
             : (isWhatsAppOrder
-                ? 'apna_pos_whatsapp_orders_v2'
-                : (typeStr.contains('whatsapp') ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2')),
+                  ? 'apna_pos_whatsapp_orders_v2'
+                  : (typeStr.contains('whatsapp')
+                        ? 'apna_pos_whatsapp_messages_v1'
+                        : 'apna_pos_general_v2')),
         channelName: isDailySummary
             ? 'Sales & Business Reports'
-            : (isWhatsAppOrder ? 'WhatsApp Orders & Alerts' : 'General Alerts & Orders'),
+            : (isWhatsAppOrder
+                  ? 'WhatsApp Orders & Alerts'
+                  : 'General Alerts & Orders'),
         channelDescription: isDailySummary
             ? 'Extended high-priority daily sales summaries and business metrics'
             : 'Real-time notifications for orders, leads, and daily summaries',
@@ -812,7 +1028,9 @@ class LocalNotificationService with WidgetsBindingObserver {
         playSound: true,
       );
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error showing notification from RemoteMessage: $e');
+      debugPrint(
+        '[LocalNotificationService] Error showing notification from RemoteMessage: $e',
+      );
     }
   }
 
@@ -832,7 +1050,8 @@ class LocalNotificationService with WidgetsBindingObserver {
     StyleInformation? styleInformation,
     String channelId = 'apna_pos_general_v2',
     String channelName = 'General Alerts & Orders',
-    String channelDescription = 'Real-time notifications for orders, leads, and daily summaries',
+    String channelDescription =
+        'Real-time notifications for orders, leads, and daily summaries',
     Importance importance = Importance.max,
     Priority priority = Priority.high,
     List<AndroidNotificationAction>? actions,
@@ -840,14 +1059,18 @@ class LocalNotificationService with WidgetsBindingObserver {
     NotificationVisibility visibility = NotificationVisibility.public,
     AndroidNotificationCategory? category,
   }) async {
-    final Map<String, dynamic> effectiveMeta = Map<String, dynamic>.from(metadata);
+    final Map<String, dynamic> effectiveMeta = Map<String, dynamic>.from(
+      metadata,
+    );
     if (payload != null && payload.trim().startsWith('{')) {
       try {
         final decoded = jsonDecode(payload);
         if (decoded is Map) {
           for (final entry in decoded.entries) {
             final k = entry.key.toString();
-            if (!effectiveMeta.containsKey(k) || effectiveMeta[k] == null || effectiveMeta[k].toString().isEmpty) {
+            if (!effectiveMeta.containsKey(k) ||
+                effectiveMeta[k] == null ||
+                effectiveMeta[k].toString().isEmpty) {
               effectiveMeta[k] = entry.value;
             }
           }
@@ -855,7 +1078,9 @@ class LocalNotificationService with WidgetsBindingObserver {
             final innerMeta = decoded['metadata'] as Map;
             for (final entry in innerMeta.entries) {
               final k = entry.key.toString();
-              if (!effectiveMeta.containsKey(k) || effectiveMeta[k] == null || effectiveMeta[k].toString().isEmpty) {
+              if (!effectiveMeta.containsKey(k) ||
+                  effectiveMeta[k] == null ||
+                  effectiveMeta[k].toString().isEmpty) {
                 effectiveMeta[k] = entry.value;
               }
             }
@@ -869,15 +1094,23 @@ class LocalNotificationService with WidgetsBindingObserver {
     final orderId = (effectiveMeta['orderId'] ?? '').toString().trim();
     final orderNum = (effectiveMeta['orderNumber'] ?? '').toString().trim();
     final cleanType = type.name.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final cleanMetaType = (effectiveMeta['type'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final cleanEntityType = (entityType ?? effectiveMeta['entityType'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-    final isDailySummary = type == NotificationType.dailySalesSummary ||
+    final cleanMetaType = (effectiveMeta['type'] ?? '')
+        .toString()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[-_\s]'), '');
+    final cleanEntityType = (entityType ?? effectiveMeta['entityType'] ?? '')
+        .toString()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[-_\s]'), '');
+    final isDailySummary =
+        type == NotificationType.dailySalesSummary ||
         cleanType.contains('dailysalessummary') ||
         cleanMetaType.contains('dailysalessummary') ||
         cleanEntityType.contains('salesreport') ||
         entityType == 'sales_report';
 
-    final bool isExplicitChatMessage = type == NotificationType.whatsappMessage ||
+    final bool isExplicitChatMessage =
+        type == NotificationType.whatsappMessage ||
         cleanEntityType == 'whatsappchat' ||
         cleanEntityType == 'chatmessage' ||
         effectiveMeta['type'] == 'whatsapp_message' ||
@@ -886,26 +1119,29 @@ class LocalNotificationService with WidgetsBindingObserver {
 
     final bool hasOrderIdentifiers = orderId.isNotEmpty || orderNum.isNotEmpty;
 
-    final isOrderHint = !isExplicitChatMessage && (
-        type == NotificationType.whatsappOrderRequest ||
-        effectiveMeta['type'] == 'whatsapp_order_request' ||
-        effectiveMeta['type'] == 'whatsapp_new_order' ||
-        effectiveMeta['type'] == 'whatsapp_order' ||
-        effectiveMeta['type'] == 'new_order' ||
-        effectiveMeta['type'] == 'newOrder' ||
-        effectiveMeta['type'] == 'order_created' ||
-        (hasOrderIdentifiers && effectiveMeta['orderId'] != null)
-    );
+    final isOrderHint =
+        !isExplicitChatMessage &&
+        (type == NotificationType.whatsappOrderRequest ||
+            effectiveMeta['type'] == 'whatsapp_order_request' ||
+            effectiveMeta['type'] == 'whatsapp_new_order' ||
+            effectiveMeta['type'] == 'whatsapp_order' ||
+            effectiveMeta['type'] == 'new_order' ||
+            effectiveMeta['type'] == 'newOrder' ||
+            effectiveMeta['type'] == 'order_created' ||
+            (hasOrderIdentifiers && effectiveMeta['orderId'] != null));
 
-    final String? effectiveTag = tag ??
+    final String? effectiveTag =
+        tag ??
         (isDailySummary
             ? 'daily_sales_summary'
             : (isExplicitChatMessage
-                ? 'chat_${effectiveMeta['chatId'] ?? entityId ?? "whatsapp"}'
-                : (isOrderHint
-                    ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
-                    : (effectiveMeta['notificationTag']?.toString() ??
-                        (orderId.isNotEmpty ? 'order_$orderId' : null)))));
+                  ? 'chat_${effectiveMeta['chatId'] ?? entityId ?? "whatsapp"}'
+                  : (isOrderHint
+                        ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
+                        : (effectiveMeta['notificationTag']?.toString() ??
+                              (orderId.isNotEmpty
+                                  ? 'order_$orderId'
+                                  : null)))));
 
     // 0. Deduplicate notifications across Socket & FCM using unified cross-isolate debouncer
     if (!skipDedupe) {
@@ -922,25 +1158,36 @@ class LocalNotificationService with WidgetsBindingObserver {
       );
 
       if (isDuplicate) {
-        debugPrint('[LocalNotificationService] 🚫 Suppressed duplicate push in showPushNotification: "$title"');
+        debugPrint(
+          '[LocalNotificationService] 🚫 Suppressed duplicate push in showPushNotification: "$title"',
+        );
         return;
       }
     }
 
     await SoundService().init();
-    final bool isAppForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    final bool isAppForeground =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
     if (!_isSupportedPlatform) {
       if (playSound) {
-        final rawType = (effectiveMeta['orderType'] ?? effectiveMeta['type'] ?? '').toString().toLowerCase().trim();
-        final isOrder = type == NotificationType.whatsappOrderRequest || rawType.contains('order');
+        final rawType =
+            (effectiveMeta['orderType'] ?? effectiveMeta['type'] ?? '')
+                .toString()
+                .toLowerCase()
+                .trim();
+        final isOrder =
+            type == NotificationType.whatsappOrderRequest ||
+            rawType.contains('order');
         if (isOrder) {
           SoundService.playOrderRingtone();
         } else {
           SoundService.playNotificationSound();
         }
       }
-      debugPrint('[LocalNotificationService] Push notification delivered (in-app): "$title"');
+      debugPrint(
+        '[LocalNotificationService] Push notification delivered (in-app): "$title"',
+      );
       return;
     }
 
@@ -949,25 +1196,40 @@ class LocalNotificationService with WidgetsBindingObserver {
     try {
       final orderId = (effectiveMeta['orderId'] ?? '').toString().trim();
       final orderNum = (effectiveMeta['orderNumber'] ?? '').toString().trim();
-      final oSource = (effectiveMeta['orderSource'] ?? effectiveMeta['source'] ?? '').toString().toLowerCase().trim();
-      final rawType = (effectiveMeta['orderType'] ?? effectiveMeta['type'] ?? '').toString().toLowerCase().trim();
+      final oSource =
+          (effectiveMeta['orderSource'] ?? effectiveMeta['source'] ?? '')
+              .toString()
+              .toLowerCase()
+              .trim();
+      final rawType =
+          (effectiveMeta['orderType'] ?? effectiveMeta['type'] ?? '')
+              .toString()
+              .toLowerCase()
+              .trim();
       final cleanType = rawType.replaceAll(RegExp(r'[-_\s]'), '');
-      final pm = (effectiveMeta['paymentMethod'] ?? '').toString().toLowerCase();
-      final isKot = pm.contains('kot') ||
+      final pm = (effectiveMeta['paymentMethod'] ?? '')
+          .toString()
+          .toLowerCase();
+      final isKot =
+          pm.contains('kot') ||
           effectiveMeta['isKot'] == true ||
           effectiveMeta['isKot'] == 'true' ||
-          (effectiveMeta['status'] ?? '').toString().toLowerCase() == 'preparing';
+          (effectiveMeta['status'] ?? '').toString().toLowerCase() ==
+              'preparing';
 
-      final bool isExplicitChatMessage = type == NotificationType.whatsappMessage ||
+      final bool isExplicitChatMessage =
+          type == NotificationType.whatsappMessage ||
           cleanEntityType == 'whatsappchat' ||
           cleanEntityType == 'chatmessage' ||
           effectiveMeta['type'] == 'whatsapp_message' ||
           effectiveMeta['type'] == 'chat_message' ||
           effectiveMeta['entityType'] == 'whatsapp_chat';
 
-      final bool hasOrderIdentifiers = orderId.isNotEmpty || orderNum.isNotEmpty;
+      final bool hasOrderIdentifiers =
+          orderId.isNotEmpty || orderNum.isNotEmpty;
 
-      final bool isOrderType = type == NotificationType.whatsappOrderRequest ||
+      final bool isOrderType =
+          type == NotificationType.whatsappOrderRequest ||
           channelId == 'apna_pos_whatsapp_orders_v2' ||
           channelId == 'apna_pos_whatsapp_orders_v1' ||
           effectiveMeta['type'] == 'whatsapp_order_request' ||
@@ -977,39 +1239,46 @@ class LocalNotificationService with WidgetsBindingObserver {
           effectiveMeta['type'] == 'newOrder' ||
           effectiveMeta['type'] == 'order_created';
 
-      final bool isExplicitExternalOrder = !isExplicitChatMessage && (
-          isOrderType ||
-          (hasOrderIdentifiers && (
-              oSource == 'whatsapp' ||
-              oSource == 'profile' ||
-              oSource == 'storefront' ||
-              oSource == 'online' ||
-              oSource == 'qr' ||
-              cleanType == 'whatsapporder' ||
-              cleanType == 'profileorder' ||
-              cleanType == 'storefrontorder'
-          ))
-      );
+      final bool isExplicitExternalOrder =
+          !isExplicitChatMessage &&
+          (isOrderType ||
+              (hasOrderIdentifiers &&
+                  (oSource == 'whatsapp' ||
+                      oSource == 'profile' ||
+                      oSource == 'storefront' ||
+                      oSource == 'online' ||
+                      oSource == 'qr' ||
+                      cleanType == 'whatsapporder' ||
+                      cleanType == 'profileorder' ||
+                      cleanType == 'storefrontorder')));
 
-      final bool isPosOrder = !isExplicitExternalOrder && (
-          isKot ||
-          oSource == 'pos' ||
-          oSource == 'counter' ||
-          oSource == 'local' ||
-          DatabaseService.isKnownPosOrder(orderId) ||
-          DatabaseService.isKnownPosOrder(orderNum)
-      );
+      final bool isPosOrder =
+          !isExplicitExternalOrder &&
+          (isKot ||
+              oSource == 'pos' ||
+              oSource == 'counter' ||
+              oSource == 'local' ||
+              DatabaseService.isKnownPosOrder(orderId) ||
+              DatabaseService.isKnownPosOrder(orderNum));
 
-      final bool matchesKnownOrderInTitle = (orderNum.isNotEmpty && DatabaseService.isKnownPosOrder(orderNum)) ||
+      final bool matchesKnownOrderInTitle =
+          (orderNum.isNotEmpty && DatabaseService.isKnownPosOrder(orderNum)) ||
           (orderId.isNotEmpty && DatabaseService.isKnownPosOrder(orderId));
-      final bool titleOrBodyContainsDineIn = cleanTitle.contains('dinein') || cleanBody.contains('dinein');
+      final bool titleOrBodyContainsDineIn =
+          cleanTitle.contains('dinein') || cleanBody.contains('dinein');
 
-      if (!isExplicitChatMessage && (isPosOrder || (!isExplicitExternalOrder && (matchesKnownOrderInTitle || titleOrBodyContainsDineIn)))) {
-        debugPrint('[LocalNotificationService] Suppressing push notification for POS order: $orderNum / $orderId');
+      if (!isExplicitChatMessage &&
+          (isPosOrder ||
+              (!isExplicitExternalOrder &&
+                  (matchesKnownOrderInTitle || titleOrBodyContainsDineIn)))) {
+        debugPrint(
+          '[LocalNotificationService] Suppressing push notification for POS order: $orderNum / $orderId',
+        );
         return;
       }
 
-      final isWhatsAppOrder = !isExplicitChatMessage && (isExplicitExternalOrder || isOrderType);
+      final isWhatsAppOrder =
+          !isExplicitChatMessage && (isExplicitExternalOrder || isOrderType);
 
       // Play audio feedback based on notification category
       if (playSound) {
@@ -1019,7 +1288,8 @@ class LocalNotificationService with WidgetsBindingObserver {
           SoundService.playNotificationSound();
         }
       }
-      final isWhatsApp = isWhatsAppOrder || type == NotificationType.whatsappMessage;
+      final isWhatsApp =
+          isWhatsAppOrder || type == NotificationType.whatsappMessage;
       final effectiveChannelId = isWhatsAppOrder
           ? 'apna_pos_whatsapp_orders_v2'
           : (isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : channelId);
@@ -1029,8 +1299,8 @@ class LocalNotificationService with WidgetsBindingObserver {
       final effectiveChannelDesc = isWhatsAppOrder
           ? 'Urgent incoming customer orders with instant alert and popup'
           : (isWhatsApp
-              ? 'Real-time notifications for incoming WhatsApp customer messages'
-              : channelDescription);
+                ? 'Real-time notifications for incoming WhatsApp customer messages'
+                : channelDescription);
       final effectiveColor = isWhatsApp ? const Color(0xFF25D366) : color;
 
       final defaultActions = (isWhatsAppOrder)
@@ -1071,21 +1341,27 @@ class LocalNotificationService with WidgetsBindingObserver {
         );
       }
 
-      final String? effectiveTag = tag ??
+      final String? effectiveTag =
+          tag ??
           (isDailySummary
               ? 'daily_sales_summary'
               : (isExplicitChatMessage
-                  ? 'chat_${effectiveMeta['chatId'] ?? entityId ?? "whatsapp"}'
-                  : (isWhatsAppOrder
-                      ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
-                      : (effectiveMeta['notificationTag']?.toString() ??
-                          (orderId.isNotEmpty ? 'order_$orderId' : null)))));
+                    ? 'chat_${effectiveMeta['chatId'] ?? entityId ?? "whatsapp"}'
+                    : (isWhatsAppOrder
+                          ? 'order_${orderId.isNotEmpty ? orderId : (orderNum.isNotEmpty ? orderNum : "incoming")}'
+                          : (effectiveMeta['notificationTag']?.toString() ??
+                                (orderId.isNotEmpty
+                                    ? 'order_$orderId'
+                                    : null)))));
 
-      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      final AndroidNotificationDetails
+      androidDetails = AndroidNotificationDetails(
         '${effectiveChannelId}_app_audio_v1',
         effectiveChannelName,
         channelDescription: effectiveChannelDesc,
-        importance: (isWhatsApp || isWhatsAppOrder) ? Importance.max : importance,
+        importance: (isWhatsApp || isWhatsAppOrder)
+            ? Importance.max
+            : importance,
         priority: (isWhatsApp || isWhatsAppOrder) ? Priority.max : priority,
         showWhen: true,
         enableVibration: true,
@@ -1117,10 +1393,12 @@ class LocalNotificationService with WidgetsBindingObserver {
         iOS: iosDetails,
       );
 
-      final effectivePayload = payload ??
+      final effectivePayload =
+          payload ??
           jsonEncode({
             'type': type.name,
-            'entityType': entityType ?? (isWhatsApp ? 'whatsapp_chat' : 'system'),
+            'entityType':
+                entityType ?? (isWhatsApp ? 'whatsapp_chat' : 'system'),
             'entityId': entityId,
             'metadata': metadata,
           });
@@ -1131,16 +1409,25 @@ class LocalNotificationService with WidgetsBindingObserver {
       } else if (isWhatsAppOrder) {
         effectiveId = orderId.isNotEmpty
             ? orderId.hashCode.abs().remainder(100000)
-            : (orderNum.isNotEmpty ? orderNum.hashCode.abs().remainder(100000) : (id != 0 ? id : 9992));
+            : (orderNum.isNotEmpty
+                  ? orderNum.hashCode.abs().remainder(100000)
+                  : (id != 0 ? id : 9992));
       } else if (id != 0) {
         effectiveId = id;
       } else if (orderId.isNotEmpty) {
         effectiveId = orderId.hashCode.abs().remainder(100000);
       } else if (isExplicitChatMessage) {
-        final cId = (entityId ?? effectiveMeta['chatId'] ?? effectiveMeta['customerPhone'])?.toString().trim();
+        final cId =
+            (entityId ??
+                    effectiveMeta['chatId'] ??
+                    effectiveMeta['customerPhone'])
+                ?.toString()
+                .trim();
         effectiveId = (cId != null && cId.isNotEmpty)
             ? cId.hashCode.abs().remainder(100000)
-            : (effectiveTag != null ? effectiveTag.hashCode.abs().remainder(100000) : 9993);
+            : (effectiveTag != null
+                  ? effectiveTag.hashCode.abs().remainder(100000)
+                  : 9993);
       } else if (effectiveTag != null && effectiveTag.isNotEmpty) {
         effectiveId = effectiveTag.hashCode.abs().remainder(100000);
       } else {
@@ -1154,9 +1441,13 @@ class LocalNotificationService with WidgetsBindingObserver {
         platformDetails,
         payload: effectivePayload,
       );
-      debugPrint('[LocalNotificationService] Push notification delivered: "$title"');
+      debugPrint(
+        '[LocalNotificationService] Push notification delivered: "$title"',
+      );
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error showing push notification: $e');
+      debugPrint(
+        '[LocalNotificationService] Error showing push notification: $e',
+      );
     }
   }
 
@@ -1170,12 +1461,14 @@ class LocalNotificationService with WidgetsBindingObserver {
     List<dynamic> orders = const [],
   }) async {
     try {
-      final dateLabel = (formattedDate != null && formattedDate.trim().isNotEmpty)
+      final dateLabel =
+          (formattedDate != null && formattedDate.trim().isNotEmpty)
           ? formattedDate.trim()
           : (dateStr ?? 'Today');
 
-      final double avgOrderValue =
-          orderCount > 0 ? (totalSales / orderCount).roundToDouble() : 0.0;
+      final double avgOrderValue = orderCount > 0
+          ? (totalSales / orderCount).roundToDouble()
+          : 0.0;
 
       final currencyFormatter = NumberFormat.currency(
         locale: 'en_IN',
@@ -1183,22 +1476,29 @@ class LocalNotificationService with WidgetsBindingObserver {
         decimalDigits: 0,
       );
 
-      final String salesFormatted = currencyFormatter.format(totalSales.round());
-      final String avgFormatted = currencyFormatter.format(avgOrderValue.round());
+      final String salesFormatted = currencyFormatter.format(
+        totalSales.round(),
+      );
+      final String avgFormatted = currencyFormatter.format(
+        avgOrderValue.round(),
+      );
 
       final title = 'Daily Sales Summary 📊 • $dateLabel';
       final String body;
       final String expandedBigText;
 
       if (orderCount > 0) {
-        body = '🟢 Sales: $salesFormatted  •  🔵 Orders: $orderCount  •  🟠 Avg: $avgFormatted';
-        expandedBigText = '🎉 Business Performance for $dateLabel:\n'
+        body =
+            '🟢 Sales: $salesFormatted  •  🔵 Orders: $orderCount  •  🟠 Avg: $avgFormatted';
+        expandedBigText =
+            '🎉 Business Performance for $dateLabel:\n'
             '• Revenue: $salesFormatted earned\n'
             '• Orders: $orderCount completed\n'
             '• Avg Ticket: $avgFormatted/order\n'
             'Tap to inspect sales breakdown & payment methods.';
       } else {
-        body = 'Your daily summary for $dateLabel is ready. No orders recorded today.';
+        body =
+            'Your daily summary for $dateLabel is ready. No orders recorded today.';
         expandedBigText =
             'No sales recorded for $dateLabel. Your register and catalog are active and ready for tomorrow.';
       }
@@ -1229,7 +1529,8 @@ class LocalNotificationService with WidgetsBindingObserver {
           FilePathAndroidBitmap(bannerPath),
           largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
           contentTitle: '📊 Daily Sales Summary • $dateLabel',
-          summaryText: '🟢 $salesFormatted  •  🔵 $orderCount Orders  •  🟠 Avg $avgFormatted',
+          summaryText:
+              '🟢 $salesFormatted  •  🔵 $orderCount Orders  •  🟠 Avg $avgFormatted',
           hideExpandedLargeIcon: true,
         );
       } else {
@@ -1253,7 +1554,8 @@ class LocalNotificationService with WidgetsBindingObserver {
         playSound: true,
         channelId: 'apna_pos_sales_v2',
         channelName: 'Sales & Business Reports',
-        channelDescription: 'Extended high-priority daily sales summaries and business metrics',
+        channelDescription:
+            'Extended high-priority daily sales summaries and business metrics',
         importance: Importance.max,
         priority: Priority.max,
         color: const Color(0xFF0F9D58),
@@ -1280,7 +1582,9 @@ class LocalNotificationService with WidgetsBindingObserver {
         metadata: metadata,
       );
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error delivering daily summary push: $e');
+      debugPrint(
+        '[LocalNotificationService] Error delivering daily summary push: $e',
+      );
     }
   }
 
@@ -1316,26 +1620,43 @@ class LocalNotificationService with WidgetsBindingObserver {
       NotificationService().fetchNotifications(refresh: true);
       NotificationService().fetchUnreadCount();
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error delivering login welcome push notification: $e');
+      debugPrint(
+        '[LocalNotificationService] Error delivering login welcome push notification: $e',
+      );
     }
   }
+
   /// Cancel any pending local push notification for an order that has been handled
   Future<void> cancelNotificationForOrder(String orderId) async {
     if (orderId.trim().isEmpty || !_isSupportedPlatform) return;
     try {
       final cleanId = orderId.trim();
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          await _incomingOrderChannel.invokeMethod('cancelOrderNotification', {
+            'orderId': cleanId,
+          });
+        } on PlatformException catch (_) {
+        } on MissingPluginException catch (_) {}
+      }
       final id = cleanId.hashCode.abs().remainder(100000);
       final androidPlugin = _notificationsPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       if (androidPlugin != null) {
         try {
           await androidPlugin.cancel(id, tag: 'order_$cleanId');
         } catch (_) {}
       }
       await _notificationsPlugin.cancel(id);
-      debugPrint('[LocalNotificationService] Cancelled push notification for order: $cleanId (ID: $id)');
+      debugPrint(
+        '[LocalNotificationService] Cancelled push notification for order: $cleanId (ID: $id)',
+      );
     } catch (e) {
-      debugPrint('[LocalNotificationService] Error cancelling notification: $e');
+      debugPrint(
+        '[LocalNotificationService] Error cancelling notification: $e',
+      );
     }
   }
 }

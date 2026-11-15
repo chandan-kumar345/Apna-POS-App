@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:apna_pos/core/database/database_service.dart';
 import 'package:apna_pos/core/models/user_model.dart';
 import 'package:apna_pos/features/auth/post_login_permission_observer.dart';
@@ -24,6 +25,9 @@ void main() {
   var defaultStatus = 0;
   var overlayGranted = false;
   var logOutDuringRequest = false;
+  var fullScreenRequired = false;
+  var fullScreenGranted = true;
+  Completer<bool>? fullScreenSettingsResult;
 
   void logIn() {
     DatabaseService().currentUser = UserModel(
@@ -46,6 +50,9 @@ void main() {
     defaultStatus = 0;
     overlayGranted = false;
     logOutDuringRequest = false;
+    fullScreenRequired = false;
+    fullScreenGranted = true;
+    fullScreenSettingsResult = null;
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(permissionsChannel, (call) async {
@@ -74,11 +81,17 @@ void main() {
           'overlayGranted': overlayGranted,
           'batteryOptimizationIgnored': false,
           'notificationsEnabled': false,
+          'fullScreenIntentRequired': fullScreenRequired,
+          'fullScreenIntentGranted': fullScreenGranted,
         };
       }
       if (call.method == 'requestOverlayPermission') {
         events.add('overlay');
         return true;
+      }
+      if (call.method == 'requestFullScreenIntentPermission') {
+        events.add('full-screen');
+        return fullScreenSettingsResult?.future ?? fullScreenGranted;
       }
       throw PlatformException(
         code: 'unexpected-order-call',
@@ -287,5 +300,89 @@ void main() {
       expect(requests.single, isNot(contains(Permission.bluetoothScan.value)));
     },
     variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets(
+    'Android 14 asks full-screen access before overlay on a fresh install',
+    (tester) async {
+      fullScreenRequired = true;
+      fullScreenGranted = false;
+      logIn();
+      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      expect(events, ['runtime', 'battery', 'full-screen', 'overlay']);
+      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      expect(events, ['runtime', 'battery', 'full-screen', 'overlay']);
+    },
+    variant: android,
+  );
+
+  testWidgets(
+    'an existing install asks the newly added full-screen permission once',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'has_requested_post_login_permissions': true,
+      });
+      fullScreenRequired = true;
+      fullScreenGranted = false;
+      logIn();
+      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      expect(events, ['full-screen']);
+      expect(requests, isEmpty);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getBool('has_requested_order_full_screen_permission_v1'),
+        isTrue,
+      );
+    },
+    variant: android,
+  );
+
+  testWidgets('granted full-screen access does not open settings again', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'has_requested_post_login_permissions': true,
+    });
+    fullScreenRequired = true;
+    logIn();
+    await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+    expect(events, isEmpty);
+    expect(requests, isEmpty);
+  }, variant: android);
+
+  testWidgets(
+    'overlay settings wait until the full-screen settings result returns',
+    (tester) async {
+      fullScreenRequired = true;
+      fullScreenGranted = false;
+      fullScreenSettingsResult = Completer<bool>();
+      logIn();
+      final permissionFlow =
+          NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      await tester.pumpAndSettle();
+      expect(events, ['runtime', 'battery', 'full-screen']);
+      fullScreenSettingsResult!.complete(false);
+      await permissionFlow;
+      expect(events, ['runtime', 'battery', 'full-screen', 'overlay']);
+    },
+    variant: android,
+  );
+
+  testWidgets(
+    'upgrading from Android 13 can still request the Android 14 special access',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'has_requested_post_login_permissions': true,
+      });
+      logIn();
+      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      expect(events, isEmpty);
+      fullScreenRequired = true;
+      fullScreenGranted = false;
+      await NotificationPermissionHelper.requestAllAppPermissionsAfterLogin();
+      expect(events, ['full-screen']);
+    },
+    variant: android,
   );
 }

@@ -6,21 +6,23 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/notification_setting_model.dart';
 import '../../core/services/sound_service.dart';
+import '../../core/services/order_alert_permission_service.dart';
+import '../../core/theme/notification_screen_theme.dart';
 
 /// Clean Neumorphic Theme styling
 class _NeumorphicStyle {
-  static const Color background = Color(0xFFF1F5F9);
+  static const Color background = Color(0xFFF3F7F8);
   static const Color sunken = Color(0xFFF8FAFC);
   static const Color border = Color(0xFFE2E8F0);
 
-  static const Color textDark = Color(0xFF0F172A);
+  static const Color textDark = Color(0xFF142B32);
   static const Color textMedium = Color(0xFF334155);
   static const Color textMuted = Color(0xFF64748B);
 
-  static const Color primaryBlue = Color(0xFF0052FF);
-  static const Color indigoAccent = Color(0xFF6366F1);
-  static const Color successGreen = Color(0xFF10B981);
-  static const Color dangerRed = Color(0xFFEF4444);
+  static const Color primaryBlue = Color(0xFF008764);
+  static const Color indigoAccent = Color(0xFF4F46E5);
+  static const Color successGreen = Color(0xFF087D54);
+  static const Color dangerRed = Color(0xFFB42318);
 
   static List<BoxShadow> get cardShadows => [
     BoxShadow(
@@ -29,26 +31,27 @@ class _NeumorphicStyle {
       blurRadius: 8,
     ),
   ];
-
-  static List<BoxShadow> get softShadows => [
-    BoxShadow(
-      color: const Color(0xFF0F172A).withValues(alpha: 0.03),
-      offset: const Offset(0, 1),
-      blurRadius: 4,
-    ),
-  ];
 }
 
-class NotificationSettingsScreen extends StatefulWidget {
+class NotificationSettingsScreen extends StatelessWidget {
   const NotificationSettingsScreen({super.key});
 
   @override
-  State<NotificationSettingsScreen> createState() =>
+  Widget build(BuildContext context) =>
+      const NotificationScreenTheme(child: _NotificationSettingsContent());
+}
+
+class _NotificationSettingsContent extends StatefulWidget {
+  const _NotificationSettingsContent();
+
+  @override
+  State<_NotificationSettingsContent> createState() =>
       _NotificationSettingsScreenState();
 }
 
 class _NotificationSettingsScreenState
-    extends State<NotificationSettingsScreen> {
+    extends State<_NotificationSettingsContent>
+    with WidgetsBindingObserver {
   final DatabaseService _db = DatabaseService();
   final ScrollController _scrollController = ScrollController();
 
@@ -64,6 +67,9 @@ class _NotificationSettingsScreenState
   bool _isUploadingOrderAudio = false;
   bool _isUploadingNotifAudio = false;
   bool _overlayGranted = false;
+  bool _fullScreenRequired = false;
+  bool _fullScreenGranted = false;
+  bool _requestingFullScreenPermission = false;
 
   String? _previewingSource;
   bool _isPreviewActive = false;
@@ -114,16 +120,48 @@ class _NotificationSettingsScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentSetting = _db.notificationSetting;
     _loadSettings();
     _checkOverlayPermission();
+    _checkFullScreenPermission();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     SoundService.stopPreview();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkOverlayPermission();
+      _checkFullScreenPermission();
+    }
+  }
+
+  Future<void> _checkFullScreenPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    final permissions = await OrderAlertPermissionService.checkPermissions(
+      forceRefresh: true,
+    );
+    if (mounted) {
+      setState(() {
+        _fullScreenRequired = permissions['fullScreenIntentRequired'] == true;
+        _fullScreenGranted = permissions['fullScreenIntentGranted'] == true;
+      });
+    }
+  }
+
+  Future<void> _requestFullScreenPermission() async {
+    if (_requestingFullScreenPermission) return;
+    setState(() => _requestingFullScreenPermission = true);
+    await OrderAlertPermissionService.requestFullScreenIntentPermission();
+    await _checkFullScreenPermission();
+    if (mounted) setState(() => _requestingFullScreenPermission = false);
   }
 
   Future<void> _checkOverlayPermission() async {
@@ -204,7 +242,7 @@ class _NotificationSettingsScreenState
                         : 'Saved locally. Sync error.',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -480,7 +518,7 @@ class _NotificationSettingsScreenState
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text(
           'Delete Ringtone?',
           style: TextStyle(
@@ -492,7 +530,7 @@ class _NotificationSettingsScreenState
         content: Text(
           'Remove "${ringtone.name}"?',
           style: const TextStyle(
-            fontSize: 13,
+            fontSize: 14,
             color: _NeumorphicStyle.textMedium,
           ),
         ),
@@ -549,186 +587,156 @@ class _NotificationSettingsScreenState
   }
 
   @override
-  Widget build(BuildContext context) {
-    final business = _db.restaurant;
-    final user = _db.currentUser;
-
-    return Scaffold(
-      backgroundColor: _NeumorphicStyle.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        centerTitle: false,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: _NeumorphicStyle.textDark,
-            size: 18,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Ringtones & Alerts',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-            color: _NeumorphicStyle.textDark,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _NeumorphicStyle.successGreen.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.cloud_done_rounded,
-                    color: _NeumorphicStyle.successGreen,
-                    size: 14,
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    'Synced',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: _NeumorphicStyle.successGreen,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: _NeumorphicStyle.background,
+    appBar: AppBar(
+      backgroundColor: const Color(0xFF031024),
+      foregroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      leading: IconButton(
+        tooltip: 'Back',
+        onPressed: () => Navigator.maybePop(context),
+        icon: const Icon(Icons.arrow_back_rounded),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: _NeumorphicStyle.primaryBlue,
-              ),
-            )
-          : SafeArea(
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Sleek Profile Chip
-                    _buildCompactProfilePill(
-                      businessName: business?.name ?? 'Pizza 47',
-                      userName: user?.name ?? 'User',
-                      role: user?.role.toUpperCase() ?? 'OWNER',
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // Quick Jump Segmented Chips
-                    _buildQuickJumpChips(),
-
-                    const SizedBox(height: 14),
-
-                    // SECTION 1: INCOMING ORDER RINGTONE
-                    _buildOrderRingtoneSection(),
-
-                    const SizedBox(height: 16),
-
-                    // SECTION 2: NOTIFICATION SOUND
-                    _buildNotificationSoundSection(),
-
-                    const SizedBox(height: 16),
-
-                    // SECTION 3: PREFERENCES & PERMISSIONS
-                    _buildPreferencesSection(),
-
-                    const SizedBox(height: 24),
-
-                    // SAVE BUTTON
-                    _buildSaveButton(),
-                  ],
+      title: const Text(
+        'Notification settings',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ),
+    body: SafeArea(
+      bottom: false,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: Column(
+            children: [
+              if (_isLoading)
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  color: _NeumorphicStyle.primaryBlue,
+                ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE7F5EF),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFC3E4D5)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.notifications_active_outlined,
+                              color: Color(0xFF006B4F),
+                              size: 26,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Sounds & alerts',
+                                    style: TextStyle(
+                                      color: Color(0xFF142B32),
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  const Text(
+                                    'Ringtones, volume and notification preferences.',
+                                    style: TextStyle(
+                                      color: Color(0xFF334155),
+                                      fontSize: 14,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  if (_db.restaurant?.name.isNotEmpty == true)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        _db.restaurant!.name,
+                                        style: const TextStyle(
+                                          color: Color(0xFF006B4F),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildQuickJumpChips(),
+                      const SizedBox(height: 18),
+                      AbsorbPointer(
+                        absorbing: _isLoading,
+                        child: _buildOrderRingtoneSection(),
+                      ),
+                      const SizedBox(height: 16),
+                      AbsorbPointer(
+                        absorbing: _isLoading,
+                        child: _buildNotificationSoundSection(),
+                      ),
+                      const SizedBox(height: 16),
+                      AbsorbPointer(
+                        absorbing: _isLoading,
+                        child: _buildPreferencesSection(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-    );
-  }
-
-  // =========================================================================
-  // SUB-COMPONENTS
-  // =========================================================================
-
-  Widget _buildCompactProfilePill({
-    required String businessName,
-    required String userName,
-    required String role,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _NeumorphicStyle.border),
-        boxShadow: _NeumorphicStyle.softShadows,
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              color: _NeumorphicStyle.primaryBlue.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.storefront_rounded,
-              color: _NeumorphicStyle.primaryBlue,
-              size: 14,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '$businessName • $userName ($role)',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: _NeumorphicStyle.textDark,
+              Container(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  12 + MediaQuery.paddingOf(context).bottom,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: _NeumorphicStyle.border),
+                  ),
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: _buildSaveButton(),
+                ),
               ),
-            ),
+            ],
           ),
-          const Icon(
-            Icons.verified_rounded,
-            color: _NeumorphicStyle.primaryBlue,
-            size: 14,
-          ),
-        ],
+        ),
       ),
-    );
-  }
+    ),
+  );
 
-  Widget _buildQuickJumpChips() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: [
-          _buildChip('🔔 Order Ringtone', () => _scrollTo(_orderSectionKey)),
-          const SizedBox(width: 8),
-          _buildChip('💬 Alert Sound', () => _scrollTo(_notifSectionKey)),
-          const SizedBox(width: 8),
-          _buildChip('⚙️ Preferences', () => _scrollTo(_prefSectionKey)),
-        ],
-      ),
-    );
-  }
+  Widget _buildQuickJumpChips() => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      _buildChip('Order ringtone', () => _scrollTo(_orderSectionKey)),
+      _buildChip('Alert sound', () => _scrollTo(_notifSectionKey)),
+      _buildChip('Preferences', () => _scrollTo(_prefSectionKey)),
+    ],
+  );
 
   Widget _buildChip(String label, VoidCallback onTap) {
     return InkWell(
@@ -744,7 +752,7 @@ class _NotificationSettingsScreenState
         child: Text(
           label,
           style: const TextStyle(
-            fontSize: 11.5,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: _NeumorphicStyle.textMedium,
           ),
@@ -761,7 +769,7 @@ class _NotificationSettingsScreenState
       key: _orderSectionKey,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _NeumorphicStyle.border),
         boxShadow: _NeumorphicStyle.cardShadows,
       ),
@@ -785,12 +793,14 @@ class _NotificationSettingsScreenState
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'Incoming Order Ringtone',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: _NeumorphicStyle.textDark,
+              const Expanded(
+                child: Text(
+                  'Incoming Order Ringtone',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _NeumorphicStyle.textDark,
+                  ),
                 ),
               ),
             ],
@@ -886,7 +896,7 @@ class _NotificationSettingsScreenState
                 _isUploadingOrderAudio ? 'Uploading...' : 'Add Custom Ringtone',
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
-                  fontSize: 12,
+                  fontSize: 14,
                 ),
               ),
               style: OutlinedButton.styleFrom(
@@ -914,7 +924,7 @@ class _NotificationSettingsScreenState
       key: _notifSectionKey,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _NeumorphicStyle.border),
         boxShadow: _NeumorphicStyle.cardShadows,
       ),
@@ -938,12 +948,14 @@ class _NotificationSettingsScreenState
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'Notification Alert Sound',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: _NeumorphicStyle.textDark,
+              const Expanded(
+                child: Text(
+                  'Notification Alert Sound',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _NeumorphicStyle.textDark,
+                  ),
                 ),
               ),
             ],
@@ -1041,7 +1053,7 @@ class _NotificationSettingsScreenState
                 _isUploadingNotifAudio ? 'Uploading...' : 'Add Custom Sound',
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
-                  fontSize: 12,
+                  fontSize: 14,
                 ),
               ),
               style: OutlinedButton.styleFrom(
@@ -1066,7 +1078,7 @@ class _NotificationSettingsScreenState
       key: _prefSectionKey,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _NeumorphicStyle.border),
         boxShadow: _NeumorphicStyle.cardShadows,
       ),
@@ -1089,12 +1101,14 @@ class _NotificationSettingsScreenState
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'Alert Preferences',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: _NeumorphicStyle.textDark,
+              const Expanded(
+                child: Text(
+                  'Alert Preferences',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _NeumorphicStyle.textDark,
+                  ),
                 ),
               ),
             ],
@@ -1164,6 +1178,62 @@ class _NotificationSettingsScreenState
             color: _NeumorphicStyle.border,
           ),
 
+          if (_fullScreenRequired) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Full-screen order alerts',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _NeumorphicStyle.textDark,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Show incoming orders on the lock screen.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _NeumorphicStyle.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (_fullScreenGranted)
+                    const Text(
+                      'Allowed',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _NeumorphicStyle.successGreen,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  else
+                    TextButton(
+                      onPressed: _requestingFullScreenPermission
+                          ? null
+                          : _requestFullScreenPermission,
+                      child: Text(
+                        _requestingFullScreenPermission ? 'Opening…' : 'Allow',
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(
+              height: 16,
+              thickness: 0.7,
+              color: _NeumorphicStyle.border,
+            ),
+          ],
           // Overlay Permission Row
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1173,7 +1243,7 @@ class _NotificationSettingsScreenState
                   child: Text(
                     'Display Over Other Apps',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: _NeumorphicStyle.textDark,
                     ),
@@ -1216,7 +1286,7 @@ class _NotificationSettingsScreenState
                     child: Text(
                       'Manage',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: _NeumorphicStyle.primaryBlue,
                       ),
@@ -1261,7 +1331,7 @@ class _NotificationSettingsScreenState
         onTap: onSelect,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
             children: [
               Icon(
@@ -1280,10 +1350,10 @@ class _NotificationSettingsScreenState
                     Flexible(
                       child: Text(
                         name,
-                        maxLines: 1,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 14,
                           fontWeight: isSelected
                               ? FontWeight.bold
                               : FontWeight.w500,
@@ -1309,7 +1379,7 @@ class _NotificationSettingsScreenState
                         child: const Text(
                           'Custom',
                           style: TextStyle(
-                            fontSize: 9.5,
+                            fontSize: 11,
                             fontWeight: FontWeight.bold,
                             color: _NeumorphicStyle.indigoAccent,
                           ),
@@ -1409,12 +1479,12 @@ class _NotificationSettingsScreenState
           Icon(Icons.volume_up_rounded, color: color, size: 16),
           const SizedBox(width: 6),
           SizedBox(
-            width: 34,
+            width: 60,
             child: Text(
               '$pct%',
               textAlign: TextAlign.end,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: color,
               ),
@@ -1434,12 +1504,14 @@ class _NotificationSettingsScreenState
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: _NeumorphicStyle.textDark,
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: _NeumorphicStyle.textDark,
+            ),
           ),
         ),
         Transform.scale(
@@ -1459,13 +1531,16 @@ class _NotificationSettingsScreenState
     return SizedBox(
       height: 46,
       child: ElevatedButton(
-        onPressed: _isSaving ? null : () => _saveSettings(showToast: true),
+        onPressed: _isSaving || _isLoading
+            ? null
+            : () => _saveSettings(showToast: true),
         style: ElevatedButton.styleFrom(
           backgroundColor: _NeumorphicStyle.primaryBlue,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
-          elevation: 1,
+          elevation: 0,
+          side: BorderSide.none,
         ),
         child: _isSaving
             ? const Row(
@@ -1484,7 +1559,7 @@ class _NotificationSettingsScreenState
                     'Saving...',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
                   ),

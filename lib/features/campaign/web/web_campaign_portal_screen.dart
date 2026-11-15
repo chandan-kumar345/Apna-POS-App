@@ -13,11 +13,13 @@ class WebCampaignPortalScreen extends StatefulWidget {
   const WebCampaignPortalScreen({super.key, this.onBack});
 
   @override
-  State<WebCampaignPortalScreen> createState() => _WebCampaignPortalScreenState();
+  State<WebCampaignPortalScreen> createState() =>
+      _WebCampaignPortalScreenState();
 }
 
 class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
-  String _currentView = 'dashboard'; // 'dashboard', 'create', 'create_auto', 'details', 'groups', 'dispatch'
+  String _currentView =
+      'dashboard'; // 'dashboard', 'create', 'create_auto', 'details', 'groups', 'dispatch'
   CampaignModel? _selectedCampaign;
   CampaignTemplateModel? _selectedTemplateForCreate;
   CampaignTemplateModel? _selectedTemplateForDispatch;
@@ -91,9 +93,7 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
         }
         break;
       case 'groups':
-        currentWidget = AudienceGroupsView(
-          onBack: _navigateToDashboard,
-        );
+        currentWidget = AudienceGroupsView(onBack: _navigateToDashboard);
         break;
       case 'create':
         currentWidget = CreateCampaignWizardView(
@@ -136,9 +136,38 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
         break;
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: currentWidget,
+    return Theme(
+      data: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF7047D6),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF3F2FC),
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF3F2FC),
+        appBar: _currentView == 'dashboard'
+            ? AppBar(
+                backgroundColor: const Color(0xFFF3F2FC),
+                foregroundColor: const Color(0xFF132B4C),
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                leading: IconButton(
+                  tooltip: 'Back',
+                  onPressed: widget.onBack ?? () => Navigator.maybePop(context),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+                title: const Text(
+                  'Campaign studio',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                ),
+              )
+            : null,
+        body: SafeArea(child: currentWidget),
+      ),
     );
   }
 }

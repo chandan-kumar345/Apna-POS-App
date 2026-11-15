@@ -237,7 +237,8 @@ class _UseTemplateDispatchViewState extends State<UseTemplateDispatchView> {
         ),
       );
 
-      if (createdCampaign != null && createdCampaign.id.isNotEmpty) {
+      if (createdCampaign == null || createdCampaign.id.isEmpty) { throw StateError('Campaign could not be created. Please try again.'); }
+      if (createdCampaign.id.isNotEmpty) {
         final fresh = await _campaignService.fetchCampaignById(createdCampaign.id);
         if (fresh != null) {
           createdCampaign = fresh;

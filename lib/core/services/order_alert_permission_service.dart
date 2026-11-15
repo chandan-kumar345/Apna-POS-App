@@ -17,6 +17,8 @@ class OrderAlertPermissionService {
         'overlayGranted': true,
         'batteryOptimizationIgnored': true,
         'notificationsEnabled': true,
+        'fullScreenIntentRequired': false,
+        'fullScreenIntentGranted': true,
       };
     }
 
@@ -36,6 +38,10 @@ class OrderAlertPermissionService {
         'batteryOptimizationIgnored':
             res?['batteryOptimizationIgnored'] == true,
         'notificationsEnabled': res?['notificationsEnabled'] == true,
+        'fullScreenIntentRequired': res?['fullScreenIntentRequired'] == true,
+        'fullScreenIntentGranted':
+            res?['fullScreenIntentRequired'] != true ||
+            res?['fullScreenIntentGranted'] == true,
       };
       _cachedPermissions = result;
       _lastCheckTime = now;
@@ -48,6 +54,8 @@ class OrderAlertPermissionService {
         'overlayGranted': false,
         'batteryOptimizationIgnored': false,
         'notificationsEnabled': false,
+        'fullScreenIntentRequired': true,
+        'fullScreenIntentGranted': false,
       };
     }
   }
@@ -66,6 +74,25 @@ class OrderAlertPermissionService {
         '[OrderAlertPermissionService] Error requesting overlay permission: $e',
       );
       return false;
+    }
+  }
+
+  /// Android 14+ special access; completes when the user returns from Settings.
+  static Future<bool> requestFullScreenIntentPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return true;
+    try {
+      return await _nativeChannel.invokeMethod<bool>(
+            'requestFullScreenIntentPermission',
+          ) ??
+          false;
+    } catch (error) {
+      debugPrint(
+        '[OrderAlertPermissionService] Full-screen permission error: $error',
+      );
+      return false;
+    } finally {
+      _cachedPermissions = null;
+      _lastCheckTime = 0;
     }
   }
 
@@ -104,6 +131,7 @@ class OrderAlertPermissionService {
     final status = await checkPermissions();
     return (status['overlayGranted'] == true) &&
         (status['batteryOptimizationIgnored'] == true) &&
-        (status['notificationsEnabled'] == true);
+        (status['notificationsEnabled'] == true) &&
+        (status['fullScreenIntentGranted'] == true);
   }
 }

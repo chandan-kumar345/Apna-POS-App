@@ -1,4 +1,5 @@
 import 'menu_item_model.dart';
+import 'incoming_order_payload.dart';
 
 enum OrderType { dineIn, takeaway, delivery }
 enum OrderStatus { pending, preparing, ready, completed, cancelled }
@@ -255,40 +256,23 @@ class OrderModel {
 
     // Order Type normalization
     final String rawTypeStr = (json['orderType'] ?? json['type'] ?? json['order_type'] ?? '').toString().toLowerCase().trim();
-    final String rawTableStr = (json['tableNumber'] ??
-            json['table'] ??
-            json['tableNo'] ??
-            json['table_no'] ??
-            json['table_number'] ??
-            json['tableName'] ??
-            json['tableCode'] ??
-            json['table_code'] ??
-            json['T'] ??
-            json['t'] ??
-            '')
-        .toString()
-        .trim();
     final String rawAddress = (json['deliveryAddress'] ?? json['address'] ?? '').toString();
-    final String rawAddressLower = rawAddress.toLowerCase();
-    String? resolvedTableNumber = rawTableStr.isNotEmpty ? rawTableStr : null;
-    if (resolvedTableNumber == null || resolvedTableNumber.isEmpty) {
-      final match = RegExp(r'(?:table|tbl|t)[\s\-_]*([0-9a-zA-Z]+)', caseSensitive: false).firstMatch(rawAddress);
-      if (match != null && match.group(1) != null) {
-        resolvedTableNumber = match.group(1);
-      }
-    }
+    final bool hasTableAddress = IncomingOrderPayload.tableFromText(rawAddress) != null;
+    final resolvedTableNumber = IncomingOrderPayload.tableNumber(
+      Map<String, dynamic>.from(json), preserveFormat: true,
+    );
     final OrderType parsedType;
     if (rawTypeStr.contains('takeaway') || rawTypeStr.contains('take_away') || rawTypeStr.contains('pickup') || rawTypeStr.contains('parcel')) {
       parsedType = OrderType.takeaway;
     } else if (rawTypeStr.contains('delivery') || rawTypeStr.contains('deliv')) {
       parsedType = OrderType.delivery;
-    } else if (rawTypeStr.contains('dine') || (resolvedTableNumber != null && resolvedTableNumber.isNotEmpty) || rawAddressLower.contains('table')) {
+    } else if (rawTypeStr.contains('dine') || (resolvedTableNumber != null && resolvedTableNumber.isNotEmpty) || hasTableAddress) {
       parsedType = OrderType.dineIn;
     } else {
       parsedType = OrderType.takeaway;
     }
 
-    final bool isTableDineIn = (resolvedTableNumber != null && resolvedTableNumber.isNotEmpty) || parsedType == OrderType.dineIn || rawAddressLower.contains('table');
+    final bool isTableDineIn = (resolvedTableNumber != null && resolvedTableNumber.isNotEmpty) || parsedType == OrderType.dineIn || hasTableAddress;
 
     // Status normalization (case-insensitive & synonym-aware)
     final String rawStatusStr = (json['status'] ?? json['orderStatus'] ?? '').toString().toLowerCase().trim();
@@ -438,7 +422,7 @@ class OrderModel {
     return OrderModel(
       id: rawId,
       orderNumber: resolvedOrderNumber,
-      tableNumber: resolvedTableNumber ?? json['tableNumber']?.toString() ?? json['table']?.toString(),
+      tableNumber: resolvedTableNumber,
       orderType: parsedType,
       status: parsedStatus,
       items: itemsList,

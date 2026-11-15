@@ -117,12 +117,13 @@ class MetaPartnerController {
     try {
       const businessId = req.businessId;
       const userId = req.user?._id || req.user?.id;
-      const { recipientPhone, message, templateName } = req.body;
+      const { recipientPhone, message, templateName, language } = req.body;
 
       const result = await metaPartnerService.sendTestMessage(businessId, {
         recipientPhone,
         message,
         templateName,
+        language,
         userId,
       });
 
@@ -181,11 +182,12 @@ class MetaPartnerController {
     try {
       const businessId = req.businessId;
       const userId = req.user?._id || req.user?.id;
-      const { code, businessPortfolioId } = req.body;
+      const { code, wabaId, phoneNumberId } = req.body;
 
       const result = await metaPartnerService.exchangeEmbeddedSignupOAuth(businessId, {
         code,
-        businessPortfolioId,
+        wabaId,
+        phoneNumberId,
         userId,
       });
 

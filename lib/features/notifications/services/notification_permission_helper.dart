@@ -10,6 +10,8 @@ import '../../../core/services/order_alert_permission_service.dart';
 class NotificationPermissionHelper {
   static const String _prefKeyPostLoginRequested =
       'has_requested_post_login_permissions';
+  static const String _prefKeyFullScreenRequested =
+      'has_requested_order_full_screen_permission_v1';
   static Future<void>? _requestInProgress;
 
   /// Ask once after login, using only system permission screens.
@@ -31,8 +33,11 @@ class NotificationPermissionHelper {
   static Future<void> _requestPostLoginPermissions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool(_prefKeyPostLoginRequested) == true ||
-          DatabaseService().currentUser == null) {
+      if (DatabaseService().currentUser == null) return;
+      if (prefs.getBool(_prefKeyPostLoginRequested) == true) {
+        // Existing installs already completed the old permission sequence.
+        // The new special access has its own once-only migration flag.
+        await _requestFullScreenPermissionIfNeeded(prefs);
         return;
       }
 
@@ -75,6 +80,9 @@ class NotificationPermissionHelper {
         }
         if (DatabaseService().currentUser == null) return;
 
+        await _requestFullScreenPermissionIfNeeded(prefs);
+        if (DatabaseService().currentUser == null) return;
+
         // Open Android's permission section directly, after other prompts finish.
         final orderPermissions =
             await OrderAlertPermissionService.checkPermissions(
@@ -94,6 +102,30 @@ class NotificationPermissionHelper {
         '[NotificationPermissionHelper] Error requesting post-login permissions: $e',
       );
     }
+  }
+
+  static Future<void> _requestFullScreenPermissionIfNeeded(
+    SharedPreferences prefs,
+  ) async {
+    if (kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android ||
+        DatabaseService().currentUser == null ||
+        prefs.getBool(_prefKeyFullScreenRequested) == true) {
+      return;
+    }
+    final permissions = await OrderAlertPermissionService.checkPermissions(
+      forceRefresh: true,
+    );
+    if (DatabaseService().currentUser == null ||
+        permissions['fullScreenIntentRequired'] != true) {
+      return;
+    }
+    if (permissions['fullScreenIntentGranted'] != true) {
+      await OrderAlertPermissionService.requestFullScreenIntentPermission();
+    }
+    // Keep a denial as a completed request. The settings page supports retry;
+    // normal navigation must not keep opening system settings.
+    await prefs.setBool(_prefKeyFullScreenRequested, true);
   }
 
   /// Check if notification permission is currently granted

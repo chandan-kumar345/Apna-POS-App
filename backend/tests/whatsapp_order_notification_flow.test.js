@@ -16,6 +16,18 @@ describe('WhatsApp Order Notification & Accept/Reject Flow', () => {
   let user, business, token;
   let testProduct;
 
+  // This suite verifies local order state and alert contracts, not live FCM.
+  // Never load deployment keys or contact a real provider for fixture tokens.
+  beforeAll(() => {
+    jest.spyOn(pushNotificationService, '_getServiceAccount').mockReturnValue({ project_id: 'notification-tests' });
+    jest.spyOn(pushNotificationService, '_getGoogleAccessToken').mockResolvedValue('fixture-oauth');
+    jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      if (!String(url).startsWith('https://fcm.googleapis.com/')) throw new Error(`Unexpected external request in notification test`);
+      return { ok: true, status: 200, json: async () => ({ name: 'fixture-message' }) };
+    });
+  });
+  afterAll(() => { jest.restoreAllMocks(); });
+
   beforeEach(async () => {
     // 1. Create User and Business
     user = await User.create({

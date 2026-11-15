@@ -2,6 +2,7 @@ package com.apnapos.app
 
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -27,9 +28,24 @@ class MainActivity : FlutterActivity() {
         var isAppInForeground: Boolean = false
         private var lastWakeTime: Long = 0L
         private var activeWakeLock: PowerManager.WakeLock? = null
+        private const val FULL_SCREEN_PERMISSION_REQUEST = 17415
     }
 
     private var userPresentReceiver: BroadcastReceiver? = null
+    private var fullScreenPermissionResult: MethodChannel.Result? = null
+    private var fullScreenPermissionSettingsPaused = false
+
+    private fun canUseOrderFullScreenIntent(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                ?.canUseFullScreenIntent() == true
+
+    private fun completeFullScreenPermissionRequest() {
+        val pending = fullScreenPermissionResult ?: return
+        fullScreenPermissionResult = null
+        fullScreenPermissionSettingsPaused = false
+        pending.success(canUseOrderFullScreenIntent())
+    }
 
     // RenderMode.texture (TextureView) avoids native SurfaceView GPU/raster deadlocks
     // on Android 11+ and eliminates LegacyMessageQueue freezes during screen/overlay transitions
@@ -112,11 +128,14 @@ class MainActivity : FlutterActivity() {
         activeInstance = this
         isAppInForeground = true
         wakeAndShowOverLockScreen()
+        // Some vendor settings screens do not return an activity result.
+        if (fullScreenPermissionSettingsPaused) completeFullScreenPermissionRequest()
     }
 
     override fun onPause() {
         super.onPause()
         isAppInForeground = false
+        if (fullScreenPermissionResult != null) fullScreenPermissionSettingsPaused = true
     }
 
     override fun onStop() {
@@ -125,6 +144,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        fullScreenPermissionResult?.success(false)
+        fullScreenPermissionResult = null
         unregisterUserPresentReceiver()
         if (activeInstance == this) {
             activeInstance = null
@@ -136,6 +157,11 @@ class MainActivity : FlutterActivity() {
             activeWakeLock = null
         } catch (_: Exception) {}
         super.onDestroy()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FULL_SCREEN_PERMISSION_REQUEST) completeFullScreenPermissionRequest()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -218,8 +244,27 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Persisted payload covers cold launch; this event covers an already
+        // resumed activity, where no lifecycle transition is generated.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.apnapos.app/incoming_order")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "cancelOrderNotification") {
+                    call.argument<String>("orderId")?.takeIf { it.isNotBlank() }?.let {
+                        IncomingOrderAlertDispatcher.cancel(this, it)
+                    }
+                    result.success(true)
+                } else if (call.method == "getPendingOrder") {
+                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    result.success(mapOf(
+                        "payload" to prefs.getString("flutter.pending_incoming_order_payload", null),
+                        "action" to prefs.getString("flutter.pending_notification_action", null)
+                    ))
+                } else result.notImplemented()
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "startOrderRingtone" -> result.success(OrderRingtoneService.start(this))
+                "stopOrderRingtone" -> { OrderRingtoneService.stop(this); result.success(true) }
                 "setMaxVolume" -> {
                     try {
                         val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -271,11 +316,36 @@ class MainActivity : FlutterActivity() {
                         val resMap = mapOf(
                             "overlayGranted" to overlayGranted,
                             "batteryOptimizationIgnored" to batteryOptIgnored,
-                            "notificationsEnabled" to notificationsEnabled
+                            "notificationsEnabled" to notificationsEnabled,
+                            "fullScreenIntentRequired" to (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE),
+                            "fullScreenIntentGranted" to canUseOrderFullScreenIntent()
                         )
                         result.success(resMap)
                     } catch (e: Exception) {
                         result.error("PERMISSION_CHECK_ERROR", e.message, null)
+                    }
+                }
+                "requestFullScreenIntentPermission" -> {
+                    if (canUseOrderFullScreenIntent()) {
+                        result.success(true)
+                    } else if (fullScreenPermissionResult != null) {
+                        result.error("PERMISSION_REQUEST_IN_PROGRESS", "Full-screen settings are already open", null)
+                    } else {
+                        try {
+                            val permissionIntent = Intent(
+                                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                Uri.parse("package:$packageName")
+                            )
+                            fullScreenPermissionResult = result
+                            fullScreenPermissionSettingsPaused = false
+                            // Resolve the channel only after returning, so the next
+                            // permission screen cannot cover this system setting.
+                            startActivityForResult(permissionIntent, FULL_SCREEN_PERMISSION_REQUEST)
+                        } catch (error: Exception) {
+                            fullScreenPermissionResult = null
+                            fullScreenPermissionSettingsPaused = false
+                            result.error("FULL_SCREEN_PERMISSION_ERROR", error.message, null)
+                        }
                     }
                 }
                 "requestOverlayPermission" -> {
@@ -415,13 +485,43 @@ class MainActivity : FlutterActivity() {
                     .putString("flutter.pending_incoming_order_payload", payloadString)
                     .putString("pending_incoming_order_payload", payloadString)
                 val action = extras.getString("pending_notification_action")
+                if (action == "accept" || action == "reject") {
+                    val key = orderId.ifBlank { extras.getString("orderNumber").orEmpty() }
+                    OrderRingtoneService.stopMatching(this, key)
+                    IncomingOrderAlertDispatcher.cancel(this, key)
+                }
                 if (!action.isNullOrEmpty()) {
                     editor.putString("flutter.pending_notification_action", action)
                     editor.putString("pending_notification_action", action)
+                } else {
+                    editor.remove("flutter.pending_notification_action").remove("pending_notification_action")
                 }
-                editor.apply()
+                editor.commit()
+                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                    MethodChannel(messenger, "com.apnapos.app/incoming_order")
+                        .invokeMethod("incomingOrder", mapOf("payload" to payloadString, "action" to action))
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun notifyIncomingOrder(payloadString: String, action: String? = null) {
+        runOnUiThread {
+            val editor = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+                .putString("flutter.pending_incoming_order_payload", payloadString)
+                .putString("pending_incoming_order_payload", payloadString)
+            if (action != null) {
+                editor.putString("flutter.pending_notification_action", action)
+                    .putString("pending_notification_action", action)
+            } else {
+                editor.remove("flutter.pending_notification_action").remove("pending_notification_action")
+            }
+            editor.commit()
+            flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                MethodChannel(messenger, "com.apnapos.app/incoming_order")
+                    .invokeMethod("incomingOrder", mapOf("payload" to payloadString, "action" to action))
             }
         }
     }

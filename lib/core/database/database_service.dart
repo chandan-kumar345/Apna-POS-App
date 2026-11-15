@@ -3588,10 +3588,6 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
-  List<StorefrontBanner> _defaultStorefrontBanners() {
-    return const [];
-  }
-
   Future<void> _loadStorefrontBannersFromPrefs() async {
     final bannersJson = _prefs?.getString(_businessKey('storefront_banners'));
     if (bannersJson != null && bannersJson.isNotEmpty) {
@@ -8219,8 +8215,8 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       if (isAuth) {
         final ApiClient client = ApiClient();
         final response = await client.get(ApiEndpoints.notificationSettings);
-        if (response.data != null && response.data['success'] == true && response.data['data'] != null) {
-          final setting = NotificationSettingModel.fromJson(response.data['data'] as Map<String, dynamic>);
+        if (response is Map && response['success'] == true && response['data'] is Map) {
+          final setting = NotificationSettingModel.fromJson(Map<String, dynamic>.from(response['data']));
           _cachedNotificationSetting = setting;
 
           // Cache locally

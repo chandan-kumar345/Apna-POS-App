@@ -858,3 +858,309 @@ the full pizza photo visible. Build and analysis under
 build/product_details_validation/ (media-fitting-*). Android build pending.
 Media fitting analysis: no errors or warnings; three existing brace-style
 infos in pos_product_media_box.dart. Other in-progress changes preserved.
+
+## 2026-11-15 — Customer storefront redesign and Android build repair
+
+- Replaced the generic loader with a menu skeleton using the requested restaurant identity/theme; removed the forced loading delay and retain the menu during refresh.
+- Public menu/profile/categories/products/media/banners/status/hours/theme load from the restaurant API. Removed synthetic rating/review/ETA/coupon/banner fallbacks and global merchant-logo fallback. Unknown restaurants return 404 instead of another merchant's menu.
+- Business settings persist storefront configuration; settings updates preserve allowed fields when profile history exists. Explicit merchant preview still uses that merchant's local data.
+- Fixed pasted build errors: missing OrderStatus import, nonexistent MenuItemModel.portion, wrong socket rejectionReason argument (uses reason). Kept selected variant information in existing item name/notes. Corrected two invalid case-insensitive table regex patterns.
+- UI verification initially caught banner horizontal overflow at 320/390 px; constrained banner text/actions and reran. Cart verification caught snackbar covering the cart action; moved feedback above the cart bar.
+- Verification: flutter test test/storefront_dynamic_menu_test.dart test/storefront_restaurant_loader_test.dart — 7 passed. Covers loading/branding, API content, search/category, customization/cart, refresh/offline, unknown restaurant, compact currency layout, empty/refetched API catalogs.
+- Verification: backend npm test -- --runTestsByPath tests/storefront_dynamic_data.test.js tests/table_qr_ordering.test.js — 2 suites, 7 tests passed. Covers tenant isolation, real configuration/media, branding query, empty menu/no fictional tables, unknown tenant orders, persisted settings with history, existing table ordering.
+- Verification: focused Flutter analysis completed with 0 errors/0 warnings and 11 style infos. Broader analysis includes existing warnings in database/checkout/incoming order files.
+- Verification: flutter build apk --debug — Built build/app/outputs/flutter-apk/app-debug.apk (31.5 seconds on final completed run).
+- Captured and visually inspected build/storefront-review/restaurant-menu-390.png, restaurant-menu-320.png, restaurant-loading.png using API response fixtures and bundled asset images; no horizontal overflow. Test images use fixture content, not production data.
+- Live backend deployment/device payment testing were not performed; the updated backend must be deployed for live storefront configuration changes.
+
+## 2026-11-15 — Incoming order accept redesign / table number
+
+- Redesigned incoming order review around a prominent Table N card, customer actions, item notes/variants, totals, a wrapping prep-time grid and fixed bottom actions. Visually inspected 390 px and 320 px screenshots (320 px includes 1.2 text scale). No layout overflow in the new view.
+- Root cause: socket notification payload/metadata dropped tableNumber; null-only fallbacks accepted blank values over valid aliases/nested data. Added shared normalization at socket/FCM/local notification/screen entry points. Also stopped inferring table numbers from street-name T characters in stored order parsing. Explicit stored table-code formatting is retained.
+- New view updates when a local order with table details arrives after the alert. Countdown updates only its timer widget. Existing accept/decline/prep-time/KOT/table-sync callbacks retained.
+- flutter test test/incoming_order_payload_test.dart test/incoming_order_accept_screen_test.dart test/storefront_dynamic_menu_test.dart test/storefront_restaurant_loader_test.dart with capture font environment: 21 passed. Includes table aliases, empty/nested payloads, JSON FCM metadata, persisted code formatting, no false table from street, late table update, prep selection, mute/countdown isolation, decline dialog and compact layouts, plus prior storefront checks.
+- Backend: npm test -- --runTestsByPath tests/table_qr_ordering.test.js tests/storefront_dynamic_data.test.js — 2 suites / 7 passed.
+- flutter build apk --debug — Built build/app/outputs/flutter-apk/app-debug.apk; final log build/incoming-order-final-build.log, 63.2s.
+- Static analysis found no compilation errors; existing protected notifyListeners warnings remain in the retained table-sync action. No AGP/Kotlin dependency upgrades were needed.
+- Broader-suite limitations: existing test/table_ordering_flow_test.dart does not compile because its model fixtures omit required description/tagline/profile fields. A no-font-capture run of the prior storefront checkout test exposes a 13 px overflow with Flutter's Ahem test font; it passes with the real visual-test font. These failures are outside the redesigned incoming view and are not reported as a clean full-suite run. Production checkout behavior was not changed in this task.
+- Evidence screenshots: build/incoming-order-review/table-order-390.png and table-order-320.png. No physical-device QR/payment/printer validation or deployment performed.
+- Final default-environment check (without capture/font variables): incoming_order_payload_test + incoming_order_accept_screen_test — 14 passed in 4 seconds; build/incoming-order-default-tests.log.
+
+## 2026-11-15 — Order source, saved ringtone and Notification Settings
+
+- Order review shows an independent source label: WhatsApp, Online (storefront/profile/QR), or Store (store/POS/counter/local). Non-QR dine-in sources are labeled DINE-IN ORDER rather than incorrectly implying a QR origin.
+- Root cause of locked-screen silence: native FCM notification was explicitly silent and deferred playback to Flutter. Added OrderRingtoneService, a single mediaPlayback foreground-service player using the saved local/preset audio and saved volume/mute preference. Native FCM starts it without waiting for the screen. MainActivity bridges foreground play/stop; Dart now loads saved preferences before playing and cancels delayed startup after stop. Existing non-Android audio fallback remains.
+- Custom audio is persisted to a native-readable cached source; uncached/unavailable custom files fall back to the bundled order sound. Confirmed Android shared_preferences double encoding in the installed plugin source and decode the actual DOUBLE_PREFIX. Cached downloads run asynchronously so saving preferences does not wait on network audio.
+- Native notification mute and accept/reject stop playback; matching handled-order events stop their active alert. Playback has a three-minute failsafe, loop deduplication, foreground notification, and OS notification fallback if service start is denied. Zero volume/global sound-off remain silent.
+- Notification Settings now matches the rounded app surfaces, dark hero, green controls, real business name, wrapped section links and fixed Save footer. Preserved presets, custom upload/delete, previews, volume sliders, preferences and permission controls. Removed fabricated synced/merchant defaults. Cached controls stay visible but cannot be edited until loading finishes. Fixed API response map parsing in DatabaseService.fetchNotificationSettings.
+- Validation: 27 tests passed in build/alerts-default-tests.log (11s), and 27 visual-font checks passed in build/alerts-final-tests.log. Includes all three source types, native bridge start/stop, stop-during-start race, zero volume, native saved selection, settings save interactions, 320/390 px layouts, and prior incoming-order/table payload regression cases.
+- Static analysis: build/alerts-final-analysis.log — No issues found (5 focused files).
+- Android compile: build/alerts-final-build.log — Built build/app/outputs/flutter-apk/app-debug.apk, 41.6s. Fixed a Kotlin outer action-variable shadowing Intent.action caught during final compilation.
+- Visually inspected build/alerts-review/notification-settings-390.png and build/incoming-order-review/table-order-390.png; compact layout also captured at 320 px.
+- Native design reference: https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start and https://developer.android.com/develop/background-work/services/fgs/service-types . Android high-priority FCM allows attempting foreground playback; denied starts use the notification fallback.
+- Limits: did not install on the connected user's phone or submit synthetic orders to their live business. Real-device locked-screen delivery/audio, uploaded custom audio and vendor battery-policy behavior remain unverified. No backend deployment or external customer messages were performed.
+
+## Meta/WhatsApp setup audit, redesign and PRD/TRD � 2026-11-15
+
+Implemented the WhatsApp Business connection screen with Connection, Templates
+and Business profile tabs, focused setup steps, real status/error states and
+responsive layout. Reviewed generated 320/390/1280px Flutter captures under
+build/meta_partner_redesign/; the real-font 390 and 1280 captures show the intended
+layout. Added a service injection seam for deterministic UI/action testing.
+
+Root causes fixed in Meta setup: OAuth code ignored and replaced with fixed
+account IDs; missing account synthesized from shared defaults; PIN/subscription
+provider failures swallowed; template sync/approval and analytics fabricated.
+Implemented server-side code exchange and WABA-phone ownership validation,
+short-lived hashed browser capabilities with atomic one-use consumption,
+role-restricted setup routes, exact Facebook event-origin checks, nonce CSP,
+configuration-driven signup without the retired sessionInfoVersion 3 override,
+real registration/subscription responses, atomic independent setup flags,
+real template submission/status and tenant chat-store analytics. Invalid Meta
+tokens request reconnect via 409 rather than triggering POS auth logout.
+Chat sends now select the enabled business sender; connection status no longer
+restores a seed sender, mirrors credentials or returns its access token.
+Broader legacy credential/settings paths remain documented TRD boundaries.
+
+PRD: docs/meta-partner/PRD.md. TRD: docs/meta-partner/TRD.md. Local key-presence
+check confirms META_APP_ID/META_APP_SECRET/META_EMBEDDED_SIGNUP_CONFIG_ID/
+META_PUBLIC_BASE_URL are absent; no secrets printed by that check. Removed the
+source-contained provider secret; rotation of historical copies remains a live
+release prerequisite. No provider configuration or backend deployment performed.
+No real customer messages or live Meta registration actions were performed.
+
+Validation: 8 new service regressions failed against the old implementation.
+Final backend setup/lifecycle/routes/appsecret/chat suite: 38 passed, 5 suites
+(regression-tests.log). Existing chat fixtures now explicitly configure a tenant
+sender and expect no token from connection-status responses. Lifecycle checks
+use real MongoMemoryServer storage and simulated Meta calls. Latest browser
+bridge changes rechecked in final-routes.log. Combined incoming order payload,
+acceptance UI and Meta UI suite: 24 passed (combined-flutter-tests.log), including
+narrow large text and PIN submission. Fixed test scrolling to wait for actual
+hit-test visibility with either Ahem or real fonts. Targeted Dart analysis:
+No issues found (analyze-final.log). git diff --check passed.
+
+Additional Table 2 finding: orderService high-priority closed-app push omitted
+tableNumber although sockets retained it. Added the field; actual generatePosOrder
+integration regression passes and asserts the saved T02 reference in the emitted
+push (table-qr-push-test.log). The shared-workspace incoming-order redesign and
+payload normalization were preserved and their tests included above.
+
+ARM64 profile APK built successfully in 411.8s (91.3 MB; apk-build.log), copied to
+build/meta_partner_redesign/apna-pos-whatsapp-setup.apk. libapp.so marker check
+confirms the redesigned headings/actions are packaged (packaged-check.json).
+SHA256 c05b0cb55fc4807a619621865fb0e9e67237ba07df230ad4b460148c91e33a53.
+Installation attempted but adb reported no devices/emulators; mDNS found none.
+This APK was not installed. Live acceptance and remaining legacy-system hardening
+are explicitly listed in the TRD rather than claimed complete.
+
+## WhatsApp setup text visibility and UI refinement � 2026-11-15
+
+Reproduced the actual app-theme mismatch: the new screen was painted light while
+inheriting GlassTheme.themeData (dark). A regression test expected Brightness.light
+and observed Brightness.dark before the fix (build/meta_ui_readability/before.log).
+The root navigator also inherited a transparent dark dialog theme.
+
+Added a scoped complete light theme for page and root-navigator dialogs, opaque
+white dialog surfaces, dark input/cursor/label colors and explicit readable button
+states. Retained the parent's font family in component typography so button and
+dialog labels use the same fonts as the page. Refined the UI with white account
+cards, blue full-width connection actions, outlined step actions, a shorter header,
+14-15px supporting text, darker secondary text, setup progress and responsive app
+bar height for enlarged text. PRD P08/P11 reflect these visibility requirements.
+
+Evidence in build/meta_ui_readability/: 10 focused tests pass with the real dark
+GlassTheme parent, including PIN validation/submission, offline retry, templates,
+profile fields, 320/390/1280 widths and 1.4x/2x text. analyze.log: No issues found.
+Computed contrasts (contrast.json): body/white 15.16:1, secondary/canvas 5.55:1,
+primary action 5.44:1, disabled action 5.39:1. Captured and visually inspected
+meta-setup-390.png, meta-pin-dialog-390.png, meta-profile-dialog-390.png and
+meta-large-text-390.png. All labels/buttons are readable in the final captures.
+Android build/device result recorded below after completion.
+
+Android ARM64 profile build succeeded in 134.6s (91.3 MB; apk-build.log).
+Copied to build/meta_ui_readability/apna-pos-readable-whatsapp.apk and verified
+all four new UI markers in libapp.so (packaged-check.json). Wireless ADB was
+briefly reconnected to the discovered phone but went offline before completion;
+final adb devices list is empty and mDNS has no service. APK not installed and
+no phone screenshot claimed. Final preview/test evidence remains locally verified.
+
+Build verification detail: Gradle wrapper log records exit 0 and Flutter reports
+Built app-profile.apk. PowerShell's outer process reported 1 after a Java
+restricted-method WARNING was classified as NativeCommandError in redirected
+stderr. The APK was generated and its new UI markers verified. This is not a
+Dart/Gradle build failure; no unrelated toolchain upgrade was made.
+
+## 2026-11-15 — Notification text visibility and readability
+
+- Cause: main.dart installs GlassTheme.themeData (dark), while Notification Settings and inbox use light surfaces. Header/default control/dialog text inherited the wrong theme. Earlier settings visual tests used a standalone light ThemeData, so they did not exercise the app's real theme.
+- Added a local NotificationScreenTheme with explicit light surface/text/control/dialog styling, preserving the parent font family. Public screen wrappers place the existing stateful content below that theme so dialogs inherit the same readable colors. The app-wide dark theme remains intact.
+- Notification Settings now has a readable navy/white app bar, compact light introduction, larger labels, multiline ringtone names, stronger semantic colors, and the fixed Save footer. Existing selections, previews, uploads, sliders, saves and preferences retained.
+- Redesigned inbox header to fit narrow screens with unread summary, refresh and existing menu actions. Notification titles now wrap at full card width; timestamps appear below titles; message text is larger. Grouping, navigation, read state, filters and API callbacks unchanged.
+- Tests now mount both screens inside the actual GlassTheme with 1.2 text scale at 320 and 390 px. Settings verifies light-theme isolation/body contrast and saved ringtone selection. Inbox uses mocked API fixtures and checks mark-all-read and Inventory filtering. Fixed the test's app-lifetime polling timer ownership without changing production polling.
+- Verification: build/notification-readability-final-tests.log — 12 passed (including prior saved/native ringtone checks). build/notification-readability-final-analysis.log — No issues found, 5 focused files. git diff --check clean apart from line-ending notices.
+- Screenshots captured and visually inspected: build/notification-readability-review/notification-settings-390.png and notifications-inbox-320.png; companion 320/390 sizes also generated. Confirmed readable header, full notification titles and body contrast under real parent theme, enlarged text.
+- Final APK: build/notification-readability-release-check.log — Built build/app/outputs/flutter-apk/app-debug.apk, 35.5s. App was not installed on the connected phone, and no production notifications/customer messages were sent.
+
+## 2026-11-15 — Campaign Studio redesign and code review
+
+- Reviewed the active CampaignScreen -> WebCampaignPortalScreen -> CampaignDashboardView path, dashboard service, and creation-result handling. Preserved shared NeumorphicTheme tokens referenced by other campaign views.
+- Replaced the duplicated dashboard layout with CampaignStudioLayout: reference-inspired purple studio canvas, bundled phone artwork, create/automation/audience actions, live API performance tiles, actual wallet balance, status/category filters, template search, lazy template grid and campaign list. Mobile stacks panels; wide screens use side-by-side panels. Portal isolates light surfaces from the app's dark theme and includes safe-area/back handling.
+- Removed fabricated wallet balance and invented performance campaign fallback. Fixed out-of-order status request handling while keeping status-specific API queries and existing detail/template/create callbacks.
+- Creation API failures no longer synthesize local running campaigns, delivered-message totals, spent amounts or delivery timelines. Draft and dispatch/publish failure UI now reports unsuccessful creation instead of success.
+- Detailed review and remaining integration findings: docs/campaign-studio-review.md. In particular, dispatch still has pre-existing fixed sender/offer values, service reads silently fall back to singleton caches, and setup/catalog defaults can imply connection/approval. These are documented follow-up integration risks rather than claimed verified live sending.
+- Test development initially hit invalid mock JSON map typing; corrected fixtures to emulate decoded API JSON. Final: build/campaign-final-verified-tests.log — 9 passed. Also build/campaign-default-tests.log — 9 passed without visual capture/fonts. Coverage: 320/390/1100 px + enlarged text, live metrics/real zero wallet, callbacks, templates/search, draft API status filtering/detail selection, request ordering, no invented performance record, failed/successful backend creation, actual dark-parent theme isolation.
+- Visually inspected phone and desktop captures in build/campaign-review/campaign-studio-390.png and campaign-studio-1100.png; 320 px capture also generated. Artwork and figures use API fixtures/bundled assets, not live merchant data.
+- Focused analysis (build/campaign-final-analysis.log): no errors/warnings; 14 curly-brace style infos. git diff --check has no whitespace errors (line-ending notices only).
+- Final Android build: build/campaign-final-verified-build.log — Built build/app/outputs/flutter-apk/app-debug.apk in 55.5s.
+- No live campaigns, external customer messages, wallet top-ups, Meta account changes or deployment performed. Other dirty workspace changes were preserved.
+
+## Incoming order push transport audit � 2026-11-15
+
+Android urgent-order pushes were already data-only in both v1 and retained legacy
+payloads; notification blocks are removed so client handlers can construct their
+own full-screen/action notification. Found a separate zero-TTL delivery gap:
+messages not immediately deliverable were discarded. Bounded urgent Android
+order retention to 90 seconds while keeping HIGH priority, order-specific collapse
+keys, serialized item/table details and existing general/iOS settings unchanged.
+
+New transport regression before change: 2 failed / 2 passed (push-before.log).
+After: 9 passed across 3 suites (push-tests.log): incoming transport contract,
+actual Table 2 push reference generation, and existing accept/reject/broadcast
+order flow. git diff --check for changed backend files passed. Evidence under
+build/full_screen_orders/.
+
+The existing order-flow suite initially contacted configured FCM for its explicit
+invalid fixture token; provider rejected it (400, invalid registration token),
+so no device received a notification. The suite now mocks service-account lookup,
+OAuth and fetch; final test run performs no external provider sends or real orders.
+No production database changes or real customer messages were made.
+
+Official references: https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan
+states ttl0 discards messages that cannot be delivered immediately. Force Stop
+in Android Settings still requires manual app reopen, per
+https://firebase.google.com/docs/cloud-messaging/flutter/receive-messages .
+Native audit: installed FlutterFire receiver directly routes to foreground LiveData
+or its background service, while the Google SDK receiver is also merged. Root/native
+agent notified that receiver/service dispatch must be verified and deduplicated;
+manifest service priority alone does not prove which native alert path executes.
+
+## Full-screen order alert permission (delegated permission work, 2026-11-15)
+
+The manifest declared USE_FULL_SCREEN_INTENT but did not check Android 14's
+special-access grant or offer its settings screen. Added native grant/requirement
+checks plus app-specific ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT. Its method
+channel result resolves after returning from system settings, via activity result
+or resume fallback; no setting is granted by app code. Fresh permission setup is
+runtime -> battery -> full-screen -> existing overlay, with full-screen awaited
+before another settings screen can launch. Existing installs with the old
+post-login flag still receive the new once-only full-screen request. Denials are
+remembered to avoid reopening settings on every navigation. Android 13 and iOS
+keep their existing flow.
+
+Notification settings now exposes Full-screen order alerts / Allow when needed,
+rechecks on resume and only shows Allowed after a fresh native check. Critical
+Android alert readiness includes the special-access grant.
+
+Evidence: build/full-screen-permission-tests.log: 20 tests passed, including the
+15 post-login cases, 3 full-screen service/manual-settings cases, and 2 existing
+notification settings/ringtone-save cases. Manual suite rechecked separately:
+build/full-screen-permission-manual-test.log, 3 passed. Targeted five-file Dart
+analysis: No issues found (build/full-screen-permission-analysis.log). Visually
+reviewed build/order_full_screen/full-screen-order-permission-390.png; title,
+help text and Allow action are readable. Native compilation/live system-settings
+behavior is left for the parent agent's coordinated Android build/device check.
+No live permission grants or order/API behavior changed in this subtask.
+
+## Native incoming-order dispatch regression � 2026-11-15
+
+FlutterFire 16.7 uses a manifest broadcast receiver to feed foreground LiveData
+or its background engine; a custom FirebaseMessagingService alone does not cover
+that path. The Google SDK receiver remains a separate service path, so both must
+share a native dedupe gate. Replaced the FlutterFire receiver registration with
+OrderWakeBroadcastReceiver (a subclass) that performs native order alert work
+under goAsync on an executor, then forwards one explicit, marked internal
+broadcast before delegating to the plugin's own receiver implementation. This
+retains a distinct valid PendingResult for the plugin and keeps preference I/O
+off the main receiver thread. Ordinary messages delegate directly.
+
+Added IncomingOrderAlertDispatcher and pure OrderAlertPolicy: ignore local POS,
+chat/payment order references, and handled orders; retain table/order data;
+persist pending payload before launching; route foreground data through
+MainActivity.notifyIncomingOrder; dedupe the two native entry points. Background
+notifications use unique order/mode PendingIntent URIs, API35+ creator activity
+start options, the real FSI permission state, notification-first presentation,
+ordinary user-tappable fallback and the existing granted-overlay direct path.
+Removed self-sending of a PendingIntent as a claimed BAL bypass and stopped
+silencing alerts merely because the native ringtone was already running.
+Existing ringtone service and explicit Accept/Reject actions remain.
+
+Validation: JAVA_HOME points at Android Studio JBR; :app:testDebugUnitTest exited0,
+BUILD SUCCESSFUL in1m54s, 418 tasks. Six pure Kotlin policy tests, 0 failures and
+0 errors. build/order_fullscreen_native/gradle-tests.log and manifest-and-tests.json
+record proof. The merged debug manifest contains the app receiver protected by
+com.google.android.c2dm.permission.SEND, omits the replaced plugin receiver, and
+retains Google's SDK receiver. Native source diff whitespace check passes.
+The later tiny dispatcher.cancel helper must also compile in the root's final
+profile build. No live FCM push or user order was submitted by this subtask.
+
+## Incoming order full-screen presentation and permission � 2026-11-15
+
+User requested the accept screen for foreground, background and normal app closure,
+plus the full-screen notification permission request, preserving existing actions.
+
+Coordinated native, Dart, permission and backend fixes. Native receiver/SDK service
+now share a protected, deduped dispatcher; FSI notification is posted before screen
+wake, activity PendingIntents are per-order/per-action and opt in where newer
+Android requires it. Native receiver delegates to FlutterFire rather than dropping
+normal delivery. A native-owned flag prevents a second Dart notification/ringtone.
+Manifest merge retains Google's receiver and replaces the Flutter receiver with
+our SEND-protected subclass.
+
+Root fixed warm onNewIntent delivery through com.apnapos.app/incoming_order,
+persisted launch payload reload (native/background cache mismatch), consistent
+incoming/handled/local POS/chat classification, native notification cancellation
+from Dart, action preservation on cold local-notification launch and splash,
+explicit Accept/Reject forwarding to an already-open screen, and terminal updates
+before UI presentation. Review found the in-memory native queue bypassed old stale
+checks; the common handler now applies the existing15-minute limit. A bounded
+native handled-key map prevents a paused in-memory queue from reopening an order
+handled during background delivery. Native fresh review clears stale action keys.
+
+Permission flow uses Android14+ canUseFullScreenIntent and app-specific settings.
+New once-only migration flag prompts existing installs despite the old completed
+post-login flag. Results wait for return before overlay request. Denials can be
+retried manually in Notification settings without navigation repeatedly prompting.
+Backend urgent Android data-only TTL was0, now90s; backend deployment is pending.
+No live customer order or external test push was submitted.
+
+Evidence: build/full_screen_orders/. Final Flutter regression suite62passed,
+covering cache reload, cold/warm routes, duplicates, stale/handled queues, action
+forwarding, permissions, table identity, ringtone and notification settings.
+Six Kotlin tests pass and merged-manifest assertions pass (order_fullscreen_native/).
+Nine mocked backend contract/order-notification tests pass. New action-forwarding
+regression failed before fix (action-before.log). Targeted analysis has no issues
+(final-analyze.log); accept-screen full analysis retains the existing two protected
+notifyListeners warnings from pre-task code. Targeted git diff --check passed.
+
+Final ARM64 profile build exit0 in84.0s,91.3MB (final-apk-build.log). Package markers
+validate dispatcher/receiver, permission request, upgrade flag, native Dart bridge,
+and handled-key storage. APK apna-pos-full-screen-orders.apk SHA256:
+cfe8c5303bc3b265587dcebaae242e3654e9780d823e58825493451eb3431afa.
+Installed final APK on OPPO CPH2637 with Success (final-install.log).
+Earlier staged APK cold launch Status ok,3394ms Activity/3436ms WaitTime.
+Inspected device-after-launch.png: native-backed Notification settings shows
+Full-screen order alerts Allowed and Display Over Other Apps Allowed. No grant
+was changed through automation. Device-launch log includes secure-storage key
+recovery/decryption warnings; no FATAL/ANR observed in the captured startup.
+
+Limits: live end-to-end closed-app FCM arrival was not exercised. Android controls
+FSI versus heads-up on unlocked devices and blocks push after Settings Force Stop
+until manual reopening. This is covered in docs/notifications/INCOMING_ORDER_ALERTS.md
+with official Android/Firebase references; no claim of bypassing those restrictions.
+
+## Logo animation GIF export � 2026-11-15
+Rendered the unchanged LogoWritingReveal painter into 88 PNG frames (600x600, 25fps), then encoded exports/Apna-POS-Logo-Writing.gif with a shared 256-color palette and final-logo hold. Flutter renderer passed; decoded all 85 encoded GIF frames: 4680ms, infinite loop, 1,837,941 bytes. Inspected writing midpoint and completed receipt/glossy-logo frames. Copied GIF to the user's Downloads folder. Reusable rendering/encoding tools: tool/export_logo_gif_frames_test.dart and tool/export_logo_gif.py.
+
+GIF export palette refinement: reserved exact #F7F9FE to keep the canvas uniform; regenerated and verified final file size 1,828,253 bytes. Downloads copy matches the exported GIF.
+Final encoding preserves exact background pixels during palette conversion; all 42,000 pixels in the 70px-wide canvas margin verified uniform #F7F9FE. Final GIF remains 600x600, 85 encoded frames, 4680ms, infinite loop.

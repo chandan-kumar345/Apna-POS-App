@@ -54,7 +54,7 @@ class StorefrontController {
         companyName: business.profile?.companyName || '',
         slug: business.profile?.slug || business.slug || rawSlug,
         tagline: business.profile?.tagline || '',
-        cuisineType: business.profile?.cuisineType || business.business?.businessType || 'Indian & Continental',
+        cuisineType: business.profile?.cuisineType || business.business?.businessType || '',
         phone: business.profile?.phone || '',
         address: [business.address?.addressLine, business.address?.city, business.address?.state, business.address?.postalCode].filter(Boolean).join(', '),
         logoUrl: business.profile?.profileImage || '',
@@ -73,8 +73,8 @@ class StorefrontController {
         storefrontThemeColor: config.themeColorHex ?? 0xFFE65100,
         storefrontThemeColorEnd: config.themeColorEndHex ?? null,
         likesCount: 0,
-        rating: business.profile?.rating ?? 4.6,
-        reviewCount: business.profile?.reviewCount ?? '1.2k+',
+        ...(business.profile?.rating != null ? { rating: business.profile.rating } : {}),
+        ...(business.profile?.reviewCount != null ? { reviewCount: business.profile.reviewCount } : {}),
       };
       if (req.query.brandingOnly === 'true') return ApiResponse.success(res, { restaurant }, 'Restaurant branding loaded');
 
@@ -96,25 +96,6 @@ class StorefrontController {
         : products.map(p => p.category).filter(Boolean))];
       let banners = (config.banners || []).filter(b => b.isActive !== false)
         .sort((a,b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-
-      if (banners.length === 0) {
-        const topDish = products[0];
-        banners = [
-          {
-            id: 'banner_combo_1',
-            tag: 'SUPER SAVER COMBO',
-            headline: 'COMBO DELIGHT BOX',
-            subtitle: `${topDish ? topDish.name : 'Delicious Food'} + Fries + Cold Drink at exclusive prices`,
-            ctaText: 'GRAB COMBO',
-            imageUrl: topDish?.imageUrl || (topDish?.images && topDish.images[0]) || 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800',
-            accentColorHex: 0xFFE65100,
-            couponCode: 'COMBO100',
-            discountText: 'FLAT ₹100 OFF',
-            isActive: true,
-            displayOrder: 0,
-          }
-        ];
-      }
 
       // Parse optional table ordering query parameters (e.g. ?R=R1&T=T01)
       const tableQuery = (req.query.T || req.query.t || req.query.table || req.query.tableNumber || '').toString().trim();
@@ -181,7 +162,7 @@ class StorefrontController {
           id: p._id ? p._id.toString() : (p.id || p.productId),
           productId: p.productId || (p._id ? p._id.toString() : p.id),
           itemType: p.itemType || p.foodType || 'Veg',
-          rating: p.rating || 4.8,
+          rating: p.rating ?? 0,
           variants: Array.isArray(p.variants) ? p.variants : [],
         })),
         addons: addons.map((a) => ({
@@ -192,8 +173,8 @@ class StorefrontController {
         isOnline: restaurant.isStorefrontOnline,
         themeColorHex: restaurant.storefrontThemeColor,
         themeColorEndHex: restaurant.storefrontThemeColorEnd,
-        deliveryEta: config.deliveryEta || (business.orderSettings?.deliverySettings?.estimatedTimeMinutes ? `${business.orderSettings.deliverySettings.estimatedTimeMinutes} mins` : '25–35 mins'),
-        pickupEta: config.pickupEta || '15–20 mins',
+        deliveryEta: config.deliveryEta || '',
+        pickupEta: config.pickupEta || '',
         table: tableInfo,
       }, 'Storefront loaded successfully');
     } catch (error) {

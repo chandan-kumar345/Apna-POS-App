@@ -59,34 +59,15 @@ class StorefrontService {
         (cleanSlug == 'preview' ||
             cleanSlug == local.storefrontSlug.toLowerCase() ||
             cleanSlug == local.id.toLowerCase())) {
-      final localBanners = _db.storefrontBanners.where((b) => b.isActive).toList();
       final data = StorefrontData(
         restaurant: local,
         categories: ['All', ..._db.categories.where((c) => c != 'All')],
         menuItems: List.of(_db.menuItems),
         addOns: List.of(_db.extras),
-        banners: localBanners.isNotEmpty
-            ? localBanners
-            : [
-                StorefrontBanner(
-                  id: 'banner_local_default',
-                  tag: 'SUPER SAVER COMBO',
-                  headline: 'COMBO DELIGHT BOX',
-                  subtitle: '${_db.menuItems.isNotEmpty ? _db.menuItems.first.name : "Pizza + Fries + Drink"} at exclusive prices',
-                  ctaText: 'GRAB COMBO',
-                  imageUrl: _db.menuItems.isNotEmpty ? _db.menuItems.first.imageUrl : '',
-                  accentColorHex: _db.storefrontThemeColor,
-                  couponCode: 'COMBO100',
-                  discountText: 'FLAT ₹100 OFF',
-                ),
-              ],
+        banners: _db.storefrontBanners.where((b) => b.isActive).toList(),
         isOnline: _db.isStorefrontOnline,
         themeColorHex: _db.storefrontThemeColor,
         themeColorEndHex: _db.storefrontThemeColorEnd,
-        rating: 4.6,
-        reviewCount: '1.2k+',
-        deliveryEta: '25–35 mins',
-        pickupEta: '15–20 mins',
       );
       return data;
     }
@@ -153,10 +134,10 @@ class StorefrontService {
               Map<String, dynamic>.from(json['table'] as Map),
             )
           : null,
-      rating: (profile['rating'] as num?)?.toDouble() ?? 4.6,
-      reviewCount: (profile['reviewCount']?.toString().isNotEmpty == true ? profile['reviewCount'].toString() : '1.2k+'),
-      deliveryEta: (json['deliveryEta']?.toString().isNotEmpty == true ? json['deliveryEta'].toString() : '25–35 mins'),
-      pickupEta: (json['pickupEta']?.toString().isNotEmpty == true ? json['pickupEta'].toString() : '15–20 mins'),
+      rating: (profile['rating'] as num?)?.toDouble(),
+      reviewCount: profile['reviewCount']?.toString() ?? '',
+      deliveryEta: json['deliveryEta']?.toString() ?? '',
+      pickupEta: json['pickupEta']?.toString() ?? '',
     );
     _brandCache[cleanSlug] = data;
     if (_brandCache.length > 16) _brandCache.remove(_brandCache.keys.first);

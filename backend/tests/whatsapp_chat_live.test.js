@@ -26,6 +26,8 @@ describe('WhatsApp Meta Live Chat System (/api/v1/whatsapp/chats & Webhook)', ()
       ownerId: userA._id,
       profile: { name: 'Store A', companyName: 'Store A Retail', phone: '9876543210' },
       address: { city: 'Mumbai', state: 'Maharashtra' },
+      // Sending requires an explicitly enabled tenant sender, never global fallback.
+      whatsappSettings: { enabled: true, phoneNumberId: '555001', wabaId: '444001', accessToken: 'tenant-test-token' },
     });
 
     userA.businessId = businessA._id;
@@ -272,6 +274,7 @@ describe('WhatsApp Meta Live Chat System (/api/v1/whatsapp/chats & Webhook)', ()
       .send({
         phoneNumberId: '109988776655443',
         phoneNumber: '+91 9709593705',
+        wabaId: '444001',
         accessToken: 'EAAB_sample_access_token_xyz',
       });
 
@@ -294,7 +297,7 @@ describe('WhatsApp Meta Live Chat System (/api/v1/whatsapp/chats & Webhook)', ()
     expect(meRes.body.data.user.whatsappSettings.phoneNumber).toBe('+91 9709593705');
     expect(meRes.body.data.user.whatsappSettings.accessToken).toBe('EAAB_sample_access_token_xyz');
 
-    // Verify /api/v1/whatsapp/chats/connection returns full credentials including token
+    // Connection status restores identity without returning the server token.
     const connRes = await request(app)
       .get('/api/v1/whatsapp/chats/connection')
       .set('Authorization', `Bearer ${newLoginToken}`);
@@ -303,6 +306,7 @@ describe('WhatsApp Meta Live Chat System (/api/v1/whatsapp/chats & Webhook)', ()
     expect(connRes.body.data.connected).toBe(true);
     expect(connRes.body.data.phoneNumberId).toBe('109988776655443');
     expect(connRes.body.data.phoneNumber).toBe('+91 9709593705');
-    expect(connRes.body.data.accessToken).toBe('EAAB_sample_access_token_xyz');
+    expect(connRes.body.data.accessToken).toBeUndefined();
+    expect(connRes.body.data.hasCustomToken).toBe(true);
   });
 });

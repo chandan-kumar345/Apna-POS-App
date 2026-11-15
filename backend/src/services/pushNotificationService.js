@@ -232,6 +232,10 @@ class PushNotificationService {
         Boolean(data.orderId);
 
       const isWhatsApp = data.type === 'whatsapp_message' || data.type === 'whatsappMessage';
+      // High priority still requests immediate delivery. A zero TTL discards an
+      // order if the phone is briefly offline, so retain urgent Android orders
+      // for one short review window instead of dropping them immediately.
+      const androidTtlSeconds = platform === 'android' && isOrderRequest ? 90 : 0;
       const channelId = isOrderRequest
         ? 'apna_pos_whatsapp_orders_v2'
         : (isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2');
@@ -263,11 +267,11 @@ class PushNotificationService {
         to: token,
         priority: 'high',
         collapse_key: androidTag || 'apna_pos_general',
-        time_to_live: 0, // Zero TTL ensures immediate delivery without Doze delay
+        time_to_live: androidTtlSeconds,
         content_available: true,
         android: {
           priority: 'high',
-          ttl: '0s',
+          ttl: `${androidTtlSeconds}s`,
           collapse_key: androidTag || 'apna_pos_general',
           notification: {
             channel_id: channelId,
@@ -316,7 +320,7 @@ class PushNotificationService {
                 },
                 android: {
                   priority: 'HIGH',
-                  ttl: '0s',
+                  ttl: `${androidTtlSeconds}s`,
                   direct_boot_ok: true,
                   collapse_key: androidTag || 'apna_pos_general',
                   notification: {

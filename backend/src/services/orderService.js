@@ -785,6 +785,7 @@ class OrderService {
                 totalAmount: String(order.totalAmount || 0),
                 orderType: order.orderType || 'takeaway',
                 orderSource: oSource,
+                tableNumber: order.tableNumber || '',
                 deliveryAddress: order.deliveryAddress || '',
                 items: JSON.stringify(order.items || []),
                 createdAt: (order.createdAt || new Date()).toISOString(),

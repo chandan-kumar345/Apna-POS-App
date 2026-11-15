@@ -22,6 +22,8 @@ class MetaPartnerStatus {
   final String website;
   final DateTime? connectedAt;
   final bool metaPartnerVerified;
+  final bool canSend, signupAvailable, pinRegistered, webhookSubscribed;
+  final String healthMessage;
 
   const MetaPartnerStatus({
     this.isPartnerManaged = false,
@@ -33,16 +35,21 @@ class MetaPartnerStatus {
     this.wabaId = '',
     this.phoneNumberId = '',
     this.phoneNumber = '',
-    this.qualityRating = 'GREEN',
-    this.messagingTier = 'TIER_1K',
-    this.displayNameStatus = 'APPROVED',
+    this.qualityRating = 'UNKNOWN',
+    this.messagingTier = 'UNKNOWN',
+    this.displayNameStatus = 'UNKNOWN',
     this.verifiedName = '',
     this.aboutBio = '',
     this.address = '',
     this.email = '',
     this.website = '',
     this.connectedAt,
-    this.metaPartnerVerified = true,
+    this.metaPartnerVerified = false,
+    this.canSend = false,
+    this.signupAvailable = false,
+    this.pinRegistered = false,
+    this.webhookSubscribed = false,
+    this.healthMessage = '',
   });
 
   factory MetaPartnerStatus.fromJson(Map<String, dynamic> json) {
@@ -55,7 +62,8 @@ class MetaPartnerStatus {
 
     return MetaPartnerStatus(
       isPartnerManaged: json['isPartnerManaged'] == true,
-      partnerAdminEmail: json['partnerAdminEmail']?.toString() ?? 'sooftcode@gmail.com',
+      partnerAdminEmail:
+          json['partnerAdminEmail']?.toString() ?? 'sooftcode@gmail.com',
       partnerStatus: json['partnerStatus']?.toString() ?? 'NOT_CONFIGURED',
       onboardingType: json['onboardingType']?.toString() ?? 'embedded_signup',
       coManagementStatus: json['coManagementStatus']?.toString() ?? 'none',
@@ -63,16 +71,21 @@ class MetaPartnerStatus {
       wabaId: json['wabaId']?.toString() ?? '',
       phoneNumberId: json['phoneNumberId']?.toString() ?? '',
       phoneNumber: json['phoneNumber']?.toString() ?? '',
-      qualityRating: json['qualityRating']?.toString() ?? 'GREEN',
-      messagingTier: json['messagingTier']?.toString() ?? 'TIER_1K',
-      displayNameStatus: json['displayNameStatus']?.toString() ?? 'APPROVED',
+      qualityRating: json['qualityRating']?.toString() ?? 'UNKNOWN',
+      messagingTier: json['messagingTier']?.toString() ?? 'UNKNOWN',
+      displayNameStatus: json['displayNameStatus']?.toString() ?? 'UNKNOWN',
       verifiedName: json['verifiedName']?.toString() ?? '',
       aboutBio: json['aboutBio']?.toString() ?? '',
       address: json['address']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       website: json['website']?.toString() ?? '',
       connectedAt: connDate,
-      metaPartnerVerified: json['metaPartnerVerified'] != false,
+      metaPartnerVerified: json['metaPartnerVerified'] == true,
+      canSend: json['canSend'] == true,
+      signupAvailable: json['signupAvailable'] == true,
+      pinRegistered: json['pinRegistered'] == true,
+      webhookSubscribed: json['webhookSubscribed'] == true,
+      healthMessage: json['healthMessage']?.toString() ?? '',
     );
   }
 }
@@ -81,6 +94,7 @@ class MetaPartnerService {
   static final MetaPartnerService _instance = MetaPartnerService._internal();
   factory MetaPartnerService() => _instance;
   MetaPartnerService._internal();
+  MetaPartnerService.forTesting();
 
   final ApiClient _apiClient = ApiClient();
 
@@ -95,7 +109,7 @@ class MetaPartnerService {
       return null;
     } catch (e) {
       debugPrint('[MetaPartnerService] getStatus error: $e');
-      return null;
+      rethrow;
     }
   }
 
@@ -131,7 +145,7 @@ class MetaPartnerService {
       return null;
     } catch (e) {
       debugPrint('[MetaPartnerService] connectWaba error: $e');
-      return null;
+      rethrow;
     }
   }
 
@@ -159,7 +173,7 @@ class MetaPartnerService {
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] updateProfile error: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -168,25 +182,25 @@ class MetaPartnerService {
     try {
       final response = await _apiClient.post(
         ApiEndpoints.metaPartnerCoManage,
-        data: {
-          'businessPortfolioId': businessPortfolioId.trim(),
-        },
+        data: {'businessPortfolioId': businessPortfolioId.trim()},
       );
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] inviteCoManagement error: $e');
-      return false;
+      rethrow;
     }
   }
 
   /// Disconnect Meta Partner Channel
   Future<bool> disconnect() async {
     try {
-      final response = await _apiClient.post(ApiEndpoints.metaPartnerDisconnect);
+      final response = await _apiClient.post(
+        ApiEndpoints.metaPartnerDisconnect,
+      );
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] disconnect error: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -195,6 +209,7 @@ class MetaPartnerService {
     required String recipientPhone,
     String? message,
     String? templateName,
+    String language = 'en_US',
   }) async {
     try {
       final response = await _apiClient.post(
@@ -203,6 +218,7 @@ class MetaPartnerService {
           'recipientPhone': recipientPhone.trim(),
           if (message != null) 'message': message.trim(),
           if (templateName != null) 'templateName': templateName.trim(),
+          'language': language,
         },
       );
       if (response != null && response is Map<String, dynamic>) {
@@ -222,23 +238,29 @@ class MetaPartnerService {
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] as Map<String, dynamic>? ?? response;
         final list = (data['templates'] as List?) ?? [];
-        return list.map((item) => MetaTemplateItem.fromJson(item as Map<String, dynamic>)).toList();
+        return list
+            .map(
+              (item) => MetaTemplateItem.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
       }
       return [];
     } catch (e) {
       debugPrint('[MetaPartnerService] getTemplates error: $e');
-      return [];
+      rethrow;
     }
   }
 
   /// Sync/Register default Apna POS restaurant templates with Meta
   Future<bool> syncTemplates() async {
     try {
-      final response = await _apiClient.post(ApiEndpoints.metaPartnerTemplatesSync);
+      final response = await _apiClient.post(
+        ApiEndpoints.metaPartnerTemplatesSync,
+      );
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] syncTemplates error: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -253,21 +275,23 @@ class MetaPartnerService {
       return null;
     } catch (e) {
       debugPrint('[MetaPartnerService] getAnalytics error: $e');
-      return null;
+      rethrow;
     }
   }
 
   /// Exchange Embedded Signup OAuth code for permanent tokens
   Future<Map<String, dynamic>?> exchangeOAuth({
     required String code,
-    String businessPortfolioId = '',
+    required String wabaId,
+    required String phoneNumberId,
   }) async {
     try {
       final response = await _apiClient.post(
         ApiEndpoints.metaPartnerOAuthExchange,
         data: {
           'code': code.trim(),
-          'businessPortfolioId': businessPortfolioId.trim(),
+          'wabaId': wabaId.trim(),
+          'phoneNumberId': phoneNumberId.trim(),
         },
       );
       if (response != null && response is Map<String, dynamic>) {
@@ -276,8 +300,14 @@ class MetaPartnerService {
       return null;
     } catch (e) {
       debugPrint('[MetaPartnerService] exchangeOAuth error: $e');
-      return null;
+      rethrow;
     }
+  }
+
+  Future<Uri> startSignup() async {
+    final response = await _apiClient.post('/meta-partner/onboarding/start');
+    final data = response['data'] as Map<String, dynamic>;
+    return Uri.parse(data['url'].toString());
   }
 
   /// Get all Meta Channels
@@ -287,12 +317,16 @@ class MetaPartnerService {
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] as Map<String, dynamic>? ?? response;
         final list = (data['channels'] as List?) ?? [];
-        return list.map((item) => MetaChannelItem.fromJson(item as Map<String, dynamic>)).toList();
+        return list
+            .map(
+              (item) => MetaChannelItem.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
       }
       return [];
     } catch (e) {
       debugPrint('[MetaPartnerService] getChannels error: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -314,7 +348,9 @@ class MetaPartnerService {
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] as Map<String, dynamic>? ?? response;
         if (data['channel'] != null) {
-          return MetaChannelItem.fromJson(data['channel'] as Map<String, dynamic>);
+          return MetaChannelItem.fromJson(
+            data['channel'] as Map<String, dynamic>,
+          );
         }
       }
       return null;
@@ -325,7 +361,10 @@ class MetaPartnerService {
   }
 
   /// Register 2-Step PIN for Channel
-  Future<bool> registerPin({required String channelId, String pin = '123456'}) async {
+  Future<bool> registerPin({
+    required String channelId,
+    required String pin,
+  }) async {
     try {
       final response = await _apiClient.post(
         '${ApiEndpoints.metaPartnerChannels}/$channelId/register-pin',
@@ -334,7 +373,7 @@ class MetaPartnerService {
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] registerPin error: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -347,12 +386,15 @@ class MetaPartnerService {
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] subscribeWebhook error: $e');
-      return false;
+      rethrow;
     }
   }
 
   /// Toggle Channel Active state
-  Future<bool> toggleChannelActive({required String channelId, required bool isActive}) async {
+  Future<bool> toggleChannelActive({
+    required String channelId,
+    required bool isActive,
+  }) async {
     try {
       final response = await _apiClient.patch(
         '${ApiEndpoints.metaPartnerChannels}/$channelId/toggle-active',
@@ -361,7 +403,7 @@ class MetaPartnerService {
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] toggleChannelActive error: $e');
-      return false;
+      rethrow;
     }
   }
 
@@ -374,7 +416,7 @@ class MetaPartnerService {
       return response != null && response['success'] != false;
     } catch (e) {
       debugPrint('[MetaPartnerService] deleteChannel error: $e');
-      return false;
+      rethrow;
     }
   }
 }
@@ -398,8 +440,8 @@ class MetaChannelItem {
     required this.phoneNumber,
     this.phoneNumberId = '',
     this.wabaId = '',
-    this.isActive = true,
-    this.status = 'ACTIVE',
+    this.isActive = false,
+    this.status = 'PENDING',
     this.integrationStatus = 'Active Meta Cloud API',
     this.pinRegistered = false,
     this.webhookSubscribed = false,
@@ -419,9 +461,10 @@ class MetaChannelItem {
       phoneNumber: json['phoneNumber']?.toString() ?? '',
       phoneNumberId: json['phoneNumberId']?.toString() ?? '',
       wabaId: json['wabaId']?.toString() ?? '',
-      isActive: json['isActive'] != false,
-      status: json['status']?.toString() ?? 'ACTIVE',
-      integrationStatus: json['integrationStatus']?.toString() ?? 'Active Meta Cloud API',
+      isActive: json['isActive'] == true,
+      status: json['status']?.toString() ?? 'PENDING',
+      integrationStatus:
+          json['integrationStatus']?.toString() ?? 'Active Meta Cloud API',
       pinRegistered: json['pinRegistered'] == true,
       webhookSubscribed: json['webhookSubscribed'] == true,
       createdAt: dt,
@@ -452,9 +495,10 @@ class MetaTemplateItem {
     return MetaTemplateItem(
       name: json['name']?.toString() ?? '',
       category: json['category']?.toString() ?? 'UTILITY',
-      displayName: json['displayName']?.toString() ?? json['name']?.toString() ?? '',
+      displayName:
+          json['displayName']?.toString() ?? json['name']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
-      status: json['status']?.toString() ?? 'APPROVED',
+      status: json['status']?.toString() ?? 'UNKNOWN',
       language: json['language']?.toString() ?? 'en_US',
       isLiveSynced: json['isLiveSynced'] == true,
     );
@@ -473,28 +517,29 @@ class MetaPartnerAnalytics {
   final String customerServiceWindowStatus;
 
   const MetaPartnerAnalytics({
-    this.qualityRating = 'GREEN',
-    this.messagingTier = 'TIER_1K',
-    this.dailyLimit = 1000,
+    this.qualityRating = 'UNKNOWN',
+    this.messagingTier = 'UNKNOWN',
+    this.dailyLimit = 0,
     this.sentToday = 0,
-    this.deliveredRate = '100%',
+    this.deliveredRate = '?',
     this.readRate = '0%',
     this.failedCount = 0,
     this.activeConversations = 0,
-    this.customerServiceWindowStatus = 'OPEN',
+    this.customerServiceWindowStatus = 'PER_CUSTOMER',
   });
 
   factory MetaPartnerAnalytics.fromJson(Map<String, dynamic> json) {
     return MetaPartnerAnalytics(
-      qualityRating: json['qualityRating']?.toString() ?? 'GREEN',
-      messagingTier: json['messagingTier']?.toString() ?? 'TIER_1K',
-      dailyLimit: (json['dailyLimit'] as num?)?.toInt() ?? 1000,
+      qualityRating: json['qualityRating']?.toString() ?? 'UNKNOWN',
+      messagingTier: json['messagingTier']?.toString() ?? 'UNKNOWN',
+      dailyLimit: (json['dailyLimit'] as num?)?.toInt() ?? 0,
       sentToday: (json['sentToday'] as num?)?.toInt() ?? 0,
-      deliveredRate: json['deliveredRate']?.toString() ?? '100%',
+      deliveredRate: json['deliveredRate']?.toString() ?? '?',
       readRate: json['readRate']?.toString() ?? '0%',
       failedCount: (json['failedCount'] as num?)?.toInt() ?? 0,
       activeConversations: (json['activeConversations'] as num?)?.toInt() ?? 0,
-      customerServiceWindowStatus: json['customerServiceWindowStatus']?.toString() ?? 'OPEN',
+      customerServiceWindowStatus:
+          json['customerServiceWindowStatus']?.toString() ?? 'PER_CUSTOMER',
     );
   }
 }

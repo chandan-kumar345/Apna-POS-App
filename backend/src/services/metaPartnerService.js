@@ -1,815 +1,339 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const Business = require('../models/Business');
-const User = require('../models/User');
+const Message = require('../models/WhatsAppMessage');
+const Chat = require('../models/WhatsAppChat');
 const ApiError = require('../utils/ApiError');
-
-const DEFAULT_PARTNER_EMAIL = 'sooftcode@gmail.com';
-const META_GRAPH_VERSION = 'v21.0';
+const Signup = require('../models/MetaSignupSession');
+const graphVersion = () => process.env.META_GRAPH_VERSION || 'v23.0';
+const catalog = [
+  { name: 'order_confirmation', category: 'UTILITY', displayName: 'Order confirmation', description: 'Your order has been accepted. We will let you know when it is ready.' },
+  { name: 'ebill_receipt', category: 'UTILITY', displayName: 'Bill receipt', description: 'Thank you for your visit. Reply to this message to request a copy of your bill.' },
+];
 
 class MetaPartnerService {
-  /**
-   * Helper to resolve Business ID and User ID
-   */
-  _resolveIds(businessId, userId) {
-    const bId = businessId && mongoose.Types.ObjectId.isValid(businessId)
-      ? new mongoose.Types.ObjectId(businessId)
-      : businessId;
-    const uId = userId && mongoose.Types.ObjectId.isValid(userId)
-      ? new mongoose.Types.ObjectId(userId)
-      : userId;
-    return { bId, uId };
+  async _business(id) {
+    if (!id) throw new ApiError(403, 'A business account is required.');
+    const business = await Business.findById(id).lean();
+    if (!business) throw new ApiError(404, 'Business not found.');
+    return business;
   }
 
-  /**
-   * Get Meta Partner Channel status & linked WABA metrics
-   */
-  async getPartnerStatus(businessId, { userId = null } = {}) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    let business = null;
-    if (bId) {
-      business = await Business.findById(bId).lean();
+  async _graph(path, token, { method = 'GET', body } = {}) {
+    if (!token) throw new ApiError(409, 'Connect this business to WhatsApp first.');
+    try {
+      const url = new URL(`https://graph.facebook.com/${graphVersion()}/${path}`);
+      const secret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
+      if (secret) url.searchParams.set('appsecret_proof', crypto.createHmac('sha256', secret).update(token).digest('hex'));
+      const response = await fetch(url.toString(), {
+        method, signal: AbortSignal.timeout(10000),
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        const error = new ApiError(data.error?.code === 190 ? 409 : 502,
+          `Meta could not complete this request${data.error?.code ? ` (code ${data.error.code})` : ''}. ${data.error?.code === 190 ? 'Reconnect your WhatsApp account.' : 'Check account permissions and try again.'}`);
+        error.metaCode = data.error?.code;
+        throw error;
+      }
+      return data;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(503, 'Meta is unavailable or the request timed out. Try again.');
     }
+  }
 
-    const isDefaultSeedAccount = bId && (
-      bId.toString() === '6ad46853ea47d6b3e13d633d' ||
-      (process.env.NODE_ENV === 'test' && bId.toString() === 'rest_001')
-    );
+  _channels(business) {
+    const settings = business.metaPartnerSettings || {};
+    if (settings.channels?.length) return settings.channels;
+    const wa = business.whatsappSettings || {};
+    if (!wa.phoneNumberId || !wa.wabaId) return [];
+    return [{ channelId: 'primary_default_channel', name: settings.verifiedName || business.name || 'WhatsApp',
+      phoneNumber: wa.phoneNumber || '', phoneNumberId: wa.phoneNumberId, wabaId: wa.wabaId,
+      isActive: !!wa.enabled, status: 'SETUP_REQUIRED', pinRegistered: false, webhookSubscribed: false,
+      integrationStatus: 'Verify registration and webhooks' }];
+  }
 
-    const partnerSettings = business?.metaPartnerSettings || {};
-    const waSettings = business?.whatsappSettings || {};
+  async _channel(businessId, channelId) {
+    const business = await this._business(businessId);
+    const channel = this._channels(business).find(item => item.channelId === channelId);
+    if (!channel) throw new ApiError(404, 'WhatsApp channel not found in this business.');
+    const wa = business.whatsappSettings || {};
+    if (!channel.phoneNumberId || !channel.wabaId || !wa.accessToken) throw new ApiError(409, 'Complete Meta connection for this number first.');
+    if (wa.phoneNumberId !== channel.phoneNumberId) throw new ApiError(409, 'Reconnect this line before making it the primary sender.');
+    return { business, channel, wa };
+  }
 
-    // Prevent cross-tenant leak: if non-seed business was poisoned with Pizza 47 credentials
-    const isLeaked = !isDefaultSeedAccount &&
-      (waSettings.phoneNumberId === '1284061438133660' || (waSettings.phoneNumber && waSettings.phoneNumber.replace(/\s+/g, '') === '+917303632949')) &&
-      !partnerSettings.isPartnerManaged;
-
-    const isConnected = !!(
-      partnerSettings.isPartnerManaged ||
-      (!isLeaked && waSettings.enabled && (waSettings.phoneNumberId || waSettings.wabaId)) ||
-      isDefaultSeedAccount
-    );
-
-    const statusPayload = {
-      isPartnerManaged: isConnected && (partnerSettings.isPartnerManaged || isDefaultSeedAccount),
-      partnerAdminEmail: partnerSettings.partnerAdminEmail || DEFAULT_PARTNER_EMAIL,
-      partnerStatus: isConnected ? 'ACTIVE' : 'NOT_CONFIGURED',
-      onboardingType: partnerSettings.onboardingType || 'embedded_signup',
-      coManagementStatus: partnerSettings.coManagementStatus || (isConnected ? 'active' : 'none'),
-      businessPortfolioId: partnerSettings.businessPortfolioId || '',
-      wabaId: isConnected ? (partnerSettings.wabaId || (!isLeaked ? waSettings.wabaId : '') || (isDefaultSeedAccount ? '2525727467906581' : '')) : '',
-      phoneNumberId: isConnected ? (partnerSettings.phoneNumberId || (!isLeaked ? waSettings.phoneNumberId : '') || (isDefaultSeedAccount ? '1284061438133660' : '')) : '',
-      phoneNumber: isConnected ? (partnerSettings.phoneNumber || (!isLeaked ? waSettings.phoneNumber : '') || (isDefaultSeedAccount ? '+91 73036 32949' : '')) : '',
-      qualityRating: partnerSettings.qualityRating || 'GREEN',
-      messagingTier: partnerSettings.messagingTier || 'TIER_1K',
-      displayNameStatus: partnerSettings.displayNameStatus || 'APPROVED',
-      verifiedName: partnerSettings.verifiedName || business?.profile?.companyName || business?.name || '',
-      aboutBio: partnerSettings.aboutBio || '',
-      address: partnerSettings.address || business?.address?.street || '',
-      email: partnerSettings.email || business?.email || '',
-      website: partnerSettings.website || '',
-      connectedAt: isConnected ? (partnerSettings.connectedAt || waSettings.connectedAt || null) : null,
-      metaPartnerVerified: isConnected,
+  async getPartnerStatus(businessId) {
+    const business = await this._business(businessId);
+    const wa = business.whatsappSettings || {};
+    const settings = business.metaPartnerSettings || {};
+    const primary = this._channels(business).find(c => c.phoneNumberId === wa.phoneNumberId);
+    const configured = !!(wa.accessToken && wa.phoneNumberId && wa.wabaId);
+    const ready = !!(configured && primary?.pinRegistered && primary?.webhookSubscribed && primary?.isActive && wa.enabled);
+    const result = {
+      isPartnerManaged: !!settings.isPartnerManaged, partnerAdminEmail: '',
+      partnerStatus: ready ? 'ACTIVE' : configured ? 'SETUP_REQUIRED' : 'NOT_CONFIGURED',
+      onboardingType: settings.onboardingType || 'embedded_signup', coManagementStatus: settings.coManagementStatus || 'none',
+      businessPortfolioId: settings.businessPortfolioId || '', wabaId: wa.wabaId || '',
+      phoneNumberId: wa.phoneNumberId || '', phoneNumber: wa.phoneNumber || '',
+      qualityRating: 'UNKNOWN', messagingTier: 'UNKNOWN', displayNameStatus: 'UNKNOWN',
+      verifiedName: settings.verifiedName || '', aboutBio: settings.aboutBio || '', address: settings.address || '',
+      email: settings.email || '', website: settings.website || '', connectedAt: settings.connectedAt || null,
+      metaPartnerVerified: false, canSend: false, pinRegistered: !!primary?.pinRegistered,
+      webhookSubscribed: !!primary?.webhookSubscribed,
+      signupAvailable: !!(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_EMBEDDED_SIGNUP_CONFIG_ID && process.env.META_PUBLIC_BASE_URL),
     };
-
-    // If live credentials are available, attempt a non-blocking live health probe
-    const token = waSettings.accessToken;
-    const phoneId = statusPayload.phoneNumberId;
-    if (token && phoneId && !phoneId.startsWith('dummy_')) {
+    if (configured) {
       try {
-        const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status`;
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-        if (res.ok) {
-          const liveData = await res.json();
-          if (liveData.quality_rating) {
-            statusPayload.qualityRating = liveData.quality_rating;
-          }
-          if (liveData.verified_name) {
-            statusPayload.verifiedName = liveData.verified_name;
-          }
-          if (liveData.display_phone_number) {
-            statusPayload.phoneNumber = liveData.display_phone_number;
-          }
-        }
-      } catch (e) {
-        // Non-blocking fallback to stored settings
+        const phone = await this._graph(`${wa.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status`, wa.accessToken);
+        result.phoneNumber = phone.display_phone_number || result.phoneNumber;
+        result.verifiedName = phone.verified_name || result.verifiedName;
+        result.qualityRating = phone.quality_rating || 'UNKNOWN';
+        result.metaPartnerVerified = true;
+        result.canSend = ready;
+      } catch (error) {
+        result.partnerStatus = error.metaCode === 190 ? 'RECONNECT_REQUIRED' : 'CHECK_FAILED';
+        result.healthMessage = error.message;
       }
     }
-
-    return statusPayload;
+    return result;
   }
 
-  /**
-   * Connect or Link merchant WABA through Meta Partner Channel
-   */
-  async connectPartnerWaba(businessId, {
-    wabaId = '',
-    phoneNumberId = '',
-    phoneNumber = '',
-    accessToken = '',
-    appSecret = '',
-    businessPortfolioId = '',
-    onboardingType = 'embedded_signup',
-    verifiedName = '',
-    userId = null,
-  }) {
-    const { bId, uId } = this._resolveIds(businessId, userId);
-
-    const cleanWaba = (wabaId || '').trim();
-    const cleanPhoneId = (phoneNumberId || '').trim();
-    const cleanPhone = (phoneNumber || '').trim();
-    const cleanToken = (accessToken || '').trim();
-    const cleanSecret = (appSecret || '').trim();
-    const cleanBmId = (businessPortfolioId || '').trim();
-    const cleanName = (verifiedName || '').trim();
-
-    if (!cleanPhoneId && !cleanWaba) {
-      throw new ApiError(400, 'WhatsApp Phone Number ID or WABA ID is required for Partner connection.');
+  async connectPartnerWaba(businessId, { wabaId = '', phoneNumberId = '', accessToken = '', businessPortfolioId = '', onboardingType = 'direct' }) {
+    await this._business(businessId);
+    const id = String(phoneNumberId).trim(), waba = String(wabaId).trim(), token = String(accessToken).trim();
+    if (!/^\d+$/.test(id) || !/^\d+$/.test(waba) || !token) throw new ApiError(400, 'WABA ID, Phone Number ID and access token are required.');
+    const other = await Business.findOne({ _id: { $ne: businessId }, $or: [
+      { 'whatsappSettings.phoneNumberId': id }, { 'metaPartnerSettings.channels.phoneNumberId': id },
+    ] }).lean();
+    if (other) throw new ApiError(409, 'This WhatsApp number is linked to another business.');
+    const numbers = await this._graph(`${waba}/phone_numbers?fields=id,display_phone_number,verified_name&limit=100`, token);
+    const phone = (numbers.data || []).find(p => String(p.id) === id);
+    if (!phone) throw new ApiError(400, 'The selected phone does not belong to this WhatsApp Business Account.');
+    const business = await this._business(businessId);
+    const channels = this._channels(business).map(c => ({ ...c, isActive: false }));
+    const previous = channels.find(c => c.phoneNumberId === id);
+    const channel = { channelId: previous?.channelId || new mongoose.Types.ObjectId().toString(),
+      name: phone.verified_name || 'WhatsApp Business', phoneNumber: phone.display_phone_number || '',
+      phoneNumberId: id, wabaId: waba, isActive: false, status: 'SETUP_REQUIRED',
+      integrationStatus: 'Complete registration and webhook subscription', pinRegistered: false, webhookSubscribed: false, createdAt: new Date() };
+    const next = channels.filter(c => c.phoneNumberId !== id).concat(channel);
+    await Business.findByIdAndUpdate(businessId, { $set: {
+      'whatsappSettings.phoneNumberId': id, 'whatsappSettings.wabaId': waba, 'whatsappSettings.phoneNumber': channel.phoneNumber,
+      'whatsappSettings.accessToken': token, 'whatsappSettings.enabled': false, 'whatsappSettings.connectedAt': new Date(),
+      'metaPartnerSettings.isPartnerManaged': true, 'metaPartnerSettings.onboardingType': onboardingType,
+      'metaPartnerSettings.businessPortfolioId': String(businessPortfolioId).trim(),
+      'metaPartnerSettings.verifiedName': channel.name, 'metaPartnerSettings.connectedAt': new Date(),
+      'metaPartnerSettings.channels': next,
+    } });
+    return { success: true, channel, partnerStatus: 'SETUP_REQUIRED' };
+  }
+  async updatePartnerProfile(businessId, { aboutBio, address, email, website }) {
+    const business = await this._business(businessId), wa = business.whatsappSettings || {};
+    if (!wa.phoneNumberId) throw new ApiError(409, 'Connect WhatsApp first.');
+    const body = { messaging_product: 'whatsapp' }, fields = {};
+    for (const [key, value] of Object.entries({ aboutBio, address, email, website })) {
+      if (value === undefined) continue;
+      const clean = String(value).trim();
+      fields[`metaPartnerSettings.${key}`] = clean;
+      body[key === 'aboutBio' ? 'about' : key === 'website' ? 'websites' : key] = key === 'website' ? (clean ? [clean] : []) : clean;
     }
-
-    const now = new Date();
-
-    const partnerUpdate = {
-      'metaPartnerSettings.isPartnerManaged': true,
-      'metaPartnerSettings.partnerAdminEmail': DEFAULT_PARTNER_EMAIL,
-      'metaPartnerSettings.businessPortfolioId': cleanBmId,
-      'metaPartnerSettings.coManagementStatus': 'active',
-      'metaPartnerSettings.onboardingType': onboardingType,
-      'metaPartnerSettings.qualityRating': 'GREEN',
-      'metaPartnerSettings.messagingTier': 'TIER_1K',
-      'metaPartnerSettings.displayNameStatus': 'APPROVED',
-      'metaPartnerSettings.verifiedName': cleanName,
-      'metaPartnerSettings.connectedAt': now,
-    };
-
-    const waUpdate = {
-      'whatsappSettings.enabled': true,
-      'whatsappSettings.connectedAt': now,
-    };
-    if (cleanPhoneId) waUpdate['whatsappSettings.phoneNumberId'] = cleanPhoneId;
-    if (cleanPhone) waUpdate['whatsappSettings.phoneNumber'] = cleanPhone;
-    if (cleanWaba) waUpdate['whatsappSettings.wabaId'] = cleanWaba;
-    if (cleanToken) waUpdate['whatsappSettings.accessToken'] = cleanToken;
-    if (cleanSecret) waUpdate['whatsappSettings.appSecret'] = cleanSecret;
-
-    const combinedUpdate = { ...partnerUpdate, ...waUpdate };
-
-    if (bId) {
-      await Business.findByIdAndUpdate(bId, { $set: combinedUpdate }, { new: true });
-    }
-    if (uId) {
-      await User.findByIdAndUpdate(uId, { $set: combinedUpdate }, { new: true });
-    }
-
-    return {
-      success: true,
-      message: 'Meta Partner Channel connected successfully',
-      isPartnerManaged: true,
-      partnerAdminEmail: DEFAULT_PARTNER_EMAIL,
-      wabaId: cleanWaba,
-      phoneNumberId: cleanPhoneId,
-      phoneNumber: cleanPhone,
-      businessPortfolioId: cleanBmId,
-      connectedAt: now,
-    };
+    if (!Object.keys(fields).length) throw new ApiError(400, 'No profile changes provided.');
+    const result = await this._graph(`${wa.phoneNumberId}/whatsapp_business_profile`, wa.accessToken, { method: 'POST', body });
+    if (result.success !== true) throw new ApiError(502, 'Meta did not confirm the profile update.');
+    await Business.findByIdAndUpdate(businessId, { $set: fields });
+    return { success: true };
   }
 
-  /**
-   * Update WhatsApp Business Profile (Display Name, About, Address, Website, Email)
-   */
-  async updatePartnerProfile(businessId, {
-    verifiedName,
-    aboutBio,
-    address,
-    email,
-    website,
-    userId = null,
-  }) {
-    const { bId, uId } = this._resolveIds(businessId, userId);
-
-    const updateFields = {};
-    if (verifiedName !== undefined) updateFields['metaPartnerSettings.verifiedName'] = (verifiedName || '').trim();
-    if (aboutBio !== undefined) updateFields['metaPartnerSettings.aboutBio'] = (aboutBio || '').trim();
-    if (address !== undefined) updateFields['metaPartnerSettings.address'] = (address || '').trim();
-    if (email !== undefined) updateFields['metaPartnerSettings.email'] = (email || '').trim();
-    if (website !== undefined) updateFields['metaPartnerSettings.website'] = (website || '').trim();
-
-    let business = null;
-    if (bId) {
-      business = await Business.findByIdAndUpdate(bId, { $set: updateFields }, { new: true });
-    }
-    if (uId) {
-      await User.findByIdAndUpdate(uId, { $set: updateFields }, { new: true });
-    }
-
-    // If credentials exist, also push to Meta Graph API
-    const waSettings = business?.whatsappSettings || {};
-    const phoneId = waSettings.phoneNumberId;
-    const token = waSettings.accessToken;
-
-    if (phoneId && token && !phoneId.startsWith('dummy_')) {
-      try {
-        const body = {
-          messaging_product: 'whatsapp',
-        };
-        if (aboutBio) body.about = aboutBio.trim();
-        if (address) body.address = address.trim();
-        if (email) body.email = email.trim();
-        if (website) body.websites = [website.trim()];
-
-        await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/whatsapp_business_profile`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        });
-      } catch (e) {
-        // Cloud API update notice
-      }
-    }
-
-    return {
-      success: true,
-      message: 'WhatsApp Business Profile updated successfully',
-      profile: {
-        verifiedName: verifiedName || '',
-        aboutBio: aboutBio || '',
-        address: address || '',
-        email: email || '',
-        website: website || '',
-      },
-    };
+  async inviteCoManagement() {
+    throw new ApiError(501, 'Agency co-management is not available. Connect with Meta Embedded Signup instead.');
   }
 
-  /**
-   * Initiate Co-Management invite with merchant's Business Portfolio
-   */
-  async inviteCoManagement(businessId, { businessPortfolioId = '', userId = null }) {
-    const { bId, uId } = this._resolveIds(businessId, userId);
-    const cleanBmId = (businessPortfolioId || '').trim();
-
-    if (!cleanBmId) {
-      throw new ApiError(400, 'Meta Business Portfolio ID is required for Co-Management.');
-    }
-
-    const update = {
-      'metaPartnerSettings.businessPortfolioId': cleanBmId,
-      'metaPartnerSettings.coManagementStatus': 'pending',
-      'metaPartnerSettings.partnerAdminEmail': DEFAULT_PARTNER_EMAIL,
-      'metaPartnerSettings.onboardingType': 'co_management',
-    };
-
-    if (bId) {
-      await Business.findByIdAndUpdate(bId, { $set: update });
-    }
-    if (uId) {
-      await User.findByIdAndUpdate(uId, { $set: update });
-    }
-
-    return {
-      success: true,
-      message: `Co-Management handshake initiated with Partner Admin ${DEFAULT_PARTNER_EMAIL}`,
-      businessPortfolioId: cleanBmId,
-      status: 'pending',
-    };
+  async disconnectPartner(businessId) {
+    const business = await this._business(businessId);
+    await Business.findByIdAndUpdate(businessId, { $set: {
+      'whatsappSettings.enabled': false, 'whatsappSettings.accessToken': '', 'whatsappSettings.appSecret': '',
+      'whatsappSettings.phoneNumberId': '', 'whatsappSettings.wabaId': '', 'whatsappSettings.phoneNumber': '',
+      'metaPartnerSettings.isPartnerManaged': false, 'metaPartnerSettings.connectedAt': null,
+      'metaPartnerSettings.channels': this._channels(business).map(c => ({ ...c, isActive: false, status: 'DISCONNECTED', pinRegistered: false, webhookSubscribed: false })),
+    } });
+    return { success: true };
   }
 
-  /**
-   * Disconnect or Reset Meta Partner Channel
-   */
-  async disconnectPartner(businessId, { userId = null } = {}) {
-    const { bId, uId } = this._resolveIds(businessId, userId);
-
-    const resetUpdate = {
-      'metaPartnerSettings.isPartnerManaged': false,
-      'metaPartnerSettings.coManagementStatus': 'none',
-      'metaPartnerSettings.connectedAt': null,
-      'whatsappSettings.enabled': false,
-    };
-
-    if (bId) {
-      await Business.findByIdAndUpdate(bId, { $set: resetUpdate });
-    }
-    if (uId) {
-      await User.findByIdAndUpdate(uId, { $set: resetUpdate });
-    }
-
-    return {
-      success: true,
-      message: 'Meta Partner Channel disconnected successfully',
-    };
+  async getChannels(businessId) {
+    const channels = this._channels(await this._business(businessId));
+    return { success: true, channels, totalCount: channels.length };
   }
 
-  /**
-   * Send live test WhatsApp message to verify line operability
-   */
-  async sendTestMessage(businessId, { recipientPhone, message = null, templateName = null, userId = null }) {
-    const { bId, uId } = this._resolveIds(businessId, userId);
-
-    let business = null;
-    if (bId) {
-      business = await Business.findById(bId).lean();
+  async createChannel(businessId, { name, phoneNumber }) {
+    await this._business(businessId);
+    if (!String(name || '').trim() || !/^\+?[1-9]\d{7,14}$/.test(String(phoneNumber || '').replace(/\s/g, ''))) {
+      throw new ApiError(400, 'Enter a channel name and an international phone number.');
     }
+    const channel = { channelId: new mongoose.Types.ObjectId().toString(), name: String(name).trim(), phoneNumber: String(phoneNumber).trim(),
+      phoneNumberId: '', wabaId: '', isActive: false, status: 'PENDING', integrationStatus: 'Not connected to Meta', pinRegistered: false, webhookSubscribed: false, createdAt: new Date() };
+    await Business.findByIdAndUpdate(businessId, { $push: { 'metaPartnerSettings.channels': channel } });
+    return { success: true, channel };
+  }
 
-    const waSettings = business?.whatsappSettings || {};
-    const partnerSettings = business?.metaPartnerSettings || {};
-
-    const token = waSettings.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneId = waSettings.phoneNumberId || partnerSettings.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '1284061438133660';
-
-    if (!token || !phoneId) {
-      throw new ApiError(400, 'WhatsApp Cloud API credentials (Access Token or Phone ID) are not configured.');
+  async _saveStep(businessId, business, channel, patch) {
+    if (!business.metaPartnerSettings?.channels?.length) {
+      await Business.updateOne({ _id: businessId, 'metaPartnerSettings.channels.0': { $exists: false } },
+        { $set: { 'metaPartnerSettings.channels': this._channels(business) } });
     }
+    const fields = Object.fromEntries(Object.entries(patch).map(([key, value]) => [`metaPartnerSettings.channels.$.${key}`, value]));
+    const saved = await Business.updateOne({ _id: businessId, 'whatsappSettings.phoneNumberId': channel.phoneNumberId,
+      'metaPartnerSettings.channels.channelId': channel.channelId }, { $set: fields });
+    if (saved?.matchedCount === 0) throw new ApiError(409, 'This connection changed. Refresh and try again.');
+    // Separate atomic field updates avoid losing a concurrent registration/subscription.
+    const enabled = await Business.updateOne({ _id: businessId, 'whatsappSettings.phoneNumberId': channel.phoneNumberId,
+      'metaPartnerSettings.channels': { $elemMatch: { channelId: channel.channelId, pinRegistered: true, webhookSubscribed: true } } },
+    { $set: { 'metaPartnerSettings.channels.$.isActive': true, 'metaPartnerSettings.channels.$.status': 'ACTIVE',
+      'metaPartnerSettings.channels.$.integrationStatus': 'Connected to WhatsApp Cloud API', 'whatsappSettings.enabled': true } });
+    return { success: true, channelId: channel.channelId, ready: enabled?.matchedCount === 1 };
+  }
 
-    let cleanTo = (recipientPhone || '').replace(/[^\d+]/g, '');
-    if (!cleanTo.startsWith('+')) {
-      if (cleanTo.length === 10) {
-        cleanTo = '+91' + cleanTo;
-      } else {
-        cleanTo = '+' + cleanTo;
-      }
+  async registerChannelPin(businessId, { channelId, pin }) {
+    if (!/^\d{6}$/.test(String(pin || ''))) throw new ApiError(400, 'Enter your six-digit two-step verification PIN.');
+    const { business, channel, wa } = await this._channel(businessId, channelId);
+    const result = await this._graph(`${channel.phoneNumberId}/register`, wa.accessToken,
+      { method: 'POST', body: { messaging_product: 'whatsapp', pin: String(pin) } });
+    if (result.success !== true) throw new ApiError(502, 'Meta did not confirm phone registration.');
+    return this._saveStep(businessId, business, channel, { pinRegistered: true });
+  }
+
+  async subscribeChannelWebhook(businessId, { channelId }) {
+    const { business, channel, wa } = await this._channel(businessId, channelId);
+    const result = await this._graph(`${channel.wabaId}/subscribed_apps`, wa.accessToken, { method: 'POST' });
+    if (result.success !== true) throw new ApiError(502, 'Meta did not confirm webhook subscription.');
+    return this._saveStep(businessId, business, channel, { webhookSubscribed: true });
+  }
+
+  async toggleChannelActive(businessId, { channelId, isActive }) {
+    if (typeof isActive !== 'boolean') throw new ApiError(400, 'isActive must be a boolean.');
+    const { business, channel } = await this._channel(businessId, channelId);
+    if (isActive && (!channel.pinRegistered || !channel.webhookSubscribed)) throw new ApiError(409, 'Finish registration and webhook setup before enabling this number.');
+    const channels = this._channels(business).map(c => ({ ...c, isActive: c.channelId === channelId && isActive }));
+    await Business.findByIdAndUpdate(businessId, { $set: { 'metaPartnerSettings.channels': channels, 'whatsappSettings.enabled': isActive } });
+    return { success: true, isActive };
+  }
+
+  async deleteChannel(businessId, { channelId }) {
+    const business = await this._business(businessId);
+    const channel = this._channels(business).find(c => c.channelId === channelId);
+    if (!channel) throw new ApiError(404, 'WhatsApp channel not found.');
+    if (channel.phoneNumberId && channel.phoneNumberId === business.whatsappSettings?.phoneNumberId) throw new ApiError(409, 'Disconnect the primary number before removing it.');
+    await Business.updateOne({ _id: businessId }, { $pull: { 'metaPartnerSettings.channels': { channelId } } });
+    return { success: true };
+  }
+
+  async getTemplates(businessId) {
+    const business = await this._business(businessId), wa = business.whatsappSettings || {};
+    const live = wa.wabaId && wa.accessToken ? await this._graph(`${wa.wabaId}/message_templates?fields=name,status,category,language,components&limit=100`, wa.accessToken) : { data: [] };
+    const templates = (live.data || []).map(t => ({ ...t, displayName: t.name.replace(/_/g, ' '), description: '', isLiveSynced: true }));
+    for (const item of catalog) if (!templates.some(t => t.name === item.name && t.language === 'en_US')) templates.push({ ...item, language: 'en_US', status: 'NOT_SUBMITTED', isLiveSynced: false });
+    return { success: true, templates, totalCount: templates.length, hasMore: !!live.paging?.next };
+  }
+
+  async syncDefaultTemplates(businessId) {
+    const business = await this._business(businessId), wa = business.whatsappSettings || {};
+    if (!wa.wabaId) throw new ApiError(409, 'Connect WhatsApp first.');
+    const current = await this.getTemplates(businessId);
+    const results = [];
+    for (const item of catalog) {
+      if (current.templates.some(t => t.name === item.name && t.language === 'en_US' && t.isLiveSynced)) continue;
+      const result = await this._graph(`${wa.wabaId}/message_templates`, wa.accessToken, { method: 'POST', body: {
+        name: item.name, language: 'en_US', category: item.category, components: [{ type: 'BODY', text: item.description }],
+      } });
+      if (!result.id) throw new ApiError(502, 'Meta did not confirm template submission. Refresh before retrying.');
+      results.push({ name: item.name, status: result.status || 'PENDING', id: result.id });
     }
+    return { success: true, submittedCount: results.length, results, message: 'Submitted for Meta review. Approval is required before use.' };
+  }
 
+  async sendTestMessage(businessId, { recipientPhone, message, templateName, language = 'en_US' }) {
+    const business = await this._business(businessId), wa = business.whatsappSettings || {};
+    if (!wa.enabled || !wa.accessToken || !wa.phoneNumberId) throw new ApiError(409, 'Complete WhatsApp connection and registration first.');
+    const to = String(recipientPhone || '').replace(/[\s+()-]/g, '');
+    if (!/^[1-9]\d{7,14}$/.test(to)) throw new ApiError(400, 'Use an international recipient number, including country code.');
     let payload;
     if (templateName) {
-      payload = {
-        messaging_product: 'whatsapp',
-        to: cleanTo.replace('+', ''),
-        type: 'template',
-        template: {
-          name: templateName,
-          language: { code: 'en_US' },
-        },
-      };
+      const templates = await this.getTemplates(businessId);
+      const template = templates.templates.find(t => t.name === templateName && t.language === language && t.status === 'APPROVED' && t.isLiveSynced);
+      if (!template) throw new ApiError(409, 'Choose an approved template in this account.');
+      if ((template.components || []).some(c => /\{\{/.test(JSON.stringify(c)) || (c.type === 'HEADER' && c.format !== 'TEXT'))) throw new ApiError(400, 'This test supports templates without variables or media.');
+      payload = { type: 'template', template: { name: templateName, language: { code: language } } };
     } else {
-      const defaultText = message ||
-        `*Apna POS - Meta Solution Partner Live Test*\n\n` +
-        `Your WhatsApp Business Cloud API line is successfully connected and operational!\n` +
-        `Verified Channel: ${partnerSettings.verifiedName || business?.name || 'Apna POS Restaurant'}\n` +
-        `Quality Status: ${partnerSettings.qualityRating || 'GREEN'}\n` +
-        `Timestamp: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}\n\n` +
-        `_Powered by Apna POS Meta Partner Solution_`;
-
-      payload = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanTo.replace('+', ''),
-        type: 'text',
-        text: { preview_url: false, body: defaultText },
-      };
+      const chat = await Chat.findOne({ businessId, customerPhone: { $in: [to, `+${to}`] }, lastIncomingAt: { $gte: new Date(Date.now() - 86400000) } }).lean();
+      if (!chat) throw new ApiError(409, 'Ask this customer to message you first, or choose an approved template.');
+      payload = { type: 'text', text: { body: String(message || 'Apna POS connection test.').slice(0, 4096) } };
     }
+    const result = await this._graph(`${wa.phoneNumberId}/messages`, wa.accessToken,
+      { method: 'POST', body: { messaging_product: 'whatsapp', to, ...payload } });
+    if (!result.messages?.[0]?.id) throw new ApiError(502, 'Meta did not return a message ID.');
+    return { success: true, messageId: result.messages[0].id, recipient: `+${to}`, status: 'ACCEPTED', message: 'Accepted by Meta. Delivery is confirmed by webhook.' };
+  }
 
+  async getMessagingAnalytics(businessId) {
+    await this._business(businessId);
+    const id = new mongoose.Types.ObjectId(businessId);
+    const start = new Date(Math.floor((Date.now() + 19800000) / 86400000) * 86400000 - 19800000);
+    const [counts, activeConversations] = await Promise.all([
+      Message.aggregate([{ $match: { businessId: id, direction: 'OUTGOING', timestamp: { $gte: start } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Chat.countDocuments({ businessId, lastIncomingAt: { $gte: new Date(Date.now() - 86400000) } }),
+    ]);
+    const statuses = Object.fromEntries(counts.map(c => [c._id, c.count]));
+    const sent = (statuses.SENT || 0) + (statuses.DELIVERED || 0) + (statuses.READ || 0);
+    const rate = count => sent ? `${(count * 100 / sent).toFixed(1)}%` : '—';
+    return { success: true, sentToday: sent, deliveredRate: rate((statuses.DELIVERED || 0) + (statuses.READ || 0)),
+      readRate: rate(statuses.READ || 0), failedCount: statuses.FAILED || 0, activeConversations,
+      dailyLimit: null, qualityRating: 'UNKNOWN', messagingTier: 'UNKNOWN', customerServiceWindowStatus: 'PER_CUSTOMER',
+      source: 'Stored chat messages; excludes sends outside this message store', timezone: 'Asia/Kolkata', lastHealthCheck: new Date() };
+  }
+  async startEmbeddedSignup(businessId, { userId }) {
+    await this._business(businessId);
+    const { META_APP_ID, META_APP_SECRET, META_EMBEDDED_SIGNUP_CONFIG_ID, META_PUBLIC_BASE_URL } = process.env;
+    if (!META_APP_ID || !META_APP_SECRET || !META_EMBEDDED_SIGNUP_CONFIG_ID || !META_PUBLIC_BASE_URL) throw new ApiError(503, 'Meta signup is not configured on the server. Ask your administrator to configure the app and signup configuration.');
+    const base = new URL(META_PUBLIC_BASE_URL);
+    if (base.protocol !== 'https:' && process.env.NODE_ENV !== 'test') throw new ApiError(503, 'Meta signup requires a public HTTPS backend URL.');
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    await Signup.create({ tokenHash: crypto.createHash('sha256').update(sessionToken).digest('hex'), businessId, userId,
+      expiresAt: new Date(Date.now() + 10 * 60000), status: 'PENDING' });
+    return { url: `${base.origin}/api/v1/meta-partner/onboarding#session=${sessionToken}`, expiresIn: 600 };
+  }
+
+  async completeEmbeddedSignup({ sessionToken, code, wabaId, phoneNumberId }) {
+    if (!/^[a-f0-9]{64}$/.test(sessionToken || '')) throw new ApiError(400, 'Invalid signup session.');
+    if (!code || !/^\d+$/.test(String(wabaId)) || !/^\d+$/.test(String(phoneNumberId))) throw new ApiError(400, 'Meta signup must return a code, WABA and phone number.');
+    const session = await Signup.findOneAndUpdate({ tokenHash: crypto.createHash('sha256').update(sessionToken).digest('hex'),
+      expiresAt: { $gt: new Date() }, status: 'PENDING' }, { $set: { status: 'PROCESSING' } }, { new: true });
+    if (!session) throw new ApiError(409, 'This signup session has expired or was already used. Start again in Apna POS.');
     try {
-      const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/messages`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+      const result = await this.exchangeEmbeddedSignupOAuth(session.businessId, { code, wabaId, phoneNumberId });
+      await Signup.updateOne({ _id: session._id }, { $set: { status: 'COMPLETED' } });
+      return result;
+    } catch (error) {
+      await Signup.updateOne({ _id: session._id }, { $set: { status: 'FAILED' } });
+      throw error;
+    }
+  }
+
+  async exchangeEmbeddedSignupOAuth(businessId, { code, wabaId, phoneNumberId }) {
+    if (!code || !wabaId || !phoneNumberId) throw new ApiError(400, 'Meta code and selected account IDs are required.');
+    const appId = process.env.META_APP_ID, secret = process.env.META_APP_SECRET;
+    if (!appId || !secret) throw new ApiError(503, 'Meta app credentials are not configured on the server.');
+    const params = new URLSearchParams({ client_id: appId, client_secret: secret, code });
+    let data;
+    try {
+      const response = await fetch(`https://graph.facebook.com/${graphVersion()}/oauth/access_token`, {
+        method: 'POST', signal: AbortSignal.timeout(10000), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString(),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        // If text message failed due to 24-hr window, retry with official Meta utility template 'customer_support_reopen'
-        if (data?.error?.code === 131047 || data?.error?.message?.includes('24 hour')) {
-          const fallbackPayload = {
-            messaging_product: 'whatsapp',
-            to: cleanTo.replace('+', ''),
-            type: 'template',
-            template: {
-              name: 'customer_support_reopen',
-              language: { code: 'en' },
-            },
-          };
-          const fallbackRes = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(fallbackPayload),
-          });
-          const fallbackData = await fallbackRes.json();
-          if (fallbackRes.ok && fallbackData.messages?.[0]?.id) {
-            return {
-              success: true,
-              messageId: fallbackData.messages[0].id,
-              recipient: cleanTo,
-              usedFallbackTemplate: true,
-              message: 'Delivered via Meta standard template (Customer 24h window was not active).',
-            };
-          }
-        }
-        throw new ApiError(res.status, data?.error?.message || 'Meta Cloud API rejected test message dispatch');
-      }
-
-      return {
-        success: true,
-        messageId: data.messages?.[0]?.id || 'WAMID_TEST_' + Date.now(),
-        recipient: cleanTo,
-        message: 'Live test message dispatched successfully via Meta Cloud API',
-      };
-    } catch (err) {
-      if (err instanceof ApiError) throw err;
-      throw new ApiError(500, `Meta dispatch failure: ${err.message}`);
-    }
-  }
-
-  /**
-   * Fetch registered Meta Templates & POS Default Fleet Catalog
-   */
-  async getTemplates(businessId, { userId = null } = {}) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    let business = null;
-    if (bId) {
-      business = await Business.findById(bId).lean();
-    }
-
-    const waSettings = business?.whatsappSettings || {};
-    const partnerSettings = business?.metaPartnerSettings || {};
-
-    const token = waSettings.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
-    const wabaId = waSettings.wabaId || partnerSettings.wabaId || '2525727467906581';
-
-    // Standard restaurant templates catalog
-    const standardCatalog = [
-      {
-        name: 'ebill_receipt',
-        category: 'UTILITY',
-        displayName: 'Digital eBill & Tax Receipt',
-        description: 'Auto-dispatched immediately after bill settlement with item breakdown & payment mode.',
-        defaultStatus: 'APPROVED',
-        language: 'en_US',
-      },
-      {
-        name: 'order_confirmation',
-        category: 'UTILITY',
-        displayName: 'Order & KOT Confirmation',
-        description: 'Sent when kitchen receives and accepts dine-in, takeaway, or WhatsApp online orders.',
-        defaultStatus: 'APPROVED',
-        language: 'en_US',
-      },
-      {
-        name: 'delivery_tracking',
-        category: 'UTILITY',
-        displayName: 'Delivery Dispatched & Rider Alert',
-        description: 'Alerts customer when order leaves outlet with live rider ETA and delivery agent details.',
-        defaultStatus: 'APPROVED',
-        language: 'en_US',
-      },
-      {
-        name: 'customer_feedback',
-        category: 'MARKETING',
-        displayName: 'Dining Experience & Feedback',
-        description: 'Requests Google review or star rating 30 minutes after dining or delivery.',
-        defaultStatus: 'APPROVED',
-        language: 'en_US',
-      },
-      {
-        name: 'promotional_offer',
-        category: 'MARKETING',
-        displayName: 'Weekend Delight & BOGO Deals',
-        description: 'Promotional discount banner sent to opted-in loyalty customers.',
-        defaultStatus: 'APPROVED',
-        language: 'en_US',
-      },
-    ];
-
-    let metaTemplates = [];
-    if (token && wabaId && !wabaId.startsWith('dummy_')) {
-      try {
-        const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${wabaId}/message_templates?fields=name,status,category,language&limit=50`;
-        const res = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          metaTemplates = data.data || [];
-        }
-      } catch (_) {}
-    }
-
-    // Merge live Meta statuses into standard catalog
-    const merged = standardCatalog.map(std => {
-      const match = metaTemplates.find(m => m.name.toLowerCase() === std.name.toLowerCase());
-      return {
-        ...std,
-        status: match?.status || std.defaultStatus,
-        isLiveSynced: !!match,
-      };
-    });
-
-    // Also include any custom templates the merchant created in Meta BM
-    for (const mt of metaTemplates) {
-      if (!merged.some(m => m.name.toLowerCase() === mt.name.toLowerCase())) {
-        merged.push({
-          name: mt.name,
-          category: mt.category || 'UTILITY',
-          displayName: mt.name.replace(/_/g, ' ').toUpperCase(),
-          description: 'Custom Meta Business Manager template',
-          status: mt.status || 'APPROVED',
-          language: mt.language || 'en_US',
-          isLiveSynced: true,
-        });
-      }
-    }
-
-    return {
-      success: true,
-      wabaId,
-      totalCount: merged.length,
-      templates: merged,
-    };
-  }
-
-  /**
-   * Sync/Register default Apna POS restaurant templates into Meta WABA
-   */
-  async syncDefaultTemplates(businessId, { userId = null } = {}) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    let business = null;
-    if (bId) {
-      business = await Business.findById(bId).lean();
-    }
-
-    const waSettings = business?.whatsappSettings || {};
-    const partnerSettings = business?.metaPartnerSettings || {};
-
-    const token = waSettings.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
-    const wabaId = waSettings.wabaId || partnerSettings.wabaId || '2525727467906581';
-
-    return {
-      success: true,
-      message: 'Apna POS Restaurant Template Suite synced with Meta Cloud WABA',
-      syncedCount: 5,
-      wabaId,
-    };
-  }
-
-  /**
-   * Retrieve 24-hr messaging analytics and Tier usage
-   */
-  async getMessagingAnalytics(businessId, { userId = null } = {}) {
-    const status = await this.getPartnerStatus(businessId, { userId });
-
-    return {
-      success: true,
-      qualityRating: status.qualityRating || 'GREEN',
-      messagingTier: status.messagingTier || 'TIER_1K',
-      dailyLimit: 1000,
-      sentToday: 142,
-      deliveredRate: '98.6%',
-      readRate: '84.2%',
-      failedCount: 2,
-      activeConversations: 38,
-      customerServiceWindowStatus: 'OPEN',
-      lastHealthCheck: new Date(),
-    };
-  }
-
-  /**
-   * Exchange Meta Embedded Signup OAuth code for permanent system credentials
-   */
-  async exchangeEmbeddedSignupOAuth(businessId, { code, businessPortfolioId = '', userId = null }) {
-    if (!code) {
-      throw new ApiError(400, 'OAuth code from Meta Embedded Signup is required.');
-    }
-
-    const appSecret = process.env.WHATSAPP_APP_SECRET || 'a8bd61714ae9bbb44fdae7f60bace91a';
-    const appId = '1284061438133660'; // Meta Partner App ID
-
-    // Connect merchant with exchanged credentials
-    return this.connectPartnerWaba(businessId, {
-      wabaId: '2525727467906581',
-      phoneNumberId: '1284061438133660',
-      phoneNumber: '+91 73036 32949',
-      businessPortfolioId,
-      onboardingType: 'embedded_signup',
-      userId,
-    });
-  }
-
-  /**
-   * Get all registered Meta Channels for this merchant
-   */
-  async getChannels(businessId, { userId = null } = {}) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    let business = null;
-    if (bId) {
-      business = await Business.findById(bId).lean();
-    }
-
-    const partnerSettings = business?.metaPartnerSettings || {};
-    const waSettings = business?.whatsappSettings || {};
-
-    let channels = partnerSettings.channels || [];
-
-    // If channels list is empty, synthesize or initialize primary channel
-    if (channels.length === 0) {
-      const primaryPhone = waSettings.phoneNumber || partnerSettings.phoneNumber || '+91 73036 32949';
-      const isConnected = !!(waSettings.enabled || partnerSettings.isPartnerManaged);
-
-      const defaultChannel = {
-        channelId: 'primary_default_channel',
-        name: partnerSettings.verifiedName || business?.name || 'Primary WhatsApp Channel',
-        phoneNumber: primaryPhone,
-        phoneNumberId: waSettings.phoneNumberId || '1284061438133660',
-        wabaId: waSettings.wabaId || '2525727467906581',
-        isActive: isConnected,
-        status: isConnected ? 'ACTIVE' : 'PENDING',
-        integrationStatus: isConnected ? 'Active Meta Cloud API' : 'Pending Meta setup',
-        pinRegistered: true,
-        webhookSubscribed: true,
-        createdAt: partnerSettings.connectedAt || new Date(),
-      };
-      channels = [defaultChannel];
-    }
-
-    return {
-      success: true,
-      channels,
-      totalCount: channels.length,
-    };
-  }
-
-  /**
-   * Create / Add New Meta WhatsApp Channel
-   */
-  async createChannel(businessId, { name, phoneNumber, isActive = true, userId = null }) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    const cleanName = (name || '').trim();
-    const cleanPhone = (phoneNumber || '').trim();
-
-    if (!cleanName || !cleanPhone) {
-      throw new ApiError(400, 'Channel Name and Phone Number are required.');
-    }
-
-    const newChannel = {
-      channelId: new mongoose.Types.ObjectId().toString(),
-      name: cleanName,
-      phoneNumber: cleanPhone,
-      phoneNumberId: '1284061438133660',
-      wabaId: '2525727467906581',
-      isActive: !!isActive,
-      status: 'PENDING',
-      integrationStatus: 'Pending Meta setup',
-      pinRegistered: false,
-      webhookSubscribed: false,
-      createdAt: new Date(),
-    };
-
-    if (bId) {
-      await Business.findByIdAndUpdate(bId, {
-        $push: { 'metaPartnerSettings.channels': newChannel },
-      });
-    }
-
-    return {
-      success: true,
-      message: 'New Meta Channel added successfully',
-      channel: newChannel,
-    };
-  }
-
-  /**
-   * Register 2-Step Verification PIN on Meta Cloud
-   */
-  async registerChannelPin(businessId, { channelId, pin, userId = null }) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    let business = null;
-    if (bId) {
-      business = await Business.findById(bId).lean();
-    }
-
-    const waSettings = business?.whatsappSettings || {};
-    const token = waSettings.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneId = waSettings.phoneNumberId || '1284061438133660';
-
-    if (token && phoneId && !phoneId.startsWith('dummy_')) {
-      try {
-        await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/register`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            pin: (pin || '123456').toString(),
-          }),
-        });
-      } catch (_) {}
-    }
-
-    if (bId && channelId) {
-      await Business.updateOne(
-        { _id: bId, 'metaPartnerSettings.channels.channelId': channelId },
-        { $set: { 'metaPartnerSettings.channels.$.pinRegistered': true, 'metaPartnerSettings.channels.$.status': 'ACTIVE' } }
-      );
-    }
-
-    return {
-      success: true,
-      message: '2-Step Verification PIN registered with Meta Cloud API',
-      channelId,
-    };
-  }
-
-  /**
-   * Subscribe Webhooks for this channel
-   */
-  async subscribeChannelWebhook(businessId, { channelId, userId = null }) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    let business = null;
-    if (bId) {
-      business = await Business.findById(bId).lean();
-    }
-
-    const waSettings = business?.whatsappSettings || {};
-    const token = waSettings.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
-    const wabaId = waSettings.wabaId || '2525727467906581';
-
-    if (token && wabaId && !wabaId.startsWith('dummy_')) {
-      try {
-        await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${wabaId}/subscribed_apps`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-      } catch (_) {}
-    }
-
-    if (bId && channelId) {
-      await Business.updateOne(
-        { _id: bId, 'metaPartnerSettings.channels.channelId': channelId },
-        { $set: { 'metaPartnerSettings.channels.$.webhookSubscribed': true } }
-      );
-    }
-
-    return {
-      success: true,
-      message: 'Webhook subscribed successfully for incoming orders and customer chats',
-      channelId,
-    };
-  }
-
-  /**
-   * Toggle Channel Active status
-   */
-  async toggleChannelActive(businessId, { channelId, isActive, userId = null }) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    if (bId && channelId) {
-      await Business.updateOne(
-        { _id: bId, 'metaPartnerSettings.channels.channelId': channelId },
-        { $set: { 'metaPartnerSettings.channels.$.isActive': !!isActive } }
-      );
-    }
-
-    return {
-      success: true,
-      channelId,
-      isActive: !!isActive,
-    };
-  }
-
-  /**
-   * Delete Meta Channel
-   */
-  async deleteChannel(businessId, { channelId, userId = null }) {
-    const { bId } = this._resolveIds(businessId, userId);
-
-    if (bId && channelId) {
-      await Business.updateOne(
-        { _id: bId },
-        { $pull: { 'metaPartnerSettings.channels': { channelId } } }
-      );
-    }
-
-    return {
-      success: true,
-      message: 'Meta Channel deleted',
-      channelId,
-    };
+      data = await response.json();
+      if (!response.ok || !data.access_token) throw new Error('exchange rejected');
+    } catch (_) { throw new ApiError(502, 'Meta could not exchange this signup code. Restart signup and try again.'); }
+    return this.connectPartnerWaba(businessId, { wabaId, phoneNumberId, accessToken: data.access_token, onboardingType: 'embedded_signup' });
   }
 }
-
 module.exports = new MetaPartnerService();

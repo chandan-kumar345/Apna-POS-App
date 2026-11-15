@@ -320,3 +320,60 @@ ARM64 profile APK builds and installs successfully; phone cold launch Status ok,
 full glossy receipt visible. No fatal/unhandled/ANR/inflation errors in captured
 startup log. Native-specific preview, XML/package checks and phone screenshot
 are kept separately under build/native_receipt/ to distinguish evidence stages.
+
+## 2026-11-15 â€” Incoming table QR order identity (resolved)
+
+Expected: order-accept screen identifies the dining table and keeps accept/decline/KOT actions.
+Observed: the screenshot showed TABLE DINE-IN without an actual number. SocketService's WhatsApp-order notification JSON and metadata omitted tableNumber, even though the source event contained it. Empty outer tableNumber values also masked populated aliases/nested values via null-only fallback. Payload parsing did not unwrap nested order data or JSON metadata. The old address regex could infer a table from an arbitrary letter T in a street name.
+
+Fix: shared IncomingOrderPayload normalization handles nonempty aliases, nested/JSON metadata and order/data envelopes, structured table references, and explicit table markers. Socket notifications now retain tableNumber and orderSource. FCM and local notification entry points normalize the data consistently. Stored OrderModel parsing preserves explicit QR code formats while removing false street-name matches. The screen resolves the table from payload/local order and listens for a later local-order update; it never guesses a missing table as table 1.
+
+UI: prominent table identity card, clearer item/total/customer sections, wrapping preparation choices, fixed actions, responsive 320/390 px layouts. Countdown uses a ValueNotifier so only the timer rebuilds; removed an unused repeating animation. Business accept/decline/KOT dispatch callbacks were retained.
+
+Evidence: build/incoming-order-final-tests.log â€” 21 targeted incoming-order and storefront checks passed with visual-test fonts. build/incoming-order-review/table-order-390.png and table-order-320.png captured and inspected. build/incoming-order-final-build.log â€” debug APK built in 63.2 seconds. Backend table/storefront suites: 7 passed. Live Android QR submission/printing was not exercised.
+
+## Meta setup false-success states — resolved locally, live verification gated
+
+Observed OAuth ignoring code, shared account fallback, swallowed provider errors,
+fabricated analytics and template approvals. Eight baseline regressions failed.
+Replaced Meta setup flow with verified tenant asset binding, hashed single-use
+signup sessions, real Graph results and atomic setup flags. Redesigned page and
+created docs/meta-partner/PRD.md plus TRD.md with state/API/recovery contracts.
+
+Proof: 38 backend regression checks and 24 combined Flutter checks pass; separate
+Table 2 closed-app push integration passes. Targeted Dart analysis clean. Real-font
+320/390/1280px previews captured; 390 and desktop visually reviewed. ARM64 profile
+build passes; packaged UI markers verified. Evidence build/meta_partner_redesign/.
+
+Live boundaries: local Meta signup keys missing; backend changes not deployed;
+source-contained app secret removed but requires rotation in Meta and deployment.
+No real WhatsApp messages were sent. Phone disconnected from ADB, installation
+could not be performed. Legacy credential serialization/settings/senders and
+webhook persistence hardening are separately documented release considerations.
+
+## WhatsApp setup unreadable text — theme mismatch corrected
+
+Actual parent is GlassTheme.dark in main.dart, while the settings page had light
+surfaces and root-navigator dialogs inherited a transparent background. The new
+real-parent regression failed (dark != light) before the fix and passes afterward.
+Scoped page/dialog theme, solid white dialogs, preserved font families, darker
+supporting text, larger labels and clearer buttons now render consistently.
+10 focused tests pass, analysis clean. Visual and contrast evidence is under
+build/meta_ui_readability/. Device install depends on an unstable wireless ADB
+connection; do not claim phone verification unless the final install succeeds.
+
+## Incoming-order auto presentation resolved in code and installed
+
+Warm native intents had no Flutter event; cached SharedPreferences missed native
+writes; delivery paths classified orders inconsistently; the FSI permission had
+no request/check despite its manifest declaration. Native receiver/dispatcher,
+Flutter warm bridge and reloaded durable queue, shared classification and API34+
+permission migration/retry now address these paths. Explicit action forwarding,
+stale guards and background handled-key suppression cover startup races.
+
+Final62Flutter +6Kotlin +9backend checks pass. Profile build exit0/84s; final APK
+installed Success on OPPO. Settings capture shows full-screen and overlay Allowed.
+Evidence build/full_screen_orders/ and docs/notifications/INCOMING_ORDER_ALERTS.md.
+Real closed-app FCM test is still unverified; no dummy/live order was submitted.
+Server90sTTL change needs backend deployment. Settings Force Stop is an Android
+push-delivery boundary, not equivalent to ordinary app closure.

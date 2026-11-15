@@ -1849,7 +1849,6 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
     StandThemeConfig cfg,
   ) {
     final tableNumClean = table.tableNumber.toString().padLeft(2, '0');
-    final floorLabel = table.floor.isNotEmpty && table.floor != 'Ground Floor' ? ' • ${table.floor}' : '';
 
     return Container(
       decoration: BoxDecoration(
@@ -1903,7 +1902,7 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
                       ],
                     ),
                     child: Text(
-                      'TABLE $tableNumClean$floorLabel',
+                      'TABLE $tableNumClean',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w900,

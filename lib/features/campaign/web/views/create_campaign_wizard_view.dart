@@ -562,9 +562,9 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Campaign draft saved successfully in database!'),
-          backgroundColor: Color(0xFF15803D),
+        SnackBar(
+          content: Text(result != null ? 'Campaign draft saved successfully.' : 'Could not save the draft. Please try again.'),
+          backgroundColor: result != null ? const Color(0xFF15803D) : const Color(0xFFB42318),
           duration: Duration(seconds: 3),
         ),
       );
@@ -5046,9 +5046,14 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
       orderTypes: _selectedOrderTypes.map((e) => e.toLowerCase().replaceAll(' ', '_')).toList(),
     );
 
+    if (!mounted) return;
     setState(() => _isPublishing = false);
+    if (created == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not create the campaign. Please try again.')));
+      return;
+    }
 
-    if (created != null && mounted) {
+    if (mounted) {
       setState(() => _savedStatus = 'Published');
       showDialog(
         context: context,

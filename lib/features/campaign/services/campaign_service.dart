@@ -42,8 +42,10 @@ class CampaignService {
   }) async {
     try {
       final queryParams = <String, dynamic>{};
-      if (type != null && type.isNotEmpty && type != 'All') queryParams['type'] = type.toLowerCase();
-      if (status != null && status.isNotEmpty && status != 'All') queryParams['status'] = status.toLowerCase();
+      if (type != null && type.isNotEmpty && type != 'All')
+        queryParams['type'] = type.toLowerCase();
+      if (status != null && status.isNotEmpty && status != 'All')
+        queryParams['status'] = status.toLowerCase();
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
       final response = await _apiClient.get(
@@ -62,7 +64,10 @@ class CampaignService {
 
         if (rawList != null) {
           _cachedCampaigns = rawList
-              .map((c) => CampaignModel.fromJson(Map<String, dynamic>.from(c as Map)))
+              .map(
+                (c) =>
+                    CampaignModel.fromJson(Map<String, dynamic>.from(c as Map)),
+              )
               .toList();
           return _cachedCampaigns;
         }
@@ -79,7 +84,8 @@ class CampaignService {
         if (c.status.toLowerCase() != status.toLowerCase()) return false;
       }
       if (search != null && search.trim().isNotEmpty) {
-        if (!c.name.toLowerCase().contains(search.trim().toLowerCase())) return false;
+        if (!c.name.toLowerCase().contains(search.trim().toLowerCase()))
+          return false;
       }
       return true;
     }).toList();
@@ -99,7 +105,9 @@ class CampaignService {
       debugPrint('[CampaignService.fetchCampaignById] notice: $e');
     }
 
-    final match = _cachedCampaigns.where((c) => c.id == id || c.campaignId == id);
+    final match = _cachedCampaigns.where(
+      (c) => c.id == id || c.campaignId == id,
+    );
     if (match.isNotEmpty) return match.first;
     return null;
   }
@@ -137,11 +145,15 @@ class CampaignService {
     };
 
     try {
-      final response = await _apiClient.post(ApiEndpoints.campaigns, data: payload);
+      final response = await _apiClient.post(
+        ApiEndpoints.campaigns,
+        data: payload,
+      );
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
         if (data is Map<String, dynamic>) {
           final created = CampaignModel.fromJson(data);
+          if (created.id.isEmpty) return null;
           _cachedCampaigns.insert(0, created);
           return created;
         }
@@ -150,54 +162,7 @@ class CampaignService {
       debugPrint('[CampaignService.createCampaign] backend notice: $e');
     }
 
-    final rate = type == 'utility' ? 0.21 : 0.90;
-    final subtotal = audience.recipientCount * rate;
-    final gst = subtotal * 0.18;
-    final total = subtotal + gst;
-    final isSendNow = scheduleMode == 'now';
-
-    final created = CampaignModel(
-      id: 'local_${DateTime.now().millisecondsSinceEpoch}',
-      campaignId: '#CMP-${DateTime.now().year.toString().substring(2)}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-${1000 + (DateTime.now().microsecond % 9000)}',
-      name: name,
-      type: type,
-      status: status ?? (isSendNow ? 'running' : 'scheduled'),
-      audience: audience,
-      channel: channel,
-      template: template,
-      scheduleMode: scheduleMode,
-      scheduledAt: scheduledAt ?? DateTime.now(),
-      estimatedSendingTime: estimatedSendingTime ?? 'Start sending immediately',
-      rewardDetails: rewardDetails,
-      couponSettings: couponSettings,
-      orderTypes: orderTypes ?? const ['delivery', 'takeaway', 'dine_in'],
-      cost: CampaignCostModel(
-        messages: audience.recipientCount,
-        ratePerMessage: rate,
-        subtotal: subtotal,
-        gst: gst,
-        totalAmount: total,
-        spentSoFar: isSendNow ? total : 0.0,
-        remaining: isSendNow ? 0.0 : total,
-      ),
-      stats: CampaignStatsDetailModel(
-        totalRecipients: audience.recipientCount,
-        messagesSent: isSendNow ? audience.recipientCount : 0,
-        delivered: isSendNow ? audience.recipientCount : 0,
-        failed: 0,
-        deliveryRate: isSendNow ? 100.0 : 0.0,
-        completionRate: isSendNow ? 100.0 : 0.0,
-      ),
-      deliveryTimeline: isSendNow
-        ? [
-            DeliveryTimelinePoint(time: '11:00', sent: audience.recipientCount, delivered: audience.recipientCount),
-          ]
-        : [],
-      createdAt: DateTime.now(),
-    );
-
-    _cachedCampaigns.insert(0, created);
-    return created;
+    return null;
   }
 
   /// Check if a coupon code is unique within the business
@@ -225,9 +190,15 @@ class CampaignService {
   }
 
   /// Update campaign
-  Future<CampaignModel?> updateCampaign(String id, Map<String, dynamic> data) async {
+  Future<CampaignModel?> updateCampaign(
+    String id,
+    Map<String, dynamic> data,
+  ) async {
     try {
-      final response = await _apiClient.put('${ApiEndpoints.campaigns}/$id', data: data);
+      final response = await _apiClient.put(
+        '${ApiEndpoints.campaigns}/$id',
+        data: data,
+      );
       if (response != null && response is Map<String, dynamic>) {
         final resData = response['data'] ?? response;
         if (resData is Map<String, dynamic>) {
@@ -287,10 +258,17 @@ class CampaignService {
   }) async {
     try {
       final queryParts = <String>[];
-      if (channel != null && channel.isNotEmpty && channel != 'all') queryParts.add('channel=$channel');
-      if (category != null && category.isNotEmpty && category != 'All' && category != 'AI') queryParts.add('category=$category');
-      if (search != null && search.trim().isNotEmpty) queryParts.add('search=${Uri.encodeComponent(search.trim())}');
-      if (metaStatus != null && metaStatus.isNotEmpty && metaStatus != 'all') queryParts.add('metaStatus=$metaStatus');
+      if (channel != null && channel.isNotEmpty && channel != 'all')
+        queryParts.add('channel=$channel');
+      if (category != null &&
+          category.isNotEmpty &&
+          category != 'All' &&
+          category != 'AI')
+        queryParts.add('category=$category');
+      if (search != null && search.trim().isNotEmpty)
+        queryParts.add('search=${Uri.encodeComponent(search.trim())}');
+      if (metaStatus != null && metaStatus.isNotEmpty && metaStatus != 'all')
+        queryParts.add('metaStatus=$metaStatus');
 
       final url = queryParts.isNotEmpty
           ? '${ApiEndpoints.campaignTemplates}?${queryParts.join('&')}'
@@ -300,7 +278,13 @@ class CampaignService {
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
         if (data is List) {
-          final list = data.map((t) => CampaignTemplateModel.fromJson(Map<String, dynamic>.from(t as Map))).toList();
+          final list = data
+              .map(
+                (t) => CampaignTemplateModel.fromJson(
+                  Map<String, dynamic>.from(t as Map),
+                ),
+              )
+              .toList();
           if (list.isNotEmpty) return list;
         }
       }
@@ -308,7 +292,11 @@ class CampaignService {
       debugPrint('[CampaignService.fetchTemplates] notice: $e');
     }
 
-    return _getDefaultTemplates(channel: channel, category: category, search: search);
+    return _getDefaultTemplates(
+      channel: channel,
+      category: category,
+      search: search,
+    );
   }
 
   List<CampaignTemplateModel> _getDefaultTemplates({
@@ -332,7 +320,8 @@ class CampaignService {
         tagLabel: 'Promotional',
         tagColor: '#10B981',
         isMetaVerified: true,
-        body: '🍹 Celebrate this weekend with special offers! Enjoy up to 50% OFF on your favorite dishes at {{1}}.\nUse code: WEEKEND50 at checkout.\nValid this weekend only! 🎉',
+        body:
+            '🍹 Celebrate this weekend with special offers! Enjoy up to 50% OFF on your favorite dishes at {{1}}.\nUse code: WEEKEND50 at checkout.\nValid this weekend only! 🎉',
         sampleParameters: ['Pizza 47'],
       ),
       CampaignTemplateModel(
@@ -350,7 +339,8 @@ class CampaignService {
         tagLabel: 'New Menu',
         tagColor: '#0EA5E9',
         isMetaVerified: true,
-        body: '🍕 Exciting news! We have added mouth-watering new items to our menu at {{1}}.\nTry them today and get a complimentary drink!\nOrder now! 🍽️',
+        body:
+            '🍕 Exciting news! We have added mouth-watering new items to our menu at {{1}}.\nTry them today and get a complimentary drink!\nOrder now! 🍽️',
         sampleParameters: ['Pizza 47'],
       ),
       CampaignTemplateModel(
@@ -368,7 +358,8 @@ class CampaignService {
         tagLabel: 'Free Delivery',
         tagColor: '#EC4899',
         isMetaVerified: true,
-        body: '🚚 Enjoy FREE DELIVERY on all orders above ₹299 this weekend from {{1}}!\nNo coupon code required.\nOrder your favorites now! 📦',
+        body:
+            '🚚 Enjoy FREE DELIVERY on all orders above ₹299 this weekend from {{1}}!\nNo coupon code required.\nOrder your favorites now! 📦',
         sampleParameters: ['Pizza 47'],
       ),
       CampaignTemplateModel(
@@ -386,7 +377,8 @@ class CampaignService {
         tagLabel: 'BOGO Offer',
         tagColor: '#F59E0B',
         isMetaVerified: true,
-        body: '🍕 Double the joy! Buy 1 Pizza and Get 1 FREE on selected pizzas at {{1}}.\nUse code: BOGOPIZZA at checkout.\nOrder now before the offer ends! 🍕🍕',
+        body:
+            '🍕 Double the joy! Buy 1 Pizza and Get 1 FREE on selected pizzas at {{1}}.\nUse code: BOGOPIZZA at checkout.\nOrder now before the offer ends! 🍕🍕',
         sampleParameters: ['Pizza 47'],
       ),
     ];
@@ -399,7 +391,9 @@ class CampaignService {
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
         if (data is List) {
-          return data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+          return data
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList();
         }
       }
     } catch (e) {
@@ -411,8 +405,16 @@ class CampaignService {
       {'id': 'all', 'label': 'All', 'icon': 'grid', 'isDefault': true},
       {'id': 'promotional', 'label': 'Promotional', 'icon': 'megaphone'},
       {'id': 'free_gift', 'label': 'Free Gift', 'icon': 'gift'},
-      {'id': 'flat_cash_discount', 'label': 'Flat Cash Discount', 'icon': 'tag'},
-      {'id': 'percent_discount', 'label': 'Percent Discount', 'icon': 'percent'},
+      {
+        'id': 'flat_cash_discount',
+        'label': 'Flat Cash Discount',
+        'icon': 'tag',
+      },
+      {
+        'id': 'percent_discount',
+        'label': 'Percent Discount',
+        'icon': 'percent',
+      },
       {'id': 'bogo', 'label': 'Buy 1 Get 1 (BOGO)', 'icon': 'copy'},
     ];
   }
@@ -425,9 +427,14 @@ class CampaignService {
   }
 
   /// Create and submit a new template for Meta Verification
-  Future<CampaignTemplateModel?> createTemplate(Map<String, dynamic> data) async {
+  Future<CampaignTemplateModel?> createTemplate(
+    Map<String, dynamic> data,
+  ) async {
     try {
-      final response = await _apiClient.post(ApiEndpoints.campaignTemplates, data: data);
+      final response = await _apiClient.post(
+        ApiEndpoints.campaignTemplates,
+        data: data,
+      );
       final respMap = _asMap(response);
       if (respMap != null) {
         final created = _asMap(respMap['data']) ?? respMap;
@@ -440,9 +447,14 @@ class CampaignService {
   }
 
   /// Submit template specifically for Meta WhatsApp approval review
-  Future<CampaignTemplateModel?> submitTemplateForApproval(Map<String, dynamic> data) async {
+  Future<CampaignTemplateModel?> submitTemplateForApproval(
+    Map<String, dynamic> data,
+  ) async {
     try {
-      final response = await _apiClient.post(ApiEndpoints.campaignTemplateSubmitApproval, data: data);
+      final response = await _apiClient.post(
+        ApiEndpoints.campaignTemplateSubmitApproval,
+        data: data,
+      );
       final respMap = _asMap(response);
       if (respMap != null) {
         final created = _asMap(respMap['data']) ?? respMap;
@@ -456,9 +468,13 @@ class CampaignService {
   }
 
   /// Check live approval status of a template from Meta
-  Future<Map<String, dynamic>?> checkTemplateApprovalStatus(String templateId) async {
+  Future<Map<String, dynamic>?> checkTemplateApprovalStatus(
+    String templateId,
+  ) async {
     try {
-      final response = await _apiClient.get(ApiEndpoints.campaignTemplateStatus(templateId));
+      final response = await _apiClient.get(
+        ApiEndpoints.campaignTemplateStatus(templateId),
+      );
       final respMap = _asMap(response);
       if (respMap != null) {
         return _asMap(respMap['data']) ?? respMap;
@@ -468,10 +484,13 @@ class CampaignService {
     }
     return null;
   }
+
   /// Mark template as APPROVED (via Meta Webhook or Sandbox Verification)
   Future<CampaignTemplateModel?> approveTemplate(String templateId) async {
     try {
-      final response = await _apiClient.post(ApiEndpoints.campaignTemplateApprove(templateId));
+      final response = await _apiClient.post(
+        ApiEndpoints.campaignTemplateApprove(templateId),
+      );
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
         if (data is Map<String, dynamic>) {
@@ -491,12 +510,20 @@ class CampaignService {
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
         if (data is List) {
-          return data.map((c) => CampaignChannelModel.fromJson(Map<String, dynamic>.from(c as Map))).toList();
+          return data
+              .map(
+                (c) => CampaignChannelModel.fromJson(
+                  Map<String, dynamic>.from(c as Map),
+                ),
+              )
+              .toList();
         }
       }
     } catch (_) {}
 
-    final bizName = _db.restaurant?.name.isNotEmpty == true ? _db.restaurant!.name : 'My Business';
+    final bizName = _db.restaurant?.name.isNotEmpty == true
+        ? _db.restaurant!.name
+        : 'My Business';
 
     return [
       CampaignChannelModel(
@@ -544,7 +571,13 @@ class CampaignService {
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
         if (data is List) {
-          _cachedGroups = data.map((g) => AudienceGroupModel.fromJson(Map<String, dynamic>.from(g as Map))).toList();
+          _cachedGroups = data
+              .map(
+                (g) => AudienceGroupModel.fromJson(
+                  Map<String, dynamic>.from(g as Map),
+                ),
+              )
+              .toList();
           return _cachedGroups;
         }
       }
@@ -554,7 +587,11 @@ class CampaignService {
 
     if (search != null && search.trim().isNotEmpty) {
       return _cachedGroups
-          .where((g) => g.name.toLowerCase().contains(search.toLowerCase()) || g.type.toLowerCase().contains(search.toLowerCase()))
+          .where(
+            (g) =>
+                g.name.toLowerCase().contains(search.toLowerCase()) ||
+                g.type.toLowerCase().contains(search.toLowerCase()),
+          )
           .toList();
     }
     return _cachedGroups;
@@ -577,7 +614,10 @@ class CampaignService {
     };
 
     try {
-      final response = await _apiClient.post(ApiEndpoints.campaignGroups, data: payload);
+      final response = await _apiClient.post(
+        ApiEndpoints.campaignGroups,
+        data: payload,
+      );
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
         if (data is Map<String, dynamic>) {
@@ -591,7 +631,9 @@ class CampaignService {
     }
 
     // Local state fallback
-    final nextSrNo = _cachedGroups.isNotEmpty ? (_cachedGroups.first.srNo + 1) : 237;
+    final nextSrNo = _cachedGroups.isNotEmpty
+        ? (_cachedGroups.first.srNo + 1)
+        : 237;
     final group = AudienceGroupModel(
       id: 'group_${DateTime.now().millisecondsSinceEpoch}',
       srNo: nextSrNo,
@@ -601,12 +643,14 @@ class CampaignService {
       description: description.trim(),
       totalNumbers: numbers.length,
       numbers: numbers
-          .map((n) => ContactNumberModel(
-                id: 'c_${DateTime.now().microsecondsSinceEpoch}',
-                name: n['name'] ?? 'Contact',
-                phone: n['phone'] ?? '',
-                addedAt: DateTime.now(),
-              ))
+          .map(
+            (n) => ContactNumberModel(
+              id: 'c_${DateTime.now().microsecondsSinceEpoch}',
+              name: n['name'] ?? 'Contact',
+              phone: n['phone'] ?? '',
+              addedAt: DateTime.now(),
+            ),
+          )
           .toList(),
       createdAt: DateTime.now(),
     );
@@ -616,9 +660,15 @@ class CampaignService {
   }
 
   /// Update an audience group
-  Future<AudienceGroupModel?> updateAudienceGroup(String id, Map<String, dynamic> data) async {
+  Future<AudienceGroupModel?> updateAudienceGroup(
+    String id,
+    Map<String, dynamic> data,
+  ) async {
     try {
-      final response = await _apiClient.put(ApiEndpoints.campaignGroupById(id), data: data);
+      final response = await _apiClient.put(
+        ApiEndpoints.campaignGroupById(id),
+        data: data,
+      );
       if (response != null && response is Map<String, dynamic>) {
         final resData = response['data'] ?? response;
         if (resData is Map<String, dynamic>) {

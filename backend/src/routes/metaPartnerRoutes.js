@@ -1,10 +1,28 @@
 const express = require('express');
 const metaPartnerController = require('../controllers/metaPartnerController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { requireRole } = require('../middleware/permissionMiddleware');
+const signupPage = require('../utils/metaSignupPage');
 
 const router = express.Router();
 
+// Public browser bridge uses a short-lived, single-use, business-bound capability.
+router.get('/onboarding', signupPage);
+router.post('/onboarding/complete', async (req, res, next) => {
+  try {
+    const result = await require('../services/metaPartnerService').completeEmbeddedSignup(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) { next(error); }
+});
+
 router.use(authMiddleware);
+router.use(requireRole('owner', 'admin', 'superadmin'));
+router.post('/onboarding/start', async (req, res, next) => {
+  try {
+    const result = await require('../services/metaPartnerService').startEmbeddedSignup(req.businessId, { userId: req.user._id });
+    res.json({ success: true, data: result });
+  } catch (error) { next(error); }
+});
 
 // GET /api/v1/meta-partner/status
 router.get('/status', (req, res, next) => metaPartnerController.getStatus(req, res, next));

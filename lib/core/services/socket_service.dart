@@ -5,6 +5,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../network/api_endpoints.dart';
 import '../models/table_model.dart';
 import '../models/order_model.dart';
+import '../models/incoming_order_payload.dart';
 import '../security/secure_storage_service.dart';
 import '../database/database_service.dart';
 import 'local_notification_service.dart';
@@ -379,7 +380,7 @@ class SocketService {
         final oSource = (orderModel.orderSource ?? rawMap['orderSource'] ?? '').toString().toLowerCase();
         final rawOrderType = '${orderModel.orderType.name} ${rawMap['orderType'] ?? ''}'.toLowerCase();
         final cleanType = rawOrderType.replaceAll(RegExp(r'[-_\s]'), '');
-        final tblNum = orderModel.tableNumber ?? rawMap['tableNumber']?.toString() ?? rawMap['table']?.toString();
+        final tblNum = IncomingOrderPayload.tableNumber(rawMap);
         final bool isTable = (tblNum != null && tblNum.trim().isNotEmpty) ||
             oSource.contains('qr') ||
             oSource.contains('table') ||
@@ -717,7 +718,7 @@ class SocketService {
       final items = orderData['items'];
 
       final cleanType = orderType.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
-      final tblNum = (rawMap['tableNumber'] ?? orderData['tableNumber'] ?? rawMap['table'] ?? orderData['table'])?.toString().trim();
+      final tblNum = IncomingOrderPayload.tableNumber(rawMap);
       final oSource = (orderData['orderSource'] ?? rawMap['orderSource'] ?? rawMap['source'] ?? data['orderSource'] ?? 'whatsapp').toString().toLowerCase();
       final bool isTable = (tblNum != null && tblNum.isNotEmpty) ||
           oSource.contains('qr') ||
@@ -781,6 +782,8 @@ class SocketService {
           'totalAmount': totalAmount.toString(),
           'orderType': orderType,
           'deliveryAddress': deliveryAddress,
+          'tableNumber': tblNum,
+          'orderSource': oSource,
           'items': items,
         }),
         type: NotificationType.whatsappOrderRequest,
@@ -791,6 +794,7 @@ class SocketService {
           'type': 'whatsapp_order_request',
           'orderSource': oSource,
           'orderType': orderType,
+          'tableNumber': tblNum,
           'customerName': customerName,
           'customerPhone': customerPhone,
           'totalAmount': totalAmount.toString(),
@@ -809,7 +813,7 @@ class SocketService {
         'customerName': customerName,
         'totalAmount': totalAmount.toString(),
         'orderType': orderType,
-        'orderSource': (data['orderSource'] ?? (isTable ? 'storefront' : 'whatsapp')).toString(),
+        'orderSource': oSource,
         'deliveryAddress': deliveryAddress,
         'tableNumber': tblNum,
         'items': items,
