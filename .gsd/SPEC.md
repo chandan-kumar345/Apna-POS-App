@@ -125,3 +125,15 @@ square image decoding and thumbnail ghosting behind contained video. Retain
 compact details and existing grid playback, cart behavior and stock rules.
 Verify landscape/portrait images and videos, render the actual media widget,
 then build and install the Android update.
+
+## Customer order notification and acceptance repair, 2026-11-15
+
+Status: FINALIZED
+
+Diagnose and repair missing merchant notifications and acceptance prompts for
+table QR, customer storefront delivery and takeaway. Compare the working
+WhatsApp flow, verify backend order persistence and transport payloads, and
+ensure submitted items, type and table reach the correct restaurant. Verify
+pending orders across supported receiving paths and guard against duplicate
+prompts and previously handled orders. Exercise actual public API submissions
+in an isolated database and the client notification acceptance flow.

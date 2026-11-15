@@ -186,6 +186,7 @@ class StorefrontCartItem {
     ].join(' • ');
 
     final adjustedItem = item.copyWith(
+      variants: const [],
       price: unitPrice,
       salePrice: unitPrice,
       name: '${item.name}$sizeStr',
@@ -208,6 +209,8 @@ class StorefrontTableInfo {
   final int capacity;
   final int totalTables;
   final String? error;
+  final bool isTableOrdering;
+  final String restaurantCode;
 
   const StorefrontTableInfo({
     this.isValid = true,
@@ -218,6 +221,8 @@ class StorefrontTableInfo {
     this.capacity = 4,
     this.totalTables = 0,
     this.error,
+    this.isTableOrdering = false,
+    this.restaurantCode = '',
   });
 
   factory StorefrontTableInfo.fromJson(Map<String, dynamic> json) {
@@ -232,6 +237,8 @@ class StorefrontTableInfo {
       capacity: (json['capacity'] as num?)?.toInt() ?? 4,
       totalTables: (json['totalTables'] as num?)?.toInt() ?? 0,
       error: json['error']?.toString(),
+      isTableOrdering: json['isTableOrdering'] == true,
+      restaurantCode: json['restaurantCode']?.toString() ?? '',
     );
   }
 
@@ -244,6 +251,8 @@ class StorefrontTableInfo {
     int? capacity,
     int? totalTables,
     String? error,
+    bool? isTableOrdering,
+    String? restaurantCode,
   }) {
     return StorefrontTableInfo(
       isValid: isValid ?? this.isValid,
@@ -254,6 +263,8 @@ class StorefrontTableInfo {
       capacity: capacity ?? this.capacity,
       totalTables: totalTables ?? this.totalTables,
       error: error,
+      isTableOrdering: isTableOrdering ?? this.isTableOrdering,
+      restaurantCode: restaurantCode ?? this.restaurantCode,
     );
   }
 }

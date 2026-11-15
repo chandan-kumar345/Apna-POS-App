@@ -1,5 +1,20 @@
 # Current task state
 
+2026-11-15 active task: QR/storefront order alerts and acceptance fixes are
+implemented, tested and built. 49 Flutter and 18 backend checks pass. Profile
+APK 109.8s / 91.3 MB installed successfully, artifact
+build/product_details_validation/apna-pos-order-accept-fix.apk. Web release
+83.9s built at build/web with production API and vercel.json. User approval
+for live Vercel/Render publication was approved by the user with Deploy the
+live fixes. Publishing and live verification are in progress. No production orders
+were created, production DB inspection was read-only.
+See final JOURNAL entry for diagnosis, changes and test files. Main branch,
+related dirty storefront/network/view edits predate this task and are retained.
+firestore.rules and scratch/ are unrelated dirty work and should not be shipped.
+
+Previous media fitting fix is complete, built 201.9s, installed Success.
+Artifact build/product_details_validation/apna-pos-media-fitting.apk.
+
 2026-11-15: Product popup compact follow-up complete. Shorter photo, inline
 category/stock, tighter size/section/footer spacing and compact nutrition.
 Phone render height 679 -> 499 (26.5% shorter). All 11 dialog checks passed;

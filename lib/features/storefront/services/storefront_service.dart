@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/restaurant_model.dart';
@@ -8,6 +9,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/services/firestore_service.dart';
 import '../models/storefront_model.dart';
+import 'storefront_order_service.dart';
 
 class StorefrontService {
   static final StorefrontService _instance = StorefrontService._internal();
@@ -354,41 +356,13 @@ class StorefrontService {
       orderSource: 'storefront',
     );
 
-    // 1. Save locally in DatabaseService
-    final localSuccess = await _db.placeOnlineStorefrontOrder(order);
-
-    // 2. Submit to backend API
     try {
-      final slugTarget = restaurant.storefrontSlug.isNotEmpty
-          ? restaurant.storefrontSlug
-          : (restaurant.slug.isNotEmpty ? restaurant.slug : 'store');
-      await _apiClient.post(
-        ApiEndpoints.storefrontOrder(slugTarget),
-        data: {
-          'orderNumber': orderNumber,
-          'orderType': isDineIn
-              ? 'dineIn'
-              : (orderType == OrderType.delivery ? 'delivery' : 'takeaway'),
-          'tableNumber': tableNumber?.trim(),
-          'orderSource': 'storefront',
-          'items': order.items.map((i) => i.toJson()).toList(),
-          'subtotal': subtotal,
-          'taxAmount': taxAmount,
-          'deliveryCharge': isDineIn ? 0.0 : deliveryFee,
-          'totalAmount': totalAmount,
-          'paymentMethod': paymentMethod,
-          'deliveryAddress': isDineIn
-              ? 'Table ${tableNumber?.trim() ?? "Dine-In"}'
-              : deliveryAddress,
-          'customerName': customerName,
-          'customerPhone': customerPhone,
-          'notes': specialNote,
-        },
-      );
-    } catch (e) {
-      debugPrint('[StorefrontService] Backend order submit notice: $e');
+      final savedOrder = await StorefrontOrderService().submit(order, restaurant, notes: specialNote);
+      await _db.placeOnlineStorefrontOrder(savedOrder, skipFirestoreSync: true, showIncomingAlert: false);
+      return true;
+    } catch (error) {
+      debugPrint('[StorefrontService] Restaurant order submission failed: $error');
+      return false;
     }
-
-    return localSuccess;
   }
 }

@@ -115,7 +115,7 @@ void main() {
   for (final source in ['whatsapp', 'online', 'store']) {
     testWidgets('incoming order labels the $source source independently of table type', (tester) async {
       await mount(tester, source: source);
-      expect(find.text('Source: ${source == 'whatsapp' ? 'WhatsApp' : source == 'store' ? 'Store' : 'Online'}'), findsOneWidget);
+      expect(find.text('${source == 'whatsapp' ? 'WhatsApp' : source == 'store' ? 'Store' : 'Online'}'), findsOneWidget);
       expect(find.text('Table 12'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });

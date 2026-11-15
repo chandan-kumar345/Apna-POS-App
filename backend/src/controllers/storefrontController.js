@@ -6,6 +6,20 @@ const Order = require('../models/Order');
 const Table = require('../models/Table');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
+const crypto = require('crypto');
+
+function orderReceipt(order) {
+  return {
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    businessId: order.businessId,
+    status: order.status,
+    totalAmount: order.totalAmount,
+    paymentStatus: order.paymentStatus,
+    isPaid: order.isPaid,
+    createdAt: order.createdAt,
+  };
+}
 
 function slugify(text) {
   if (!text) return 'store';
@@ -26,11 +40,16 @@ class StorefrontController {
       }
 
       // 1. Find business by slug or company name
+      const slugRegex = new RegExp('^' + rawSlug.replace(/-/g, ' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
       let business = await Business.findOne({
         $or: [
           { 'profile.slug': rawSlug },
           { slug: rawSlug },
-          { 'profile.companyName': { $regex: new RegExp('^' + rawSlug.replace(/-/g, ' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') } },
+          { 'storefront.slug': rawSlug },
+          { 'profile.companyName': { $regex: slugRegex } },
+          { 'profile.name': { $regex: slugRegex } },
+          { companyName: { $regex: slugRegex } },
+          { name: { $regex: slugRegex } },
         ],
       }).lean();
 
@@ -187,9 +206,27 @@ class StorefrontController {
       const rawSlug = (req.params.slug || '').trim().toLowerCase();
       const orderPayload = req.body;
 
-      let business = await Business.findOne({
-        $or: [{ 'profile.slug': rawSlug }, { slug: rawSlug }],
-      });
+      const targetBusinessId = (orderPayload.businessId || orderPayload.restaurantId || '').toString().trim();
+      let business = null;
+
+      if (targetBusinessId && /^[0-9a-fA-F]{24}$/.test(targetBusinessId)) {
+        business = await Business.findById(targetBusinessId);
+      }
+
+      if (!business && rawSlug) {
+        const slugRegex = new RegExp('^' + rawSlug.replace(/-/g, ' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
+        business = await Business.findOne({
+          $or: [
+            { 'profile.slug': rawSlug },
+            { slug: rawSlug },
+            { 'storefront.slug': rawSlug },
+            { 'profile.companyName': { $regex: slugRegex } },
+            { 'profile.name': { $regex: slugRegex } },
+            { companyName: { $regex: slugRegex } },
+            { name: { $regex: slugRegex } },
+          ],
+        });
+      }
 
       if (!business && /^[0-9a-fA-F]{24}$/.test(rawSlug)) {
         business = await Business.findById(rawSlug);
@@ -234,15 +271,38 @@ class StorefrontController {
         }
       }
 
-      const orderNumber = `ONL-${Math.floor(1000 + Math.random() * 9000)}`;
+      const clientKey = String(orderPayload.idempotencyKey || orderPayload.orderId || '').trim().slice(0, 200);
+      const receiptId = clientKey
+        ? crypto.createHash('sha256').update(`${businessId}:storefront:${clientKey}`).digest('hex').slice(0, 24)
+        : undefined;
+      if (receiptId) {
+        const existing = await Order.findOne({ _id: receiptId, businessId });
+        if (existing) return ApiResponse.created(res, orderReceipt(existing), 'Order already received');
+      }
+      const items = (Array.isArray(orderPayload.items) ? orderPayload.items : []).map((line) => {
+        const item = line.item || {};
+        const type = String(line.foodType || item.itemType || 'veg').toLowerCase();
+        return {
+          productId: line.productId || item.productId || item.id,
+          name: line.name || item.name,
+          price: line.price ?? item.salePrice ?? item.price,
+          quantity: line.quantity,
+          foodType: type.includes('non') ? 'non_veg' : type.includes('egg') ? 'egg' : type.includes('beverage') ? 'beverage' : 'veg',
+          note: line.note || line.instructions || '',
+        };
+      });
+      if (!items.length) throw ApiError.badRequest('Add at least one product to place an order');
+      const orderNumber = String(orderPayload.orderNumber || '').trim() || `ONL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
       const order = new Order({
+        ...(receiptId ? { _id: receiptId } : {}),
+        idempotencyKey: clientKey,
         businessId,
         orderNumber,
         orderType: isDineIn ? 'dineIn' : orderType,
         tableNumber: isDineIn ? (tableNumber || '') : '',
         tableCode: isDineIn ? (tableNumber || '') : '',
         status: 'pending',
-        items: orderPayload.items || [],
+        items,
         subtotal: orderPayload.subtotal || 0,
         taxAmount: orderPayload.taxAmount || 0,
         deliveryCharge: isDineIn ? 0 : (orderPayload.deliveryCharge || 0),
@@ -254,11 +314,19 @@ class StorefrontController {
         deliveryAddress: isDineIn ? '' : (orderPayload.deliveryAddress || ''),
         customerName: orderPayload.customerName || (isDineIn ? `Guest (Table ${tableNumber || 'Dine-In'})` : 'Online Guest'),
         customerPhone: orderPayload.customerPhone || '',
-        orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (isDineIn ? 'storefront' : (orderPayload.orderSource || orderPayload.source || 'storefront')),
+        orderSource: (orderPayload.orderSource || '').toString().toLowerCase() === 'profile' ? 'profile' : 'storefront',
         notes: orderPayload.notes || '',
       });
 
-      await order.save();
+      try {
+        await order.save();
+      } catch (error) {
+        if (receiptId && error.code === 11000) {
+          const existing = await Order.findOne({ _id: receiptId, businessId });
+          if (existing) return ApiResponse.created(res, orderReceipt(existing), 'Order already received');
+        }
+        throw error;
+      }
 
       const bId = businessId.toString();
 
@@ -316,7 +384,7 @@ class StorefrontController {
             totalAmount: String(order.totalAmount || 0),
             orderType: order.orderType || 'dineIn',
             tableNumber: order.tableNumber || '',
-            orderSource: (orderPayload.orderSource || orderPayload.source || '').toString().toLowerCase().includes('profile') ? 'profile' : (orderPayload.orderSource || orderPayload.source || 'storefront'),
+            orderSource: order.orderSource,
             deliveryAddress: order.deliveryAddress || '',
             items: JSON.stringify(order.items || []),
             createdAt: (order.createdAt || new Date()).toISOString(),
@@ -326,12 +394,7 @@ class StorefrontController {
         console.warn('[storefrontController] Push notification notice:', pushErr.message);
       }
 
-      return ApiResponse.created(res, {
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        totalAmount: order.totalAmount,
-      }, 'Online order placed successfully!');
+      return ApiResponse.created(res, orderReceipt(order), 'Online order placed successfully!');
     } catch (error) {
       next(error);
     }

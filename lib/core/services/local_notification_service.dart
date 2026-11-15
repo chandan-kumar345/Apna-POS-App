@@ -854,34 +854,10 @@ class LocalNotificationService with WidgetsBindingObserver {
         return;
       }
 
-      // Check database for any unhandled pending external order placed within last 15 mins
       if (!IncomingOrderAcceptScreen.isShowing) {
-        final pendingDbOrder = await DatabaseService()
-            .findPendingExternalOrderForPrompt();
-        if (pendingDbOrder != null && !IncomingOrderAcceptScreen.isShowing) {
-          final pId = (pendingDbOrder['orderId'] ?? '').toString();
-          final pNum = (pendingDbOrder['orderNumber'] ?? '').toString();
-          if (DatabaseService.isOrderDismissed(pId, pNum)) {
-            return;
-          }
-          final localOrder = DatabaseService().orders
-              .where(
-                (o) =>
-                    (pId.isNotEmpty && o.id == pId) ||
-                    (pNum.isNotEmpty && o.orderNumber == pNum),
-              )
-              .firstOrNull;
-          if (localOrder != null && localOrder.status != OrderStatus.pending) {
-            DatabaseService.markOrderDismissed(pId, pNum);
-            return;
-          }
-
-          final ctx = navigatorKey.currentContext;
-          if (ctx != null && ctx.mounted) {
-            IncomingOrderAcceptScreen.openFromPayload(ctx, pendingDbOrder);
-          } else {
-            _pendingIncomingOrderPayload = pendingDbOrder;
-          }
+        final recentOrder = await DatabaseService().findPendingExternalOrderForPrompt();
+        if (recentOrder != null && !IncomingOrderAcceptScreen.isShowing) {
+          _handleNotificationPayload(jsonEncode(recentOrder));
         }
       }
     } catch (e) {

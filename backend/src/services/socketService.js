@@ -503,6 +503,11 @@ class SocketService {
     const payload = {
       type: 'whatsapp_order_request',
       orderId: ordId,
+      businessId: businessId?.toString(),
+      orderSource: order.orderSource || order.source || 'whatsapp',
+      tableNumber: order.tableNumber || '',
+      status: order.status || 'pending',
+      createdAt: order.createdAt || new Date().toISOString(),
       orderNumber: ordNum,
       customerPhone: custPhone,
       customerName: custName,

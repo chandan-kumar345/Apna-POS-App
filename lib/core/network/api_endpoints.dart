@@ -170,15 +170,9 @@ class ApiEndpoints {
       }
     }
 
-    // 6. Default fallback: Default LAN IP on Android, localhost on Desktop
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      _resolvedBaseUrl = 'http://$defaultLanIp:$defaultPort/api/v1';
-    } else if (isDesktop) {
-      _resolvedBaseUrl = 'http://127.0.0.1:$defaultPort/api/v1';
-    } else {
-      _resolvedBaseUrl = productionApiUrl;
-    }
-    debugPrint('[ApiEndpoints] Fallback base URL: $_resolvedBaseUrl');
+    // 6. Default fallback: Live production cloud backend (Render 24/7)
+    _resolvedBaseUrl = productionApiUrl;
+    debugPrint('[ApiEndpoints] Candidate probes finished. Active cloud base URL: $_resolvedBaseUrl');
   }
 
   /// Fast parallel ping across candidate endpoints
@@ -284,10 +278,7 @@ class ApiEndpoints {
       }
       return 'http://127.0.0.1:$defaultPort/api/v1';
     }
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://$defaultLanIp:$defaultPort/api/v1';
-    }
-    return 'http://127.0.0.1:$defaultPort/api/v1';
+    return productionApiUrl;
   }
 
   /// Resolve relative, asset, or local media URL (image / video) into a playable/renderable path or absolute URL

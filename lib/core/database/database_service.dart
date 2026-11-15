@@ -3439,14 +3439,14 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Place and register an incoming online storefront order (Takeaway, Delivery, or Table QR)
-  Future<bool> placeOnlineStorefrontOrder(OrderModel order, {bool skipFirestoreSync = false}) async {
+  Future<bool> placeOnlineStorefrontOrder(OrderModel order, {bool skipFirestoreSync = false, bool showIncomingAlert = true}) async {
     try {
       final bool isTable = (order.tableNumber != null && order.tableNumber!.trim().isNotEmpty) ||
           order.orderType == OrderType.dineIn ||
           (order.deliveryAddress != null && order.deliveryAddress!.toLowerCase().contains('table'));
 
       // Table QR orders are physical dining table orders: strictly UNPAID and PENDING until accepted and settled!
-      final cleanOrder = isTable
+      final cleanOrder = isTable && showIncomingAlert
           ? order.copyWith(
               status: OrderStatus.pending,
               orderType: OrderType.dineIn,
@@ -3468,7 +3468,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       await _saveOrdersToPrefs();
 
       // Ensure newly placed order is NOT marked dismissed so the Accept screen will always open
-      DatabaseService.unmarkOrderDismissed(cleanOrder.id, cleanOrder.orderNumber);
+      if (showIncomingAlert) DatabaseService.unmarkOrderDismissed(cleanOrder.id, cleanOrder.orderNumber);
 
       final notifTitle = isTable
           ? '🔔 Table ${cleanOrder.tableNumber} • #${cleanOrder.orderNumber} • ₹${cleanOrder.totalAmount.toStringAsFixed(0)}'
@@ -3478,35 +3478,37 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
           : '${cleanOrder.customerName ?? "Customer"} • ${cleanOrder.orderType.name.toUpperCase()}';
 
       // 2. Play audible order chime and trigger instant order accept notification & popup
-      try {
-        SoundService.playOrderRingtone();
-        final orderMap = {
-          'type': 'whatsapp_order_request',
-          'orderId': cleanOrder.id,
-          'orderNumber': cleanOrder.orderNumber,
-          'customerPhone': cleanOrder.customerPhone,
-          'customerName': cleanOrder.customerName,
-          'totalAmount': cleanOrder.totalAmount.toString(),
-          'orderType': cleanOrder.orderType.name,
-          'orderSource': cleanOrder.orderSource ?? (isTable ? 'storefront' : 'profile'),
-          'deliveryAddress': cleanOrder.deliveryAddress,
-          'tableNumber': cleanOrder.tableNumber,
-          'items': cleanOrder.items.map((i) => i.toJson()).toList(),
-        };
+      if (showIncomingAlert) {
+        try {
+          SoundService.playOrderRingtone();
+          final orderMap = {
+            'type': 'whatsapp_order_request',
+            'orderId': cleanOrder.id,
+            'orderNumber': cleanOrder.orderNumber,
+            'customerPhone': cleanOrder.customerPhone,
+            'customerName': cleanOrder.customerName,
+            'totalAmount': cleanOrder.totalAmount.toString(),
+            'orderType': cleanOrder.orderType.name,
+            'orderSource': cleanOrder.orderSource ?? (isTable ? 'storefront' : 'profile'),
+            'deliveryAddress': cleanOrder.deliveryAddress,
+            'tableNumber': cleanOrder.tableNumber,
+            'items': cleanOrder.items.map((i) => i.toJson()).toList(),
+          };
 
-        LocalNotificationService().showPushNotification(
-          id: cleanOrder.id.isNotEmpty ? cleanOrder.id.hashCode.abs().remainder(100000) : 0,
-          title: notifTitle,
-          body: notifBody,
-          payload: jsonEncode(orderMap),
-          type: NotificationType.whatsappOrderRequest,
-          channelId: 'apna_pos_whatsapp_orders_v2',
-          playSound: true,
-        );
-        SoundService.boostHardwareVolume();
-        SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);
-        LocalNotificationService.handlePayloadDirectly(orderMap);
-      } catch (_) {}
+          LocalNotificationService().showPushNotification(
+            id: cleanOrder.id.isNotEmpty ? cleanOrder.id.hashCode.abs().remainder(100000) : 0,
+            title: notifTitle,
+            body: notifBody,
+            payload: jsonEncode(orderMap),
+            type: NotificationType.whatsappOrderRequest,
+            channelId: 'apna_pos_whatsapp_orders_v2',
+            playSound: true,
+          );
+          SoundService.boostHardwareVolume();
+          SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);
+          LocalNotificationService.handlePayloadDirectly(orderMap);
+        } catch (_) {}
+      }
 
       // 3. Sync to Firestore if not already originating from Firestore
       if (!skipFirestoreSync && restaurant != null) {
@@ -3523,12 +3525,18 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
   StreamSubscription<List<OrderModel>>? _pendingStorefrontOrdersSub;
   final Set<String> _notifiedPendingOrderIds = {};
+  String? _pendingStorefrontBusinessId;
 
   /// Listen to real-time incoming pending storefront / table QR orders from Cloud Firestore
   void startFirestorePendingOrdersListener() {
-    final restId = restaurant?.id;
-    if (restId == null || restId.trim().isEmpty) return;
+    final restId = currentBusinessId;
+    if (restId.trim().isEmpty) return;
+    if (_pendingStorefrontBusinessId != restId) {
+      _notifiedPendingOrderIds.clear();
+      _pendingStorefrontBusinessId = restId;
+    }
     for (final o in orders) {
+      if (o.status == OrderStatus.pending) continue;
       if (o.id.isNotEmpty) _notifiedPendingOrderIds.add(o.id);
       if (o.orderNumber.isNotEmpty) _notifiedPendingOrderIds.add(o.orderNumber);
     }
@@ -3536,6 +3544,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     _pendingStorefrontOrdersSub = _firestoreService
         .streamPendingStorefrontOrders(restId.trim())
         .listen((pendingOrders) {
+      if (currentBusinessId != restId) return;
       for (final order in pendingOrders) {
         final orderKey = order.id.isNotEmpty ? order.id : order.orderNumber;
         if (orderKey.isEmpty || _notifiedPendingOrderIds.contains(orderKey)) {
@@ -3544,6 +3553,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         if (DatabaseService.isOrderDismissed(order.id, order.orderNumber)) {
           continue;
         }
+        if (!order.isExternalOnlineOrder || DateTime.now().difference(order.createdDateTime).inMinutes > 15) continue;
         final localOrder = orders.where((o) =>
             (o.id.isNotEmpty && o.id == order.id) ||
             (o.orderNumber.isNotEmpty && o.orderNumber == order.orderNumber)
@@ -3575,6 +3585,16 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
           'items': order.items.map((i) => i.toJson()).toList(),
         };
 
+        LocalNotificationService().showPushNotification(
+          id: order.id.hashCode.abs().remainder(100000),
+          tag: 'order_${order.id}',
+          title: 'New ${order.orderType.name} order ${order.orderNumber}',
+          body: '${order.customerName ?? 'Customer'}${order.tableNumber?.isNotEmpty == true ? ' - Table ${order.tableNumber}' : ''}',
+          payload: jsonEncode(orderMap),
+          type: NotificationType.whatsappOrderRequest,
+          channelId: 'apna_pos_whatsapp_orders_v2',
+          playSound: true,
+        );
         SoundService.playOrderRingtone();
         SoundService.boostHardwareVolume();
         SoundService.bringAppToFront(payload: jsonEncode(orderMap), isUrgent: true);

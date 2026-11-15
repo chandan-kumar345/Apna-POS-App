@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:apna_pos/core/network/api_client.dart';
+import 'support/storefront_order_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apna_pos/core/database/database_service.dart';
@@ -49,6 +52,18 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  void useOrderApi() {
+    final dio = ApiClient().dio;
+    final originalAdapter = dio.httpClientAdapter;
+    final originalInterceptors = List<Interceptor>.from(dio.interceptors);
+    dio.interceptors.clear();
+    dio.httpClientAdapter = StorefrontOrderAdapter();
+    addTearDown(() {
+      dio.httpClientAdapter = originalAdapter;
+      dio.interceptors.addAll(originalInterceptors);
+  });
+  }
+
   group('Customer Storefront Flow & API Services Tests', () {
     test('CustomerStorefrontApiService generates and verifies OTP with dynamic profile', () async {
       final service = CustomerStorefrontApiService();
@@ -73,6 +88,7 @@ void main() {
     });
 
     test('CustomerStorefrontApiService places order to DatabaseService and tracks status', () async {
+      useOrderApi();
       final service = CustomerStorefrontApiService();
       final customer = CustomerProfileModel(
         id: 'cust_test_1',
@@ -117,8 +133,8 @@ void main() {
       expect(order.grandTotal, 377.0);
       expect(order.currentStepIndex, 0);
       expect(order.timelineSteps.length, 4);
-      expect(order.timelineSteps[0].title, 'Order Confirmed');
-      expect(order.timelineSteps[0].isCompleted, isTrue);
+      expect(order.timelineSteps[0].title, 'Awaiting restaurant acceptance');
+      expect(order.timelineSteps[0].isCompleted, isFalse);
 
       // Verify POS integration: DatabaseService should contain the new order
       final posOrders = DatabaseService().orders;
@@ -292,6 +308,8 @@ void main() {
       expect(find.text('+91'), findsOneWidget);
       expect(find.text('Send OTP'), findsOneWidget);
 
+      await tester.enterText(find.byType(TextField).first, '9709593705');
+
       // Tap Send OTP -> Advance to Step 6
       await tester.tap(find.text('Send OTP'));
       await tester.pumpAndSettle();
@@ -318,6 +336,7 @@ void main() {
     });
 
     testWidgets('Steps 8-10: Delivery Details, Payment Method, and Order Confirmation & Live Tracking', (tester) async {
+      useOrderApi();
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -369,7 +388,7 @@ void main() {
       expect(find.textContaining('Order #ORD-'), findsOneWidget);
       expect(find.text('Estimated Delivery'), findsOneWidget);
       expect(find.text('25 - 35 mins'), findsOneWidget);
-      expect(find.text('Order Confirmed'), findsOneWidget);
+      expect(find.text('Awaiting restaurant acceptance'), findsOneWidget);
       expect(find.text('Preparing Your Food'), findsOneWidget);
       expect(find.text('Out for Delivery'), findsOneWidget);
       expect(find.text('Delivered'), findsOneWidget);

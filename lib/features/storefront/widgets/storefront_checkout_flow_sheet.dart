@@ -3347,9 +3347,9 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
             child: Column(
               children: [
                 _buildTimelineItem(
-                  title: 'Order Confirmed',
+                  title: order?.status == 'pending' ? 'Awaiting restaurant acceptance' : 'Order Confirmed',
                   time: '12:42 PM',
-                  isCompleted: currentStepIdx >= 0,
+                  isCompleted: order?.status != 'pending' && currentStepIdx >= 0,
                   isActive: currentStepIdx == 0,
                   isLast: false,
                 ),

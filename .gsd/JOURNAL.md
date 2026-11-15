@@ -1164,3 +1164,55 @@ Rendered the unchanged LogoWritingReveal painter into 88 PNG frames (600x600, 25
 
 GIF export palette refinement: reserved exact #F7F9FE to keep the canvas uniform; regenerated and verified final file size 1,828,253 bytes. Downloads copy matches the exported GIF.
 Final encoding preserves exact background pixels during palette conversion; all 42,000 pixels in the 70px-wide canvas margin verified uniform #F7F9FE. Final GIF remains 600x600, 85 encoded frames, 4680ms, infinite loop.
+Media fitting delivery completed. Android profile build succeeded in 201.9s,
+91.4 MB. Copied to build/product_details_validation/apna-pos-media-fitting.apk.
+adb install -r returned Success. Continued with the user's new request to fix
+missing table QR and customer storefront merchant order notifications.
+
+## 2026-11-15: QR/storefront merchant alerts and acceptance
+
+Found nested CartItemModel items sent to a flat Mongo order schema, ignored API
+failures followed by local success, hardcoded delivery in the customer path,
+and different client/server IDs across the Firestore mirror. Customer item
+snapshots also retained catalog variants, causing selected-size price lookup
+to return the first variant. Merchant Firestore listening used the profile ID,
+seeded all cached pending IDs as already notified, and omitted the native
+system notification call.
+
+Implemented a shared public order submission service for both checkout paths.
+It submits flat selected item snapshots, retains the requested type/table,
+waits for a valid server receipt, caches canonical IDs, and mirrors the server
+receipt to Firestore. Customer-local caching suppresses merchant alerts. API
+failure keeps the cart and pending request identity for retry. Backend accepts
+legacy nested items, returns canonical receipt metadata, and uses a tenant-
+scoped deterministic order ID to make parallel retries atomic without a new
+index or migration. Socket acceptance events carry source/table/status/date.
+
+Merchant Firestore uses currentBusinessId, keeps pending orders eligible,
+checks account scope and freshness, posts a native notification, and opens the
+existing acceptance route. Restored guarded recent-pending recovery on resume.
+Fixed two acceptance-view overflows and restored a compact channel label.
+Tracking displays Awaiting restaurant acceptance while pending. Preserved the
+other in-progress storefront profile, network, view and Firestore rule edits.
+
+Verification: 49 Flutter tests passed (order-flow-tests.log), including both
+checkout APIs for QR/delivery/takeaway, selected variant price, server rejection,
+retry identity, incoming payloads, warm/cold/resume/native notification actions,
+handled order suppression, source/table display and small/enlarged text.
+18 backend tests in five suites passed (order-flow-backend-tests.log), including
+actual public HTTP submissions in MongoMemoryServer, legacy item payloads,
+parallel replay, three merchant pushes and WhatsApp notification regressions.
+No production order was created. A production read-only GET confirmed the live
+pizza-47 slug resolves to canonical business 6ad46853ea47d6b3e13d633d.
+
+Acceptance screenshots rendered with the actual screen (10 tests pass),
+visually reviewed incoming-previews/table-order-390.png. Broad analysis has
+only existing database/storefront diagnostics; the new submission helper has
+its brace-style infos corrected. Final profile APK built in 109.8s (91.3MB),
+installed with adb install -r: Success. Artifact
+build/product_details_validation/apna-pos-order-accept-fix.apk.
+Web release built in 83.9s under build/web, with production API_URL and copied
+vercel.json. Configured GitHub main pushes auto-deploy Vercel and Render.
+Live deployment approval requested through the asynchronous question. Await
+that approval before publishing. Current branch main; unrelated dirty
+firestore.rules and scratch/ must remain outside the order-flow publication.

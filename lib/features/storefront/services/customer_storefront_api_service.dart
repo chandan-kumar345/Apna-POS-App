@@ -6,11 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/order_model.dart';
 import '../../../core/models/restaurant_model.dart';
-import '../../../core/network/api_client.dart';
-import '../../../core/network/api_endpoints.dart';
 import '../../../core/services/firestore_service.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../models/storefront_model.dart';
+import 'storefront_order_service.dart';
 
 class CustomerStorefrontApiService {
   static final CustomerStorefrontApiService _instance = CustomerStorefrontApiService._internal();
@@ -19,7 +18,6 @@ class CustomerStorefrontApiService {
 
   final DatabaseService _db = DatabaseService();
   final FirestoreService _firestore = FirestoreService();
-  final ApiClient _apiClient = ApiClient();
 
   static const String _prefCustomerKey = 'customer_storefront_active_profile';
   static const String _prefActiveOrderKey = 'customer_storefront_active_order';
@@ -220,12 +218,12 @@ class CustomerStorefrontApiService {
     }).toList();
 
     // 2. Build Tracking Model
-    final trackingModel = CustomerOrderTrackingModel(
+    var trackingModel = CustomerOrderTrackingModel(
       orderId: orderId,
       orderNumber: orderNumber,
       restaurantId: restaurant.id,
       restaurantName: restaurant.name,
-      status: 'confirmed',
+      status: 'pending',
       currentStepIndex: 0,
       estimatedDeliveryMinutes: isDineIn ? '15 - 20 mins' : '25 - 35 mins',
       items: itemSummaries,
@@ -246,41 +244,8 @@ class CustomerStorefrontApiService {
     final String resolvedPaymentStatus = isTableDineIn ? 'pending' : (resolvedIsPaid ? 'paid' : 'pending');
     final String resolvedPaymentMethod = isTableDineIn ? 'Pay at Counter / Table' : (paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI');
 
-    // 3. Save to local POS DatabaseService
     try {
-      final cartModelItems = cartItems.map((c) => c.toCartItemModel()).toList();
-
-      final posOrder = OrderModel(
-        id: orderId,
-        orderNumber: orderNumber,
-        items: cartModelItems,
-        orderType: isDineIn ? OrderType.dineIn : orderType,
-        tableNumber: tableNumber?.trim(),
-        status: OrderStatus.pending,
-        subtotal: subtotal,
-        discountAmount: discount,
-        taxAmount: tax,
-        deliveryCharge: deliveryFee,
-        totalAmount: grandTotal,
-        paymentMethod: resolvedPaymentMethod,
-        paymentStatus: resolvedPaymentStatus,
-        isPaid: resolvedIsPaid,
-        customerName: customer.name,
-        customerPhone: customer.phone,
-        deliveryAddress: resolvedAddress,
-        createdAt: nowIso,
-        orderSource: 'storefront',
-      );
-
-      await _db.placeOnlineStorefrontOrder(posOrder);
-      debugPrint('[CustomerStorefrontApiService] POS Order $orderNumber added to local database');
-    } catch (e) {
-      debugPrint('[CustomerStorefrontApiService] POS local save notice: $e');
-    }
-
-    // 4. Save to Cloud Firestore for multi-device sync
-    try {
-      final cloudOrder = OrderModel(
+      final savedOrder = await StorefrontOrderService().submit(OrderModel(
         id: orderId,
         orderNumber: orderNumber,
         items: cartItems.map((c) => c.toCartItemModel()).toList(),
@@ -290,7 +255,7 @@ class CustomerStorefrontApiService {
         subtotal: subtotal,
         discountAmount: discount,
         taxAmount: tax,
-        deliveryCharge: deliveryFee,
+        deliveryCharge: isDineIn ? 0 : deliveryFee,
         totalAmount: grandTotal,
         paymentMethod: resolvedPaymentMethod,
         paymentStatus: resolvedPaymentStatus,
@@ -300,42 +265,17 @@ class CustomerStorefrontApiService {
         deliveryAddress: resolvedAddress,
         createdAt: nowIso,
         orderSource: 'storefront',
+      ), restaurant, notes: deliveryInstructions);
+      await _db.placeOnlineStorefrontOrder(savedOrder, skipFirestoreSync: true, showIncomingAlert: false);
+      trackingModel = trackingModel.copyWith(
+        orderId: savedOrder.id,
+        orderNumber: savedOrder.orderNumber,
+        status: savedOrder.status.name,
+        paymentStatus: savedOrder.paymentStatus,
       );
-
-      await _firestore.submitStorefrontOrder(cloudOrder, restaurantId: restaurant.id);
-    } catch (e) {
-      debugPrint('[CustomerStorefrontApiService] Cloud Firestore submit notice: $e');
-    }
-
-    // 5. Post to Backend API
-    try {
-      final slugTarget = restaurant.storefrontSlug.isNotEmpty
-          ? restaurant.storefrontSlug
-          : (restaurant.slug.isNotEmpty ? restaurant.slug : 'store');
-      await _apiClient.post(
-        ApiEndpoints.storefrontOrder(slugTarget),
-        data: {
-          'orderId': orderId,
-          'orderNumber': orderNumber,
-          'orderType': isDineIn ? 'dineIn' : 'delivery',
-          'tableNumber': tableNumber?.trim(),
-          'orderSource': 'storefront',
-          'restaurantId': restaurant.id,
-          'customerName': customer.name,
-          'customerPhone': customer.phone,
-          'address': resolvedAddress,
-          'deliveryAddress': resolvedAddress,
-          'deliveryCharge': deliveryFee,
-          'taxAmount': tax,
-          'subtotal': subtotal,
-          'totalAmount': grandTotal,
-          'paymentMethod': paymentMethod,
-          'items': itemSummaries.map((i) => i.toJson()).toList(),
-          'notes': deliveryInstructions,
-        },
-      );
-    } catch (e) {
-      debugPrint('[CustomerStorefrontApiService] Backend API submit notice: $e');
+    } catch (error) {
+      debugPrint('[CustomerStorefrontApiService] Restaurant order submission failed: $error');
+      return null;
     }
 
     // 6. Cache active order locally

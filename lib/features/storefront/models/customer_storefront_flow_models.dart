@@ -236,9 +236,9 @@ class CustomerOrderTrackingModel {
   List<CustomerTimelineStep> get timelineSteps {
     return [
       CustomerTimelineStep(
-        title: 'Order Confirmed',
+        title: status == 'pending' ? 'Awaiting restaurant acceptance' : 'Order Confirmed',
         time: '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}',
-        isCompleted: currentStepIndex >= 0,
+        isCompleted: status != 'pending' && currentStepIndex >= 0,
         isActive: currentStepIndex == 0,
       ),
       CustomerTimelineStep(
