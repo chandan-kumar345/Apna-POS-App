@@ -283,12 +283,9 @@ void main() {
   }
 
   testWidgets(
-    'transparent compact overlay waits for the mic button',
+    'transparent compact overlay starts the mic after access is verified',
     (tester) async {
       await open(tester);
-      expect(speech.isListening, isFalse);
-      await tester.tap(find.byKey(const ValueKey('chotu-microphone')));
-      await tester.pump();
       expect(speech.isListening, isTrue);
       expect(find.text('Chotu AI'), findsOneWidget);
       expect(find.text('Table 5'), findsOneWidget);
@@ -335,26 +332,42 @@ void main() {
   });
 
   testWidgets(
-    'retry restores access without starting the microphone',
+    'leaving the foreground discards partial speech without dispatch',
     (tester) async {
-      adapter.healthStatus = 403;
       await open(tester);
-      expect(
-        find.text('Chotu AI access is off for this business.'),
-        findsOneWidget,
-      );
-      expect(speech.isListening, isFalse);
-      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
-      expect(adapter.turns, isEmpty);
-      adapter.healthStatus = 200;
-      await tester.tap(find.text('Retry'));
+      speech.updateTranscription('cash received settle bill');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
       expect(speech.isListening, isFalse);
-      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
+      expect(speech.liveTranscription, isEmpty);
+      expect(adapter.turns, isEmpty);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(speech.isListening, isFalse);
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('retry restores access and starts the microphone', (
+    tester,
+  ) async {
+    adapter.healthStatus = 403;
+    await open(tester);
+    expect(
+      find.text('Chotu AI access is off for this business.'),
+      findsOneWidget,
+    );
+    expect(speech.isListening, isFalse);
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+    expect(adapter.turns, isEmpty);
+    adapter.healthStatus = 200;
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(speech.isListening, isTrue);
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('small display with keyboard and landscape do not overflow', (
     tester,

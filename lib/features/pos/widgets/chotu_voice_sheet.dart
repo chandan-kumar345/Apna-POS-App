@@ -4,22 +4,26 @@ import 'package:flutter/material.dart';
 import '../../../../core/services/chotu_service.dart';
 import '../../../../core/services/chotu_tts_service.dart';
 import '../../../../core/services/speech_recognition_service.dart';
+import '../../../../core/services/chotu_activation_service.dart';
 
 class ChotuVoiceSheet extends StatefulWidget {
   final String? tableNumber;
   final VoidCallback? onTranscriptionUpdated;
+  final bool autoStartListening;
 
   const ChotuVoiceSheet({
     super.key,
     this.tableNumber,
     this.onTranscriptionUpdated,
+    this.autoStartListening = true,
   });
 
   @override
   State<ChotuVoiceSheet> createState() => _ChotuVoiceSheetState();
 }
 
-class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
+class _ChotuVoiceSheetState extends State<ChotuVoiceSheet>
+    with WidgetsBindingObserver {
   static const _ink = Color(0xFF102B48);
   static const _muted = Color(0xFF52687F);
   static const _blue = Color(0xFF225EC6);
@@ -30,6 +34,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
   bool _checking = true;
   bool _sending = false;
   bool _needsAttention = false;
+  bool _appActive = true;
   String _query = '';
   String? _reply;
 
@@ -39,6 +44,8 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ChotuActivationService().suspend(true);
     _chotu.startConversation(tableNumber: widget.tableNumber);
     _speech.reset();
     _chotu.addListener(_onChotuChanged);
@@ -50,6 +57,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _chotu.removeListener(_onChotuChanged);
     _speech.removeListener(_onSpeechChanged);
     _speech.reset();
@@ -65,10 +73,25 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
   void _onSpeechChanged() {
     if (!mounted) return;
     setState(() {});
-    if (!_busy &&
+    if (_appActive &&
+        !ChotuActivationService().isScreenLocked &&
+        !_busy &&
         _speech.status == SpeechStatus.done &&
         _speech.liveTranscription.trim().isNotEmpty) {
       unawaited(_send(_speech.liveTranscription));
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appActive = state == AppLifecycleState.resumed;
+    if (!_appActive) {
+      // Do not cancel a first permission grant merely because its system
+      // dialog briefly removes focus. A true background transition cancels it.
+      if (state != AppLifecycleState.inactive || _speech.isListening) {
+        _speech.reset();
+      }
+      _tts.stop();
     }
   }
 
@@ -80,16 +103,46 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
     await _chotu.checkBackendHealth();
     if (!mounted) return;
     setState(() => _checking = false);
+    if (_ready && widget.autoStartListening) await _listen();
   }
 
   Future<void> _listen() async {
-    if (!_ready || _busy) return;
+    if (!_ready ||
+        _busy ||
+        !_appActive ||
+        ChotuActivationService().isScreenLocked) {
+      return;
+    }
     _tts.stop();
     setState(() {
       _reply = null;
       _query = '';
     });
     await _speech.startListening();
+  }
+
+  Future<void> _activationOption(String value) async {
+    _speech.reset();
+    _tts.stop();
+    try {
+      final activation = ChotuActivationService();
+      if (value == 'assistant') {
+        await activation.openAssistantSettings();
+      } else if (await activation.arm()) {
+        if (mounted) Navigator.of(context).pop();
+      } else if (mounted) {
+        setState(
+          () => _reply =
+              'Voice standby needs Chotu access and microphone permission.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _reply = 'Assistant settings are unavailable on this device.',
+        );
+      }
+    }
   }
 
   Future<void> _send(String text) async {
@@ -122,7 +175,9 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
       if (status == 'completed' || status == 'answered') {
         widget.onTranscriptionUpdated?.call();
       }
-      if (_ready) unawaited(_tts.speak(message).catchError((_) {}));
+      if (_ready && _appActive && !ChotuActivationService().isScreenLocked) {
+        unawaited(_tts.speak(message).catchError((_) {}));
+      }
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -266,6 +321,33 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
                                           ),
                                     ),
                                   ),
+                                  PopupMenuButton<String>(
+                                    enabled: _ready && !_busy,
+                                    tooltip: 'Voice activation',
+                                    icon: const Icon(
+                                      Icons.tune_rounded,
+                                      size: 18,
+                                      color: _muted,
+                                    ),
+                                    onSelected: (value) =>
+                                        unawaited(_activationOption(value)),
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(
+                                        value: 'standby',
+                                        child: Text(
+                                          'Hello Chotu · 2 min in app',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'assistant',
+                                        child: Text(
+                                          'Android assistant settings',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                   DropdownButtonHideUnderline(
                                     child: DropdownButton<String>(
                                       value: _speech.currentLocale,
@@ -279,7 +361,10 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> {
                                       style: Theme.of(context)
                                           .textTheme
                                           .labelMedium
-                                          ?.copyWith(color: _muted, fontSize: 12),
+                                          ?.copyWith(
+                                            color: _muted,
+                                            fontSize: 12,
+                                          ),
                                       items: const [
                                         DropdownMenuItem(
                                           value: 'hinglish',

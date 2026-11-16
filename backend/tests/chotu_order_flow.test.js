@@ -1,3 +1,8 @@
+jest.mock('../src/services/chotu/geminiCommandEngine', () => ({
+  isConfigured: () => false,
+  parseCommandWithGemini: jest.fn(async () => null),
+}));
+
 const request = require('supertest');
 const app = require('../src/app');
 const Product = require('../src/models/Product');

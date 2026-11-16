@@ -1,5 +1,34 @@
 # Chotu AI order automation
 
+## Voice, KOT delivery and settlement follow-up — 2026-11-16
+
+Status: FINALIZED
+
+Improve grounded Hindi/Hinglish/English commands without changing manual POS.
+Support explicitly confirmed Cash, UPI and Card payments when enabled for the
+business and permitted for the actor. A method selection alone must never mark
+an order paid. Bind follow-up confirmation to table, current totals and draft;
+reject expired, changed, negative and hypothetical confirmations. Preserve
+server receipt idempotency and one sale per order.
+
+Dispatch immutable KOT/bill print jobs from successful Chotu receipts through
+the configured native printer. Print only newly sent kitchen quantities. Keep
+durable device claims so recovered/replayed receipts never auto-print twice;
+report failed/uncertain delivery separately from successful order mutations.
+
+Restore microphone startup after successful health/access checks, improve
+recognition normalization and add a versioned command regression corpus.
+Add opt-in foreground wake-phrase activation and Android default-assistant
+entry through system settings; preserve login, subscription and AI access gates.
+Do not intercept the power key, listen on boot, execute ambient commands, or
+claim continuous background hotword support using Android SpeechRecognizer.
+Document the dedicated offline wake-engine/foreground-service follow-up needed
+for reliable screen-off/background hotword support.
+
+Verify Python policy, isolated API lifecycle/permissions/retries, Flutter printer
+and voice/activation flows, screenshots for UI and Android compilation. No
+production test orders/payments/database changes.
+
 Status: FINALIZED
 Date: 2026-11-12
 

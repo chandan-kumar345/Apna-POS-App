@@ -65,6 +65,10 @@ function gstPercentFor(context, product) {
 }
 
 function financials(context, items = context.items) {
+  if (context.fixedInvoice) {
+    return Object.fromEntries(['subtotal', 'discountAmount', 'taxAmount', 'totalAmount', 'tipAmount', 'deliveryCharge', 'roundOff']
+      .map((key) => [key, Number(context.order[key]) || 0]));
+  }
   const subtotal = cents(items.reduce((sum, item) => sum + item.effectivePrice * item.quantity, 0));
   const taxAmount = cents(items.reduce((sum, item) => {
     const product = productFor(context, item.productId);
@@ -77,10 +81,14 @@ function fingerprint(context) {
   return hash({
     items: context.items.map((i) => [i.productId, i.quantity, i.effectivePrice]).sort((a, b) => a[0].localeCompare(b[0])),
     ...financials(context),
+    ...(context.fixedInvoice ? {
+      invoiceId: String(context.order._id),
+      sourceVariants: (context.cart?.items || []).map((i) => [i.productId, i.variantName || '', i.quantity, i.effectivePrice]),
+    } : {}),
   });
 }
 
-async function loadContext(businessId, table, session) {
+async function loadContext(businessId, table, session, { settlementOnly = false } = {}) {
   const [business, products, carts, orders] = await Promise.all([
     Business.findById(businessId).lean(),
     Product.find({ businessId }).lean(),
@@ -102,14 +110,33 @@ async function loadContext(businessId, table, session) {
   // so its timestamp cannot decide which item list represents the draft.
   const rawItems = cart?.items?.length ? cart.items : running ? order.items : [];
   const context = { businessId, business, products, table, cart, order, items: [], session };
-  context.items = rawItems.map((item) => {
+  const snapshots = running
+    ? await PrintLog.find({ businessId, orderId: order._id, printType: { $in: ['kot', 'bill', 'save_and_print'] } }).sort({ createdAt: -1 }).lean()
+    : [];
+  const issuedBill = snapshots.find((s) => ['bill', 'save_and_print'].includes(s.printType));
+  context.fixedInvoice = settlementOnly && !!running && !!issuedBill && !issuedBill.notes?.startsWith('chotu:');
+  if (context.fixedInvoice) {
+    // Legacy manual invoices persist the selected price/name but no variantName.
+    // Compare product, paid unit price and total units; never reprice the bill.
+    const variantAware = order.items.some((i) => i.variantName);
+    const lines = (items, price) => {
+      const totals = new Map();
+      for (const item of items) {
+        const key = JSON.stringify([String(item.productId), price(item), ...(variantAware ? [item.variantName || ''] : [])]);
+        totals.set(key, (totals.get(key) || 0) + item.quantity);
+      }
+      return [...totals.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    };
+    if (JSON.stringify(lines(rawItems, (i) => i.effectivePrice ?? i.price)) !== JSON.stringify(lines(order.items, (i) => i.price))) {
+      throw ApiError.conflict('Draft issued bill se alag hai. Pehle normal POS par bill update kijiye.', 'CHOTU_DRAFT_CONFLICT');
+    }
+  }
+  context.items = (context.fixedInvoice ? order.items : rawItems).map((item) => {
+    if (context.fixedInvoice) return { ...(item.toObject ? item.toObject() : item), productId: String(item.productId), effectivePrice: item.price };
     if (item.variantName || item.note) throw ApiError.badRequest('Special instructions/variants ke liye normal POS use kijiye.');
     return lineFor(productFor(context, item.productId), item.quantity);
   });
   context.fingerprint = fingerprint(context);
-  const snapshots = order && !['completed', 'cancelled'].includes(order.status)
-    ? await PrintLog.find({ businessId, orderId: order._id, printType: { $in: ['kot', 'bill'] } }).sort({ createdAt: -1 }).lean()
-    : [];
   context.hasKitchenOrder = !!running && (order.kotStatus === 'sent' || order.kotStatus === 'printed' || order.status === 'preparing' || snapshots.some((s) => s.printType === 'kot'));
   // Billing can replace order.items before the new additions reach the kitchen.
   // Only the immutable latest KOT snapshot records what was actually sent.
@@ -117,8 +144,10 @@ async function loadContext(businessId, table, session) {
   const lines = (items, price) => items.map((i) => [String(i.productId), i.quantity, price(i)]).sort((a, b) => a[0].localeCompare(b[0]));
   const orderMatches = order && JSON.stringify(lines(order.items, (i) => i.price)) === JSON.stringify(lines(context.items, (i) => i.effectivePrice))
     && order.totalAmount === financials(context).totalAmount && order.taxAmount === financials(context).taxAmount;
-  context.kitchenCurrent = orderMatches && snapshots.find((s) => s.printType === 'kot')?.notes === `chotu:${context.fingerprint}`;
-  context.billCurrent = orderMatches && snapshots.find((s) => s.printType === 'bill')?.notes === `chotu:${context.fingerprint}`;
+  // An issued invoice is settled as-is. Never regenerate it with today's menu
+  // prices or drop discounts/variants/round-off to manufacture a simple bill.
+  context.kitchenCurrent = context.fixedInvoice || (orderMatches && snapshots.find((s) => s.printType === 'kot')?.notes === `chotu:${context.fingerprint}`);
+  context.billCurrent = context.fixedInvoice || (orderMatches && snapshots.find((s) => s.printType === 'bill')?.notes === `chotu:${context.fingerprint}`);
   return context;
 }
 
@@ -130,6 +159,7 @@ function policyContext(context) {
     kitchenCurrent: context.kitchenCurrent,
     billCurrent: context.billCurrent,
     orderCompleted: context.order?.status === 'completed' && context.order?.isPaid,
+    totalAmount: financials(context).totalAmount,
   };
 }
 
@@ -207,12 +237,28 @@ function preflight(context, actions, command, actor) {
   if (actions.includes('clear_draft') && context.order && !['completed', 'cancelled'].includes(context.order.status)) {
     throw ApiError.badRequest('Issued order/invoice cancellation normal POS par kijiye.');
   }
-  if (actions.some((value) => ['send_kot', 'generate_bill', 'settle_cash'].includes(value))) payloadFor(context, actor);
-  if (actions.includes('settle_cash')) {
-    if (!['owner', 'admin', 'cashier'].includes(actor.role)) throw ApiError.forbidden('Cash settlement requires owner, admin or cashier role.');
-    if (!context.business.orderSettings?.paymentMethods?.cash) throw ApiError.badRequest('Cash payments are disabled for this business.');
-    if (command.payment_confirmed !== true || command.payment_method !== 'cash') throw ApiError.badRequest('Explicit cash received confirmation is required.');
+  if (actions.some((value) => ['send_kot', 'generate_bill'].includes(value)) ||
+    (!context.fixedInvoice && actions.some((value) => ['settle_cash', 'settle_payment'].includes(value)))) payloadFor(context, actor);
+  if (actions.some((value) => ['settle_cash', 'settle_payment'].includes(value))) {
+    if (!['owner', 'admin', 'cashier'].includes(actor.role.toLowerCase())) throw ApiError.forbidden('Settlement requires owner, admin or cashier role.');
+    const method = command.payment_method;
+    if (!['cash', 'upi', 'card'].includes(method) || command.payment_confirmed !== true) throw ApiError.badRequest('Explicit payment received confirmation is required.');
+    if (context.business.orderSettings?.paymentMethods?.[method] !== true) throw ApiError.badRequest(`${method.toUpperCase()} payments are disabled for this business.`);
+    if (command.payment_amount != null && cents(command.payment_amount) !== financials(context).totalAmount) {
+      throw ApiError.badRequest('Received amount poore bill se match nahi karta. Partial/split payment normal POS se kijiye.');
+    }
   }
+}
+
+function queuePrint(context, type, saved, items = null) {
+  if (!saved.printLog?._id || (items && !items.length)) return;
+  const order = JSON.parse(JSON.stringify(saved.order));
+  if (items) order.items = items;
+  context.printJobs ||= [];
+  context.printJobs.push({
+    id: saved.printLog._id.toString(), type, order,
+    kotNumber: saved.printLog.printNumber || '',
+  });
 }
 
 async function execute(context, action, command, actor, requestKey) {
@@ -233,6 +279,9 @@ async function execute(context, action, command, actor, requestKey) {
     context.session.stage = 'draft';
   } else if (action === 'send_kot') {
     const data = payloadFor(context, actor);
+    const delta = data.items.map((item) => ({
+      ...item, quantity: item.quantity - (context.kitchenItems.find((sent) => String(sent.productId) === String(item.productId))?.quantity || 0),
+    })).filter((item) => item.quantity > 0);
     const generated = await orderService.generatePosOrder(businessId, {
       ...data, isKOT: true, status: 'preparing', paymentMethod: 'kot pending',
       idempotencyKey: `chotu:${requestKey}`,
@@ -242,6 +291,7 @@ async function execute(context, action, command, actor, requestKey) {
       ...data, orderId: context.order._id.toString(), printType: 'kot', notes: `chotu:${fingerprint(context)}`,
     });
     context.order = saved.order;
+    queuePrint(context, 'kot', saved, delta);
     context.order.status = 'preparing';
     context.order.kotStatus = 'sent';
     context.order.kotNumber = (context.order.kotNumber || 0) + 1;
@@ -258,14 +308,19 @@ async function execute(context, action, command, actor, requestKey) {
       idempotencyKey: `chotu:${requestKey}`,
     });
     context.order = saved.order;
+    queuePrint(context, 'bill', saved);
     context.session.stage = 'billed';
     context.session.billFingerprint = fingerprint(context);
-  } else if (action === 'settle_cash') {
+  } else if (action === 'settle_cash' || action === 'settle_payment') {
     const settled = await orderService.settleOrder(businessId, context.order._id.toString(), {
-      paymentMethod: 'Cash', amountPaid: context.order.totalAmount,
+      paymentMethod: { cash: 'Cash', upi: 'UPI', card: 'Card' }[command.payment_method], amountPaid: context.order.totalAmount,
       staffId: actor.userId.toString(), staffRole: actor.role, CreatedByUserId: actor.userId.toString(),
     });
     context.order = settled.order;
+    // A completion turn prints the paid receipt, rather than an unpaid invoice
+    // immediately followed by a second bill for the same payment.
+    context.printJobs = (context.printJobs || []).filter((job) => job.type !== 'bill');
+    queuePrint(context, 'bill', settled);
     context.items = [];
     context.session.stage = 'completed';
   } else if (action !== 'view_order') {
@@ -312,7 +367,7 @@ async function snapshot(context) {
       tableNumber: table?.name || '', orderType: 'dineIn',
       items: context.items.map((item) => ({
         ...item,
-        gstPercent: gstPercentFor(context, productFor(context, item.productId)),
+        ...(!context.fixedInvoice ? { gstPercent: gstPercentFor(context, productFor(context, item.productId)) } : {}),
         kotQuantity: kotQuantityFor(item),
       })),
     },

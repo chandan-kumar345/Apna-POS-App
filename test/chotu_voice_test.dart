@@ -6,6 +6,11 @@ import 'package:apna_pos/core/services/speech_recognition_service.dart';
 import 'package:apna_pos/core/services/chotu_service.dart';
 import 'package:apna_pos/features/pos/widgets/chotu_mic_button.dart';
 import 'package:apna_pos/features/pos/widgets/chotu_voice_sheet.dart';
+import 'package:apna_pos/core/network/api_client.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'support/chotu_offline_adapter.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -13,12 +18,36 @@ void main() {
   group('Chotu AI Voice Assistant - Phase 1 Voice Foundation', () {
     late SpeechRecognitionService speechService;
     late ChotuService chotuService;
+    late HttpClientAdapter oldAdapter;
+    late List<Interceptor> oldInterceptors;
 
     setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      final dio = ApiClient().dio;
+      oldAdapter = dio.httpClientAdapter;
+      oldInterceptors = List.of(dio.interceptors);
+      dio.interceptors.clear();
+      dio.httpClientAdapter = ChotuOfflineAdapter();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('flutter.baseflow.com/permissions/methods'),
+            (call) async => call.method == 'requestPermissions' ? {7: 1} : 1,
+          );
       speechService = SpeechRecognitionService();
       chotuService = ChotuService();
       speechService.reset();
       chotuService.clearHistory();
+    });
+
+    tearDown(() {
+      ApiClient().dio.httpClientAdapter = oldAdapter;
+      ApiClient().dio.interceptors.addAll(oldInterceptors);
+      speechService.reset();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('flutter.baseflow.com/permissions/methods'),
+            null,
+          );
     });
 
     test('SpeechRecognitionService state transitions and simulation', () async {
@@ -37,44 +66,50 @@ void main() {
       expect(speechService.isListening, false);
     });
 
-    test('restarting speech discards old words without submitting them again', () async {
-      await speechService.startListening();
-      speechService.updateTranscription('old instruction');
-      final statuses = <SpeechStatus>[];
-      void listener() => statuses.add(speechService.status);
-      speechService.addListener(listener);
-      try {
+    test(
+      'restarting speech discards old words without submitting them again',
+      () async {
         await speechService.startListening();
-        expect(speechService.liveTranscription, isEmpty);
-        expect(statuses, isNot(contains(SpeechStatus.done)));
-        speechService.stopListening();
-        expect(speechService.status, SpeechStatus.idle);
-      } finally {
-        speechService.removeListener(listener);
-        speechService.reset();
-      }
-    });
+        speechService.updateTranscription('old instruction');
+        final statuses = <SpeechStatus>[];
+        void listener() => statuses.add(speechService.status);
+        speechService.addListener(listener);
+        try {
+          await speechService.startListening();
+          expect(speechService.liveTranscription, isEmpty);
+          expect(statuses, isNot(contains(SpeechStatus.done)));
+          speechService.stopListening();
+          expect(speechService.status, SpeechStatus.idle);
+        } finally {
+          speechService.removeListener(listener);
+          speechService.reset();
+        }
+      },
+    );
 
-    test('ChotuService local normalization handles Hindi numerals while preserving verbs', () async {
-      chotuService.setTableContext('5');
-      expect(chotuService.currentTableContext, '5');
+    test(
+      'ChotuService local normalization handles Hindi numerals while preserving verbs',
+      () async {
+        chotuService.setTableContext('5');
+        expect(chotuService.currentTableContext, '5');
 
-      // Transcribe Hinglish phrase with numeral 'do' and verbal 'laga do'
-      final result = await chotuService.transcribe(
-        speechText: 'Table 5 pe do butter naan aur ek paneer tikka laga do',
-        tableNumber: '5',
-      );
+        // Transcribe Hinglish phrase with numeral 'do' and verbal 'laga do'
+        final result = await chotuService.transcribe(
+          speechText: 'Table 5 pe do butter naan aur ek paneer tikka laga do',
+          tableNumber: '5',
+        );
 
-      expect(result.success, true);
-      // Check that "do butter naan" -> "2 butter naan", "ek" -> "1", and "laga do" remains verbal "laga do"
-      expect(result.transcription, contains('2 butter naan'));
-      expect(result.transcription, contains('1 paneer tikka'));
-      expect(result.transcription, contains('laga do'));
+        expect(result.success, true);
+        // Check that "do butter naan" -> "2 butter naan", "ek" -> "1", and "laga do" remains verbal "laga do"
+        expect(result.transcription, contains('2 butter naan'));
+        expect(result.transcription, contains('1 paneer tikka'));
+        expect(result.transcription, contains('laga do'));
 
-      // Check history
-      expect(chotuService.history.length, 1);
-      expect(chotuService.lastResult, isNotNull);
-    });
+        // Check history
+        expect(chotuService.history.length, 1);
+        expect(chotuService.lastResult, isNotNull);
+      },
+    );
 
     test('ChotuService handles Hindi number variations', () async {
       final result = await chotuService.transcribe(
@@ -87,7 +122,53 @@ void main() {
       expect(result.transcription, contains('kar do'));
     });
 
-    testWidgets('ChotuMicButton renders robot icon image and respects permission', (WidgetTester tester) async {
+    testWidgets(
+      'ChotuMicButton renders robot icon image and respects permission',
+      (WidgetTester tester) async {
+        final db = DatabaseService();
+        db.restaurant = RestaurantModel(
+          id: 'test_rest',
+          name: 'Test Dhaba',
+          tagline: 'Best food',
+          phone: '1234567890',
+          address: 'Delhi',
+          cuisineType: 'Indian',
+          enableChotuVoice: true,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: ChotuMicButton(tableNumber: '5', isCompact: true),
+              ),
+            ),
+          ),
+        );
+
+        expect(find.byType(Image), findsOneWidget);
+        expect(find.byTooltip('Chotu AI Voice Assistant'), findsOneWidget);
+
+        // Verify that when permission is disabled, the button hides completely
+        db.restaurant = db.restaurant!.copyWith(enableChotuVoice: false);
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: ChotuMicButton(tableNumber: '5', isCompact: true),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byType(Image), findsNothing);
+      },
+    );
+
+    testWidgets('Tapping ChotuMicButton opens transparent Chotu overlay', (
+      WidgetTester tester,
+    ) async {
       final db = DatabaseService();
       db.restaurant = RestaurantModel(
         id: 'test_rest',
@@ -102,50 +183,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: Center(
-              child: ChotuMicButton(tableNumber: '5', isCompact: true),
-            ),
-          ),
-        ),
-      );
-
-      expect(find.byType(Image), findsOneWidget);
-      expect(find.byTooltip('Chotu AI Voice Assistant'), findsOneWidget);
-
-      // Verify that when permission is disabled, the button hides completely
-      db.restaurant = db.restaurant!.copyWith(enableChotuVoice: false);
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: ChotuMicButton(tableNumber: '5', isCompact: true),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      expect(find.byType(Image), findsNothing);
-    });
-
-    testWidgets('Tapping ChotuMicButton opens transparent Chotu overlay', (WidgetTester tester) async {
-      final db = DatabaseService();
-      db.restaurant = RestaurantModel(
-        id: 'test_rest',
-        name: 'Test Dhaba',
-        tagline: 'Best food',
-        phone: '1234567890',
-        address: 'Delhi',
-        cuisineType: 'Indian',
-        enableChotuVoice: true,
-      );
-
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: ChotuMicButton(tableNumber: '5'),
-            ),
+            body: Center(child: ChotuMicButton(tableNumber: '5')),
           ),
         ),
       );
@@ -171,29 +209,30 @@ void main() {
       expect(find.byType(ChotuVoiceSheet), findsNothing);
     });
 
-    testWidgets('Android view: search field has decreased width and ChotuMicButton is beside search box (outside suffixIcon)', (WidgetTester tester) async {
-      final db = DatabaseService();
-      db.restaurant = RestaurantModel(
-        id: 'test_rest',
-        name: 'Test Dhaba',
-        tagline: 'Best food',
-        phone: '1234567890',
-        address: 'Delhi',
-        cuisineType: 'Indian',
-        enableChotuVoice: true,
-      );
+    testWidgets(
+      'Android view: search field has decreased width and ChotuMicButton is beside search box (outside suffixIcon)',
+      (WidgetTester tester) async {
+        final db = DatabaseService();
+        db.restaurant = RestaurantModel(
+          id: 'test_rest',
+          name: 'Test Dhaba',
+          tagline: 'Best food',
+          phone: '1234567890',
+          address: 'Delhi',
+          cuisineType: 'Indian',
+          enableChotuVoice: true,
+        );
 
-      // Render the Android search bar structure
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Container(
+        // Render the Android search bar structure
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
                       child: const TextField(
                         decoration: InputDecoration(
                           hintText: 'Search products by name or category...',
@@ -201,30 +240,42 @@ void main() {
                         ),
                       ),
                     ),
-                  ),
-                  if (db.isChotuVoiceEnabled) ...[
-                    const SizedBox(width: 10),
-                    const ChotuMicButton(isCompact: false),
+                    if (db.isChotuVoiceEnabled) ...[
+                      const SizedBox(width: 10),
+                      const ChotuMicButton(isCompact: false),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
 
-      // Verify TextField has no ChotuMicButton in suffixIcon
-      final textField = tester.widget<TextField>(find.byType(TextField));
-      expect(textField.decoration?.suffixIcon, isNull);
+        // Verify TextField has no ChotuMicButton in suffixIcon
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(textField.decoration?.suffixIcon, isNull);
 
-      // Verify ChotuMicButton is in the widget tree alongside TextField
-      expect(find.byType(ChotuMicButton), findsOneWidget);
+        // Verify ChotuMicButton is in the widget tree alongside TextField
+        expect(find.byType(ChotuMicButton), findsOneWidget);
 
-      // Verify Row contains both Expanded (TextField) and ChotuMicButton side by side
-      final row = tester.widget<Row>(find.byType(Row));
-      expect(row.children.length, greaterThanOrEqualTo(2));
-      expect(find.descendant(of: find.byType(Row), matching: find.byType(TextField)), findsOneWidget);
-      expect(find.descendant(of: find.byType(Row), matching: find.byType(ChotuMicButton)), findsOneWidget);
-    });
+        // Verify Row contains both Expanded (TextField) and ChotuMicButton side by side
+        final row = tester.widget<Row>(find.byType(Row));
+        expect(row.children.length, greaterThanOrEqualTo(2));
+        expect(
+          find.descendant(
+            of: find.byType(Row),
+            matching: find.byType(TextField),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(Row),
+            matching: find.byType(ChotuMicButton),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }

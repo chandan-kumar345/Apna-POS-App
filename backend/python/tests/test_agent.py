@@ -22,10 +22,13 @@ class AgentPolicyTests(unittest.TestCase):
         self.assertEqual(output["status"], "needs_confirmation")
         self.assertEqual(output["actions"], [])
 
-    def test_digital_payment_is_not_marked_paid(self):
-        output = plan(self.command("COMPLETE_ORDER", payment_method="upi", payment_confirmed=True), {"cartCount": 1})
-        self.assertEqual(output["status"], "unsupported")
-        self.assertEqual(output["actions"], [])
+    def test_digital_payment_requires_confirmation_and_supported_method(self):
+        for method in ["upi", "card"]:
+            command = self.command("COMPLETE_ORDER", payment_method=method)
+            self.assertEqual(plan(command, {"cartCount": 1})["actions"], [])
+            command["payment_confirmed"] = True
+            self.assertEqual(plan(command, {"cartCount": 1})["actions"][-1], "settle_payment")
+        self.assertEqual(plan(self.command("COMPLETE_ORDER", payment_method="crypto", payment_confirmed=True), {"cartCount": 1})["actions"], [])
 
     def test_missing_table_preserves_pending_instruction(self):
         output = plan(self.command("ADD_ITEM", table_number=None), {})

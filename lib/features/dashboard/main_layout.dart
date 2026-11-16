@@ -36,6 +36,7 @@ import '../staff/screens/staff_profile_screen.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/services/wallet_service.dart';
 import '../../core/services/local_notification_service.dart';
+import '../../core/widgets/chotu_activation_host.dart';
 
 
 /// Declarative Navigation Item Definition for dynamic sidebar rendering
@@ -1656,10 +1657,13 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    return ChotuActivationHost(child: _buildMainLayout(context));
+  }
+
+  Widget _buildMainLayout(BuildContext context) {
     final rest = db.restaurant;
     final user = db.currentUser;
     final companyTitle = rest?.name ?? user?.companyName ?? 'Tea Coffee';
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {

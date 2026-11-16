@@ -68,7 +68,7 @@ async function replayWithCurrentSnapshot(actor, existing, payloadHash) {
   if (session?.tableNumber && response.status !== 'needs_review') {
     try {
       const table = await tools.resolveTable(actor.businessId, session.tableNumber);
-      const context = await tools.loadContext(actor.businessId, table, session);
+      const context = await tools.loadContext(actor.businessId, table, session, { settlementOnly: existing.response?.intent === 'COMPLETE_ORDER' });
       response.currentSnapshot = plain({ stage: session.stage, ...await tools.snapshot(context) });
     } catch (_) { /* Read-only refresh is optional; never execute a replayed tool. */ }
   }
@@ -96,9 +96,17 @@ async function parse(actor, input, session, apiKey) {
   const language = `${input.text.toLowerCase().replace(/\btable\s+no\.?\s+/g, 'table number ')} ${lower}`;
   const negative = /\b(?:no|not|never|nahi|nahin|mat|dont|don't|pending|unpaid|without)\b/i.test(language);
   const hypothetical = /\b(?:if|when|after|before|once|unless|whether|maybe|perhaps|will|did|has|have|was|is|should)\b/i.test(language);
-  const cashQuestion = /[?]|\b(?:can|could|would)\b/i.test(language);
-  const cashReceived = !negative && !hypothetical && !cashQuestion && /\b(?:cash\s+(?:received|collected)|received\s+cash|cash\s+(?:mil|aa)\s+gay[ae]|cash\s+le\s+liya)\b/i.test(lower);
+  const cashQuestion = /[?]|\b(?:can|could|would|kya)\b/i.test(language);
+  const methods = ['cash', 'upi', 'card'].filter((method) => new RegExp(`\\b${method}\\b`).test(lower));
+  const selectedMethod = methods.length === 1 ? methods[0] : null;
+  const received = /\b(?:received|collected|successful|paid|mil\s+gay[ae]|aa\s+gay[ae]|le\s+liya|ho\s+gay[ae])\b/i.test(lower);
+  const pendingPayment = pending && ['cash', 'payment'].includes(pending.kind) && sameTable;
+  const affirmative = /^(?:yes|haan|han|confirm|confirmed|haan\s+confirm)(?:\s+(?:cash|upi|card))?[.!\s]*$/i.test(lower);
+  const methodReply = pendingPayment && /^(?:cash|upi|card)(?:\s+(?:se|mein|me))?[.!\s]*$/i.test(lower);
+  const paymentReceived = !negative && !hypothetical && !cashQuestion && received
+    && !!(selectedMethod || (pendingPayment && /\bpayment\b/.test(lower)));
   const complete = /\b(?:settle|checkout|complete\s+(?:the\s+)?order|order\s+(?:complete|finish)|finish\s+(?:the\s+)?order)\b/i.test(lower);
+  const amount = lower.match(/(?:₹|\b(?:rs\.?|inr|rupees|rupaye))\s*(\d+(?:\.\d+)?)\b|\b(\d+(?:\.\d+)?)\s*(?:rs|inr|rupees|rupaye)\b|\breceived\s+(\d+(?:\.\d+)?)\b/);
   const base = { table_number: table, confidence: 1 };
   if (/\b(?:take\s*away|takeaway|parcel|delivery)\b/i.test(lower)) {
     return { ...base, intent: 'SET_ORDER_TYPE', order_type: /\bdelivery\b/.test(lower) ? 'delivery' : 'takeaway' };
@@ -109,11 +117,17 @@ async function parse(actor, input, session, apiKey) {
   if (complete && /\b(?:add|laga|hata|remove|quantity|update)\b/i.test(lower)) {
     return { ...base, intent: 'UNKNOWN', ambiguity: true, question: 'Pehle item changes alag instruction mein confirm kijiye, phir order complete boliye.' };
   }
-  if (complete || cashReceived || (pending?.kind === 'cash' && sameTable && /^(?:yes|haan|han|confirm)[.!\s]*$/i.test(lower))) {
+  if (complete || paymentReceived || methodReply || (pendingPayment && affirmative)) {
+    if (methods.length > 1 || /\b(?:split|partial|advance|credit|udhaar|online|digital)\b/i.test(lower)) {
+      return { ...base, intent: 'UNKNOWN', ambiguity: true, question: 'Ek enabled payment method: Cash, UPI ya Card batayiye. Split/partial payments normal POS se kijiye.' };
+    }
+    const paymentMethod = selectedMethod || (pendingPayment ? pending.command?.payment_method : null);
     return {
       ...base, intent: 'COMPLETE_ORDER',
-      payment_method: /\b(?:upi|card|online)\b/.test(lower) ? 'digital' : 'cash',
-      payment_confirmed: cashReceived,
+      payment_method: paymentMethod,
+      payment_confirmed: !!paymentMethod && (paymentReceived || (pendingPayment && affirmative && !negative && !cashQuestion)),
+      pending_confirmation: !!pendingPayment && (affirmative || (!selectedMethod && paymentReceived)),
+      payment_amount: amount ? Number(amount[1] || amount[2] || amount[3]) : null,
     };
   }
   if (negative || hypothetical) {
@@ -138,7 +152,7 @@ async function parse(actor, input, session, apiKey) {
     userId: actor.userId, apiKey,
   });
   // LLM/provider output is never allowed to confirm a destructive or payment action.
-  return { ...parsed.command, confirmed: false, payment_confirmed: false, payment_method: 'cash' };
+  return { ...parsed.command, confirmed: false, payment_confirmed: false, payment_method: null };
 }
 
 async function runTurn(actor, rawInput, apiKey = null) {
@@ -192,8 +206,16 @@ async function runTurn(actor, rawInput, apiKey = null) {
       session.tableNumber = table.name;
       command.table_number = table.name;
     }
-    context = await tools.loadContext(actor.businessId, table, session);
+    context = await tools.loadContext(actor.businessId, table, session, {
+      settlementOnly: command.intent === 'COMPLETE_ORDER' || (command.intent === 'CHAT' && session.pending?.kind === 'payment'),
+    });
     tools.checkExpectedDraft(context, input.expectedDrafts);
+    if (command.pending_confirmation && (session.pending?.fingerprint !== context.fingerprint
+      || session.pending?.tableNumber !== table?.name
+      || String(session.pending?.orderId || '') !== String(context.order?._id || ''))) {
+      command.payment_confirmed = false;
+      command.confirmation_stale = true;
+    }
     if (context.order?.status === 'completed' && !context.items.length) session.stage = 'completed';
     else if (context.billCurrent) session.stage = 'billed';
     else if (context.kitchenCurrent) session.stage = 'kitchen';
@@ -202,6 +224,7 @@ async function runTurn(actor, rawInput, apiKey = null) {
     tools.preflight(context, plan.actions, command, actor);
     session.pending = plan.pending ? {
       kind: plan.pending, command: plain(command), createdAt: Date.now(), tableNumber: table?.name || '',
+      fingerprint: context.fingerprint, orderId: context.order?._id?.toString() || '',
     } : null;
     for (const action of plan.actions) {
       failedAction = action;
@@ -216,7 +239,8 @@ async function runTurn(actor, rawInput, apiKey = null) {
     const response = plain({
       status: plan.status, intent: command.intent, stage: session.stage,
       sessionId: input.sessionId, requestId: input.requestId,
-      chotuMessage: plan.message, steps: turn.steps, ...await tools.snapshot(context),
+      chotuMessage: plan.message, steps: turn.steps, printJobs: context.printJobs || [],
+      preserveLocalDraft: context.fixedInvoice && !context.order?.isPaid, ...await tools.snapshot(context),
     });
     turn.status = 'completed';
     turn.response = response;

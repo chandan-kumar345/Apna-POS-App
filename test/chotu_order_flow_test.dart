@@ -4,6 +4,11 @@ import 'package:apna_pos/core/database/database_service.dart';
 import 'package:apna_pos/core/services/chotu_service.dart';
 import 'package:apna_pos/core/services/speech_recognition_service.dart';
 import 'package:apna_pos/features/pos/widgets/chotu_voice_sheet.dart';
+import 'package:apna_pos/core/network/api_client.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'support/chotu_offline_adapter.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -11,12 +16,36 @@ void main() {
   group('Chotu AI Voice Assistant - Order Flow Automation (Phases 2 & 3)', () {
     late ChotuService chotuService;
     late SpeechRecognitionService speechService;
+    late HttpClientAdapter oldAdapter;
+    late List<Interceptor> oldInterceptors;
 
     setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      final dio = ApiClient().dio;
+      oldAdapter = dio.httpClientAdapter;
+      oldInterceptors = List.of(dio.interceptors);
+      dio.interceptors.clear();
+      dio.httpClientAdapter = ChotuOfflineAdapter();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('flutter.baseflow.com/permissions/methods'),
+            (call) async => call.method == 'requestPermissions' ? {7: 1} : 1,
+          );
       chotuService = ChotuService();
       speechService = SpeechRecognitionService();
       chotuService.clearHistory();
       speechService.reset();
+    });
+
+    tearDown(() {
+      ApiClient().dio.httpClientAdapter = oldAdapter;
+      ApiClient().dio.interceptors.addAll(oldInterceptors);
+      speechService.reset();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('flutter.baseflow.com/permissions/methods'),
+            null,
+          );
     });
 
     test('ChotuParsedCommand serialization and deserialization', () {
@@ -44,15 +73,20 @@ void main() {
             'modifiers': ['spicy'],
             'matched': true,
             'confidence': 0.95,
-          }
+          },
         ],
         'ambiguity': false,
         'question': null,
         'confidence': 0.95,
-        'chotu_response': 'Table 12 mein Butter Naan 2 aur Paneer Tikka 1 add kar diya.',
+        'chotu_response':
+            'Table 12 mein Butter Naan 2 aur Paneer Tikka 1 add kar diya.',
       };
 
-      final parsed = ChotuParsedCommand.fromMap(jsonMap, sessionId: 'sess_1', logId: 'log_1');
+      final parsed = ChotuParsedCommand.fromMap(
+        jsonMap,
+        sessionId: 'sess_1',
+        logId: 'log_1',
+      );
       expect(parsed.intent, 'ADD_ITEM');
       expect(parsed.tableNumber, '12');
       expect(parsed.tableContextMissing, false);
@@ -102,7 +136,8 @@ void main() {
         'ambiguity': true,
         'question': 'Coca Cola 300ml ya Coca Cola 750ml? Kaunsa add karna hai?',
         'confidence': 0.70,
-        'chotu_response': 'Coca Cola 300ml ya Coca Cola 750ml? Kaunsa add karna hai?',
+        'chotu_response':
+            'Coca Cola 300ml ya Coca Cola 750ml? Kaunsa add karna hai?',
       };
 
       final parsed = ChotuParsedCommand.fromMap(jsonMap);
@@ -110,72 +145,92 @@ void main() {
       expect(parsed.question, contains('Kaunsa add karna hai?'));
     });
 
-    test('ChotuService client fallback parses multi-item Hinglish command when offline', () async {
-      final parsed = await chotuService.parseCommand(
-        speechText: 'Table 7 pe 2 butter naan aur 1 dal makhani laga do',
-        tableNumber: '7',
-      );
+    test(
+      'ChotuService client fallback parses multi-item Hinglish command when offline',
+      () async {
+        final parsed = await chotuService.parseCommand(
+          speechText: 'Table 7 pe 2 butter naan aur 1 dal makhani laga do',
+          tableNumber: '7',
+        );
 
-      expect(parsed.intent, 'ADD_ITEM');
-      expect(parsed.tableNumber, '7');
-      expect(parsed.items.length, 2);
-      expect(parsed.items[0].quantity, 2);
-      expect(parsed.items[0].productName, contains('butter naan'));
-      expect(parsed.items[1].quantity, 1);
-      expect(parsed.items[1].productName, contains('dal makhani'));
-    });
+        expect(parsed.intent, 'ADD_ITEM');
+        expect(parsed.tableNumber, '7');
+        expect(parsed.items.length, 2);
+        expect(parsed.items[0].quantity, 2);
+        expect(parsed.items[0].productName, contains('butter naan'));
+        expect(parsed.items[1].quantity, 1);
+        expect(parsed.items[1].productName, contains('dal makhani'));
+      },
+    );
 
-    testWidgets('ChotuVoiceSheet opens directly in listening state', (WidgetTester tester) async {
+    testWidgets('ChotuVoiceSheet opens directly in listening state', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: Center(
-              child: ChotuVoiceSheet(tableNumber: '5'),
-            ),
+            body: Center(child: ChotuVoiceSheet(tableNumber: '5')),
           ),
         ),
       );
 
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.byType(BackdropFilter), findsOneWidget);
-      expect(find.byType(Image), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsWidgets);
+      expect(find.byType(Image), findsNothing);
       expect(find.text('Start'), findsNothing);
-      expect(find.text('Boliye sir, main sun raha hoon...'), findsOneWidget);
+      expect(speechService.isListening, isTrue);
+      expect(find.text('Listening…'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
     });
 
-    test('ChotuService handles permanent and temporary missing product addition', () async {
-      final service = ChotuService();
+    test(
+      'ChotuService handles permanent and temporary missing product addition',
+      () async {
+        final service = ChotuService();
 
-      // Test Permanent addition
-      await service.addMissingProductPermanently(
-        productName: 'Paneer Lababdar',
-        quantity: 2,
-        tableNumber: '5',
-        price: 260.0,
-      );
+        // Test Permanent addition
+        await service.addMissingProductPermanently(
+          productName: 'Paneer Lababdar',
+          quantity: 2,
+          tableNumber: '5',
+          price: 260.0,
+        );
 
-      final db = DatabaseService();
-      final hasMenuItem = db.menuItems.any((m) => m.name == 'Paneer Lababdar');
-      expect(hasMenuItem, true);
+        final db = DatabaseService();
+        final hasMenuItem = db.menuItems.any(
+          (m) => m.name == 'Paneer Lababdar',
+        );
+        expect(hasMenuItem, true);
 
-      final cart5 = db.getLiveTableCart('T-5');
-      expect(cart5.any((c) => c.item.name == 'Paneer Lababdar' && c.quantity == 2), true);
+        final cart5 = db.getLiveTableCart('T-5');
+        expect(
+          cart5.any((c) => c.item.name == 'Paneer Lababdar' && c.quantity == 2),
+          true,
+        );
 
-      // Test Temporary addition
-      await service.addMissingProductTemporarily(
-        productName: 'Special Seasonal Shake',
-        quantity: 1,
-        tableNumber: '5',
-        price: 120.0,
-      );
+        // Test Temporary addition
+        await service.addMissingProductTemporarily(
+          productName: 'Special Seasonal Shake',
+          quantity: 1,
+          tableNumber: '5',
+          price: 120.0,
+        );
 
-      // Should be in table cart, but NOT in permanent menu
-      final hasTempInMenu = db.menuItems.any((m) => m.name == 'Special Seasonal Shake');
-      expect(hasTempInMenu, false);
+        // Should be in table cart, but NOT in permanent menu
+        final hasTempInMenu = db.menuItems.any(
+          (m) => m.name == 'Special Seasonal Shake',
+        );
+        expect(hasTempInMenu, false);
 
-      final cart5Updated = db.getLiveTableCart('T-5');
-      expect(cart5Updated.any((c) => c.item.name == 'Special Seasonal Shake' && c.quantity == 1), true);
-    });
+        final cart5Updated = db.getLiveTableCart('T-5');
+        expect(
+          cart5Updated.any(
+            (c) => c.item.name == 'Special Seasonal Shake' && c.quantity == 1,
+          ),
+          true,
+        );
+      },
+    );
   });
 }

@@ -1239,3 +1239,16 @@ Evidence saved in live-order-deployment.json and backend-deployment-validation.j
 under build/product_details_validation/. Handset alert delivery was not tested
 using a real production order. Local automated verification remains 67 passing
 checks and the updated APK is installed. Live publication complete.
+
+
+## 2026-11-17 - Chotu voice, printing and settlement
+
+Finalized plan implemented locally: confirmed Cash/UPI/Card, preserved issued
+invoice money, durable native print jobs, better Hindi/Hinglish normalization,
+microphone startup and foreground wake/Android assistant entry. 112 backend
+tests, 12 Python, 76 Flutter regression checks and 19 final startup checks pass;
+analysis clean and final APK built in 211.7s. Full evidence, test corrections,
+artifact hash, screenshots and limits: docs/chotu-ai/VALIDATION_2026-11-17.md.
+No production DB changes/deployment. No connected phone; live mic/printer/OEM
+shortcut checks unavailable. Always-on background hotword remains a separate
+phase. Existing journal bytes preserved because this file has mixed encoding.

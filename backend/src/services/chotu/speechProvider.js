@@ -49,6 +49,23 @@ function transliterateDevanagari(text) {
 
   // Convert known food/POS compound words cleanly first
   const commonHindiWords = [
+    { hi: /फोन\s*पे|पेटीएम|गूगल\s*पे/g, en: 'upi' },
+    { hi: /(?:क्रेडिट|डेबिट)\s*कार्ड/g, en: 'card' },
+    { hi: /यूपीआई|यू\s*पी\s*आई|यू\.पी\.आई/gi, en: 'upi' },
+    { hi: /कैश|नकद/g, en: 'cash' },
+    { hi: /कार्ड/g, en: 'card' },
+    { hi: /रिसीव(?:्ड)?|प्राप्त/g, en: 'received' },
+    { hi: /मिल\s*गया|आ\s*गया/g, en: 'mil gaya' },
+    { hi: /हो\s*गया/g, en: 'ho gaya' },
+    { hi: /कन्फर्म|कंफर्म/g, en: 'confirm' },
+    { hi: /नहीं|नही/g, en: 'nahi' },
+    { hi: /मत/g, en: 'mat' },
+    { hi: /पेंडिंग|बाकी/g, en: 'pending' },
+    { hi: /क्या/g, en: 'kya' },
+    { hi: /रुपये|रुपए/g, en: 'rs' },
+    { hi: /हाँ|हां/g, en: 'haan' },
+    { hi: /अगर|यदि/g, en: 'if' },
+    { hi: /के\s*ओ\s*टी|के\.ओ\.टी/g, en: 'kot' },
     { hi: /टेबल/g, en: 'table' },
     { hi: /मेज/g, en: 'table' },
     { hi: /कोट|केओटी|के\.ओ\.टी|के\s+ओ\s+टी/g, en: 'kot' },
@@ -137,6 +154,14 @@ function transliterateDevanagari(text) {
 function normalizeSpokenText(text) {
   if (!text || typeof text !== 'string') return '';
   let clean = text.trim();
+  clean = clean.replace(/^(?:हेलो|हैलो|हे)\s+छोट[ूु][,।\s]*/u, '');
+  // Resolve spaced/acoustic POS abbreviations before number normalization.
+  clean = clean.replace(/\bk[.\s-]*o[.\s-]*t\b/gi, 'kot')
+    .replace(/\bu[.\s-]*p[.\s-]*i\b/gi, 'upi')
+    .replace(/\b(?:phone\s*pe|google\s*pay|g\s*pay|paytm)\b/gi, 'upi')
+    .replace(/\b(?:debit|credit)\s+card\b/gi, 'card')
+    .replace(/\b(?:nakad|naqad)\b/gi, 'cash')
+    .replace(/\b(?:cash|upi|card)\s+payment\s+(?:done|complete)\b/gi, (m) => m.replace(/(?:done|complete)$/i, 'received'));
 
   // 1. Devanagari numerals (०-९)
   const devanagariDigits = { '०': '0', '१': '1', '२': '2', '३': '3', '४': '4', '५': '5', '६': '6', '७': '7', '८': '8', '९': '9' };
@@ -177,7 +202,24 @@ function normalizeSpokenText(text) {
   }
 
   // 3. Transliterate remaining Devanagari Hindi text to Romanized Hindi/English
+  const hindiNumbers = {
+    'इक्कीस': 21, 'बाईस': 22, 'तेईस': 23, 'चौबीस': 24, 'पच्चीस': 25,
+    'छब्बीस': 26, 'सत्ताईस': 27, 'अट्ठाईस': 28, 'उनतीस': 29,
+    'इकतीस': 31, 'बत्तीस': 32, 'तैंतीस': 33, 'चौंतीस': 34, 'पैंतीस': 35,
+    'छत्तीस': 36, 'सैंतीस': 37, 'अड़तीस': 38, 'उनतालीस': 39,
+    'इकतालीस': 41, 'बयालीस': 42, 'तैंतालीस': 43, 'चवालीस': 44, 'पैंतालीस': 45,
+    'छियालीस': 46, 'सैंतालीस': 47, 'अड़तालीस': 48, 'उनचास': 49,
+  };
+  for (const [word, value] of Object.entries(hindiNumbers)) {
+    clean = clean.replace(new RegExp(`(?<![\\p{L}\\p{N}])${word}(?![\\p{L}\\p{N}])`, 'gu'), String(value));
+  }
   clean = transliterateDevanagari(clean);
+
+  const tens = { twenty: 20, thirty: 30, forty: 40, fourty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+  const units = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
+  clean = clean.replace(/\b(twenty|thirty|forty|fourty|fifty|sixty|seventy|eighty|ninety)[ -]+(one|two|three|four|five|six|seven|eight|nine)\b/gi,
+    (_, ten, unit) => String(tens[ten.toLowerCase()] + units[unit.toLowerCase()]));
+  clean = clean.replace(/\b(sixty|seventy|eighty|ninety)\b/gi, (word) => String(tens[word.toLowerCase()]));
 
   // 4. Protect Hindi imperative verbs ending in 'do' (e.g. laga do, kar do, bana do, bhej do, hata do)
   const verbDoMap = [];
@@ -228,7 +270,7 @@ function normalizeSpokenText(text) {
 
   // 7. Filter background chatter, filler artifacts, and conversation triggers
   clean = clean
-    .replace(/\b(umm+|ahh+|uhh+|hmmm+|hmm|arre\s+yaar|arre|suno|sun|chotu\s+sun|chotu|kripya|please)\b/gi, '')
+    .replace(/\b(hello\s+chotu|hey\s+chotu|umm+|ahh+|uhh+|hmmm+|hmm|arre\s+yaar|arre|suno|sun|chotu\s+sun|chotu|kripya|please)\b/gi, '')
     .replace(/\b(understand|understood|samjhe|samajh\s*gaye|samjh\s*gaye|samjha|samjh)\b/gi, '')
     .replace(/\[(?:noise|music|laughter|applause|cough|throat-clearing)\]/gi, '');
 

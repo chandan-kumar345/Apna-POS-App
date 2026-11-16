@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'core/widgets/chotu_activation_host.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/glass_theme.dart';
 import 'core/navigation/storefront_route.dart';
@@ -110,7 +111,7 @@ class _ApnaPosAppState extends State<ApnaPosApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: LocalNotificationService.navigatorKey,
-      navigatorObservers: [_permissionObserver],
+      navigatorObservers: [_permissionObserver, chotuRouteObserver],
       title: 'Apna POS - Smart Restaurant Billing',
       debugShowCheckedModeBanner: false,
       theme: GlassTheme.themeData,

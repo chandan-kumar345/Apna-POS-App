@@ -1,5 +1,22 @@
 # Current task state
 
+2026-11-17: Chotu voice follow-up implemented and validated locally. Confirmed
+enabled Cash/UPI/Card settlement, preserved issued invoice money, immutable
+native print jobs with durable claims, Hindi/Hinglish normalization and mic
+startup. Opt-in two-minute foreground Hello Chotu and Android assistant entry
+are added; background/lock/logout cancel capture/startup. Always-on background
+wake is a separate phase, not enabled here. Plan/guide/evidence are in
+docs/chotu-ai/VOICE_IMPLEMENTATION_PLAN_2026-11-16.md, VOICE_COMMANDS.md and
+VALIDATION_2026-11-17.md. No manual register/checkout/orderService logic changed.
+112 backend tests and 12 Python tests pass; 76 Flutter regression/render checks
+plus 19 final startup checks pass. Fourteen-file analysis clean. ARM64 profile
+APK built in 211.7s / 95,884,250 bytes. Artifact:
+build/chotu_voice_validation/apna-pos-chotu-voice.apk. Screenshot and logs/hash
+are in the same folder. No connected phone, so physical mic/printer/OEM shortcut
+checks remain unverified. No production DB changes, orders, payments or live
+deployment. Existing journal mixed-encoding bytes were preserved; evidence is
+linked from its appended entry.
+
 2026-11-15 completed: QR/storefront order alerts and acceptance fixes are
 published as e5698f8288ab4876a788c19c83dfcb49a86664e8 on origin/main.
 49 Flutter and 18 backend checks pass. Profile

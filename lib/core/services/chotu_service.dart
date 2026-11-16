@@ -11,6 +11,7 @@ import 'product_service.dart';
 import 'speech_recognition_service.dart';
 import 'chotu_gemini_client.dart';
 import 'chotu_automation_client.dart';
+import 'chotu_print_dispatcher.dart';
 
 class ChotuCommandItem {
   final String? productId;
@@ -421,7 +422,8 @@ class ChotuService extends ChangeNotifier {
         final snapshot = result['isDuplicate'] == true
             ? result['currentSnapshot'] as Map?
             : result;
-        if (snapshot != null && snapshot['table'] is Map && snapshot['cart'] is Map) {
+        if (snapshot != null && snapshot['table'] is Map && snapshot['cart'] is Map &&
+            !(result['preserveLocalDraft'] == true && (snapshot['order'] as Map?)?['isPaid'] != true)) {
           final target = snapshot['tableNumber']?.toString() ?? '';
           final current = db.getChotuDraftCart(target);
           final incoming = (snapshot['cart']['items'] as List? ?? const [])
@@ -454,6 +456,11 @@ class ChotuService extends ChangeNotifier {
             confidence: 1, chotuResponse: result['chotuMessage']?.toString() ?? '',
           ));
         }
+      }
+      if (_automationScope == scope && result['status'] == 'completed' && result['printJobs'] is List) {
+        final message = await ChotuPrintDispatcher().dispatch(scope, result['printJobs'] as List,
+          canDispatch: () => _automationScope == scope);
+        if (message != null) return {...result, 'chotuMessage': '${result['chotuMessage'] ?? ''} $message'};
       }
       return result;
     } catch (_) {

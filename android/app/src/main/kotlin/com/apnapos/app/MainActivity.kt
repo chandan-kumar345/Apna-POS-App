@@ -34,6 +34,20 @@ class MainActivity : FlutterActivity() {
     private var userPresentReceiver: BroadcastReceiver? = null
     private var fullScreenPermissionResult: MethodChannel.Result? = null
     private var fullScreenPermissionSettingsPaused = false
+    private var chotuActivationPending = false
+    private var chotuActivationExpiresAt = 0L
+
+    private fun handleChotuIntent(launch: Intent?) {
+        if (launch?.getBooleanExtra("chotu_activate", false) == true || launch?.action == Intent.ACTION_ASSIST) {
+            chotuActivationPending = true
+            chotuActivationExpiresAt = android.os.SystemClock.elapsedRealtime() + 120_000L
+            launch.removeExtra("chotu_activate")
+            if (launch.action == Intent.ACTION_ASSIST) launch.action = Intent.ACTION_MAIN
+            flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                MethodChannel(it, "com.apnapos.app/chotu_activation").invokeMethod("activate", null)
+            }
+        }
+    }
 
     private fun canUseOrderFullScreenIntent(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
@@ -72,13 +86,27 @@ class MainActivity : FlutterActivity() {
         registerUserPresentReceiver()
         wakeAndShowOverLockScreen()
         handleIncomingOrderIntent(intent)
+        handleChotuIntent(intent)
     }
 
     private fun registerUserPresentReceiver() {
         if (userPresentReceiver != null) return
         userPresentReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                    flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                        MethodChannel(it, "com.apnapos.app/chotu_activation").invokeMethod("deactivate", null)
+                    }
+                }
                 if (intent?.action == Intent.ACTION_USER_PRESENT) {
+                    flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                        MethodChannel(it, "com.apnapos.app/chotu_activation").invokeMethod("unlocked", null)
+                    }
+                    if (chotuActivationPending) {
+                        flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                            MethodChannel(it, "com.apnapos.app/chotu_activation").invokeMethod("activate", null)
+                        }
+                    }
                     try {
                         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                         var pendingPayload = prefs.getString("flutter.pending_incoming_order_payload", null)
@@ -99,6 +127,7 @@ class MainActivity : FlutterActivity() {
             }
         }
         val filter = IntentFilter(Intent.ACTION_USER_PRESENT)
+        filter.addAction(Intent.ACTION_SCREEN_OFF)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(userPresentReceiver, filter, Context.RECEIVER_EXPORTED)
@@ -169,6 +198,7 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         wakeAndShowOverLockScreen()
         handleIncomingOrderIntent(intent)
+        handleChotuIntent(intent)
     }
 
     fun bringAppToForeground(payload: String? = null) {
@@ -244,6 +274,27 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.apnapos.app/chotu_activation")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "consumeActivation" -> {
+                        val locked = (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isDeviceLocked
+                        val fresh = android.os.SystemClock.elapsedRealtime() < chotuActivationExpiresAt
+                        val pending = chotuActivationPending && fresh && !locked && isAppInForeground
+                        if (pending || !fresh) chotuActivationPending = false
+                        result.success(pending)
+                    }
+                    "openAssistantSettings" -> {
+                        try {
+                            startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+                            result.success(null)
+                        } catch (_: Exception) {
+                            result.error("UNAVAILABLE", "Assistant settings unavailable", null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         // Persisted payload covers cold launch; this event covers an already
         // resumed activity, where no lifecycle transition is generated.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.apnapos.app/incoming_order")

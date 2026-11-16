@@ -95,17 +95,21 @@ def plan(command, context):
         actions = [] if context.get("billCurrent") else ["generate_bill"]
         return result("completed", "Unpaid bill ready hai. Payment abhi pending hai.", actions)
     if intent == "COMPLETE_ORDER":
-        if command.get("payment_method", "cash").lower() != "cash":
-            return result("unsupported", "UPI/card payment existing POS payment flow mein verify kijiye. Order unpaid rahega.")
+        method = command.get("payment_method")
+        if method not in {"cash", "upi", "card"}:
+            return result("needs_confirmation", "Payment method batayiye: Cash, UPI ya Card. Payment abhi pending hai.", pending="payment")
+        label = {"cash": "Cash", "upi": "UPI", "card": "Card"}[method]
         if command.get("payment_confirmed") is not True:
-            return result("needs_confirmation", "Cash receive hone ke baad boliye: cash received, settle order.", pending="cash")
+            prefix = "Order badal gaya hai. " if command.get("confirmation_stale") else ""
+            total = context.get("totalAmount", 0)
+            return result("needs_confirmation", f"{prefix}{label} se poora bill Rs {total:.2f} receive hua? Verify karke boliye: haan confirm, ya cancel.", pending="payment")
         actions = []
         if not context.get("kitchenCurrent"):
             actions.append("send_kot")
         if not context.get("billCurrent"):
             actions.append("generate_bill")
-        actions.append("settle_cash")
-        return result("completed", "Cash settlement record ho gaya. Order complete hai.", actions)
+        actions.append("settle_cash" if method == "cash" else "settle_payment")
+        return result("completed", f"{label} payment record ho gaya. Order complete hai.", actions)
     return result("unsupported", "Please use the normal POS for this action.")
 
 

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "description": "ASR command normalization regression corpus; no model fine-tuning or customer audio.",
+  "examples": [
+    {"heard": "Hello Chotu table five pe two butter naan laga do", "normalized": "table 5 pe 2 butter naan laga do"},
+    {"heard": "हेलो छोटू टेबल पांच पर दो बटर नान लगा दो", "normalized": "table 5 par 2 butter naan laga do"},
+    {"heard": "K O T print karo", "normalized": "kot print karo"},
+    {"heard": "K.O.T kitchen bhej do", "normalized": "kot kitchen bhej do"},
+    {"heard": "के ओ टी प्रिंट करो", "normalized": "kot print kar do"},
+    {"heard": "कोट प्रिंट करो", "normalized": "kot print kar do"},
+    {"heard": "यू पी आई पेमेंट मिल गया सेटल कर दो", "normalized": "upi payment mil gaya settle kar do"},
+    {"heard": "UPI payment done", "normalized": "upi payment received"},
+    {"heard": "कैश पेमेंट मिल गया", "normalized": "cash payment mil gaya"},
+    {"heard": "कार्ड पेमेंट नहीं मिला", "normalized": "card payment nahi mila"},
+    {"heard": "हाँ कन्फर्म", "normalized": "haan confirm"},
+    {"heard": "अगर यूपीआई पेमेंट हो गया", "normalized": "if upi payment ho gaya"},
+    {"heard": "टेबल ५ के ओ टी मत प्रिंट करो", "normalized": "table 5 kot mat print kar do"},
+    {"heard": "क्या कैश पेमेंट मिल गया?", "normalized": "kya cash payment mil gaya?"},
+    {"heard": "Table twenty one pe two naan laga do", "normalized": "table 21 pe 2 naan laga do"},
+    {"heard": "टेबल बाईस पर दो बटर नान लगा दो", "normalized": "table 22 par 2 butter naan laga do"},
+    {"heard": "Table forty-five K O T print karo", "normalized": "table 45 kot print karo"},
+    {"heard": "टेबल इकतीस बिल प्रिंट करो", "normalized": "table 31 bill print kar do"},
+    {"heard": "PhonePe payment received settle bill", "normalized": "upi payment received settle bill"},
+    {"heard": "Google Pay payment not received", "normalized": "upi payment not received"},
+    {"heard": "credit card payment received", "normalized": "card payment received"},
+    {"heard": "फोन पे पेमेंट मिल गया", "normalized": "upi payment mil gaya"},
+    {"heard": "nakad received settle bill", "normalized": "cash received settle bill"}
+  ]
+}

@@ -5,7 +5,7 @@ const ApiError = require('../../utils/ApiError');
 const script = path.resolve(__dirname, '../../../python/chotu_agent/agent.py');
 const ACTIONS = new Set([
   'add_items', 'remove_item', 'set_quantity', 'send_kot', 'generate_bill',
-  'settle_cash', 'clear_draft', 'view_order',
+  'settle_cash', 'settle_payment', 'clear_draft', 'view_order',
 ]);
 
 function enabled() {

@@ -46,7 +46,7 @@ verified session. They are comparisons only and never choose the actor or tenant
 
 Python input: `{command, context}`. Output: `{status, actions, message}`. Valid
 actions are `add_items`, `remove_item`, `set_quantity`, `send_kot`,
-`generate_bill`, `settle_cash`, `clear_draft`, and `view_order`. Context includes
+`generate_bill`, `settle_cash`, `settle_payment`, `clear_draft`, and `view_order`. Context includes
 cart count, existing order state and whether kitchen/bill fingerprints match.
 
 ## State and persistence
@@ -92,8 +92,14 @@ at each agent turn; fully serialising manual POS writes is future work.
 - Reuse `orderService.generatePosOrder` for KOT and
   `saveAndPrintOrder` for invoice snapshots. Guard empty carts first because the
   general POS services allow fallback items.
-- Reuse `settleOrder` for a confirmed cash amount equal to the authoritative
-  invoice total; require cash to be enabled in business settings.
+- Reuse `settleOrder` for confirmed Cash/UPI/Card equal to the authoritative
+  invoice total; require that method to be enabled in business settings.
+  Follow-up confirmations expire in two minutes and bind to the table, order ID,
+  cart fingerprint and money values. Explicit partial amounts/split methods fail
+  before any KOT, invoice or payment side effect.
+- An issued manual bill can settle without repricing variants, discounts or
+  round-off. Require unchanged persisted cart lines and preserve the local POS
+  draft until settlement succeeds. New item/variant automation remains bounded.
 - Derive tax from `Business.orderSettings.tax` and product tax percentage,
   including `no_gst` and zero-rated products. Round monetary values to cents.
 - Reuse active table orders and stable order IDs. Do not select a restaurant's
@@ -104,8 +110,49 @@ at each agent turn; fully serialising manual POS writes is future work.
 
 ## Permissions, failures and privacy
 
+### Native print receipt dispatch (2026-11-16)
+
+Successful turns return immutable `printJobs` keyed by PrintLog ID. KOT jobs
+contain only quantities not in the previous kitchen snapshot. Completion returns
+the paid receipt instead of printing both an unpaid invoice and a paid bill.
+Flutter claims every job in SharedPreferences before printer I/O, serializes
+concurrent dispatch, checks the original account scope and reuses the existing
+Bluetooth/Windows printer service. Claimed/uncertain jobs are not auto-retried;
+staff check the printer and use existing Orders reprint if needed. A true write
+result means submitted to transport, not proof that paper physically printed.
+Claims are device-local: only the initiating device dispatches the receipt;
+session inspection on another device must not be used as a print command.
+
+### Activation and recognition (2026-11-16)
+
+The overlay starts recognition after access succeeds and resets partial speech
+when leaving the foreground. A short native final-result grace avoids submitting
+partial text ahead of a recognizer's final callback. Locale selection remains
+available for Hinglish/Hindi/English. The versioned corpus in
+backend/tests/fixtures/chotu_voice_commands.json covers ASR abbreviations,
+Hindi payment/negation, compound table numbers and command verbs. This is
+deterministic normalization and regression training material, not acoustic
+fine-tuning or a claim of measured voice accuracy.
+
+The authenticated main layout hosts opt-in, two-minute foreground standby.
+Only a finalized exact Hello Chotu opens the overlay; extra ambient command
+words do not execute. Navigation suspends standby; background, lock, logout and
+scope changes stop it. TTS and wake capture do not overlap. Android ACTION_ASSIST
+is a supported default-assistant entry; selection is done in system settings.
+Cold and warm requests only open the gated overlay, expire after two minutes,
+and wait for unlock. Power-button behavior is device/OEM controlled.
+
+Continuous screen-off/background wake is not enabled. A separate native phase
+needs an offline Hello Chotu keyword model, opt-in microphone foreground service
+started while visible, persistent Stop notification, no boot auto-listening,
+and real cafe-noise/battery/false-wake evaluation. Keep wake audio on device;
+use allowed assistant entry or a notification tap for background activation.
+Python remains the server planner, not an always-running Android microphone.
+See Android SpeechRecognizer and foreground-service restrictions referenced in
+VOICE_IMPLEMENTATION_PLAN_2026-11-16.md.
+
 POS permission is required for order capture. Owner/admin/cashier is required
-for cash settlement; body-supplied role or payment flags have no effect.
+for settlement; body-supplied role or payment flags have no effect.
 Missing runtime/provider/database causes an explicit failure. The new Flutter
 path never falls back to local mutation after a POST may have executed.
 

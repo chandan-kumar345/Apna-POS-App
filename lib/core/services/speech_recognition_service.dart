@@ -35,6 +35,7 @@ class SpeechRecognitionService extends ChangeNotifier {
   StreamSubscription? _stdoutSub;
   Timer? _silenceTimer;
   Timer? _speechTimeoutTimer;
+  Timer? _nativeFinalTimer;
   int _generation = 0;
   bool _starting = false;
 
@@ -72,6 +73,7 @@ class SpeechRecognitionService extends ChangeNotifier {
     _starting = true;
     _silenceTimer?.cancel();
     _speechTimeoutTimer?.cancel();
+    _nativeFinalTimer?.cancel();
     _cleanupProcess();
     _status = SpeechStatus.idle;
     _liveTranscription = '';
@@ -123,17 +125,24 @@ class SpeechRecognitionService extends ChangeNotifier {
           onStatus: (status) {
             debugPrint('[SpeechRecognitionService:Mobile] Status: $status');
             if (status == 'done' || status == 'notListening') {
-              if (_starting) return;
-              if (_liveTranscription.trim().isNotEmpty) {
-                _onSpeechCompleted();
-              } else if (_status == SpeechStatus.listening) {
-                _status = SpeechStatus.idle;
-                _audioLevel = 0.0;
-                notifyListeners();
-              }
+              if (_starting || _status != SpeechStatus.listening) return;
+              // Some recognizers send notListening before their final result.
+              final activeGeneration = _generation;
+              _nativeFinalTimer?.cancel();
+              _nativeFinalTimer = Timer(const Duration(milliseconds: 350), () {
+                if (activeGeneration != _generation || !isListening) return;
+                if (_liveTranscription.trim().isNotEmpty) {
+                  _onSpeechCompleted();
+                } else {
+                  _status = SpeechStatus.idle;
+                  _audioLevel = 0.0;
+                  notifyListeners();
+                }
+              });
             }
           },
           onError: (err) {
+            if (_status != SpeechStatus.listening) return;
             debugPrint('[SpeechRecognitionService:Mobile] Error: ${err.errorMsg}');
             if (err.errorMsg == 'error_no_match' || err.errorMsg == 'error_speech_timeout') {
               if (_liveTranscription.trim().isNotEmpty) {
@@ -396,6 +405,7 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
 
   /// Automatically triggered when speech recognition finishes or silence is detected (Google Voice Search style)
   void _onSpeechCompleted() {
+    _nativeFinalTimer?.cancel();
     _silenceTimer?.cancel();
     _speechTimeoutTimer?.cancel();
     _cleanupProcess();
@@ -427,6 +437,7 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
 
   /// Stop listening and finalize captured speech
   void stopListening() {
+    _nativeFinalTimer?.cancel();
     _generation++;
     _starting = false;
     _silenceTimer?.cancel();
@@ -458,6 +469,7 @@ if ($res -ne $null -and $res.Confidence -ge 0.18 -and $res.Text.Trim().Length -g
 
   /// Reset speech state
   void reset() {
+    _nativeFinalTimer?.cancel();
     _generation++;
     _starting = false;
     _silenceTimer?.cancel();

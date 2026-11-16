@@ -67,3 +67,13 @@ No frontend edits, production database mutation, deployment or commit requested.
 4. Install the profile build, repeat a reversible native-phone quantity burst,
    remove test items and inspect logs. Live authenticated cloud sync needs the
    device's missing token restored through normal sign-in.
+# Chotu voice follow-up — 2026-11-16
+
+Execute sequentially: diagnosis → confirmed multi-method settlement → durable
+native printing → recognition/foreground wake + assistant entry → regression
+and Android build. Plan: docs/chotu-ai/VOICE_IMPLEMENTATION_PLAN_2026-11-16.md.
+
+2026-11-17: local implementation and validation complete. 112 backend, 12 Python,
+76 Flutter regression/render plus 19 final startup checks pass; analysis clean;
+APK build 211.7s. Evidence: docs/chotu-ai/VALIDATION_2026-11-17.md. Physical device
+checks and the separate continuous background keyword-model phase remain.

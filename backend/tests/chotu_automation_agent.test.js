@@ -215,7 +215,7 @@ describe('Python Chotu agent: authoritative order lifecycle', () => {
     expect(reduced.cart.items[0]).toMatchObject({ quantity: 1, kotQuantity: 1 });
   });
 
-  it('requires confirmation to clear, binds confirmation to the table, and refuses digital settlement', async () => {
+  it('requires confirmation to clear and payment selection alone cannot settle', async () => {
     await turn('Table 5 pe ek butter naan laga do');
     const clear = await turn('Clear cart');
     expect(clear.status).toBe('needs_confirmation');
@@ -224,11 +224,121 @@ describe('Python Chotu agent: authoritative order lifecycle', () => {
     expect((await Cart.findOne({ businessId, tableNumber: 'T-5' })).items).toHaveLength(1);
     await turn('Select table 5');
     const digital = await turn('Settle order with UPI');
-    expect(digital.status).toBe('unsupported');
+    expect(digital.status).toBe('needs_confirmation');
     expect(await Sale.countDocuments({ businessId })).toBe(0);
     const negative = await turn('Cash not received, settle order');
     expect(negative.status).toBe('needs_confirmation');
     expect(negative.steps).toEqual([]);
+  });
+
+  it.each(['cash', 'upi', 'card'])('settles confirmed %s once using existing sale and receipt services', async (method) => {
+    await Business.updateOne({ _id: businessId }, { $set: { [`orderSettings.paymentMethods.${method}`]: true } });
+    await turn('Table 5 pe do butter naan laga do');
+    const selection = await turn(`Settle bill with ${method}`);
+    expect(selection.status).toBe('needs_confirmation');
+    expect(selection.steps).toEqual([]);
+    expect(selection.chotuMessage).toContain('84.00');
+    const paid = await turn('Haan confirm', { requestId: 'confirmed-payment' });
+    expect(paid.status).toBe('completed');
+    expect(paid.order.isPaid).toBe(true);
+    expect(paid.order.paymentMethod.toLowerCase()).toBe(method);
+    expect(paid.table.status).toBe('free');
+    expect(paid.printJobs.map((job) => job.type)).toEqual(['kot', 'bill']);
+    expect(paid.printJobs.at(-1).order.isPaid).toBe(true);
+    const replay = await turn('Haan confirm', { requestId: 'confirmed-payment' });
+    expect(replay.printJobs).toEqual(paid.printJobs);
+    expect(await Sale.countDocuments({ businessId })).toBe(1);
+    expect((await Product.findById(naan._id)).stock).toBe(48);
+  });
+
+  it('asks for a method and binds confirmation to the unchanged table and total', async () => {
+    await turn('Table 5 pe ek butter naan laga do');
+    expect((await turn('Settle bill')).status).toBe('needs_confirmation');
+    expect((await turn('UPI')).status).toBe('needs_confirmation');
+    await Cart.updateOne({ businessId, tableNumber: 'T-5' }, { $set: { 'items.0.quantity': 2 } });
+    const changed = await turn('Yes');
+    expect(changed.status).toBe('needs_confirmation');
+    expect(changed.chotuMessage).toContain('84.00');
+    expect(await Sale.countDocuments({ businessId })).toBe(0);
+    await turn('Select table 6');
+    expect((await turn('Haan confirm')).steps).toEqual([]);
+    expect(await Sale.countDocuments({ businessId })).toBe(0);
+  });
+
+  it('preflights disabled methods before creating KOT, bill or payment', async () => {
+    await turn('Table 5 pe ek butter naan laga do');
+    await Business.updateOne({ _id: businessId }, { $set: { 'orderSettings.paymentMethods.card': false } });
+    const denied = await turn('Card payment received, settle bill');
+    expect(denied.status).toBe('rejected');
+    expect(await Order.countDocuments({ businessId })).toBe(0);
+    expect(await PrintLog.countDocuments({ businessId })).toBe(0);
+  });
+
+  it('does not settle an explicit underpayment or split payment as a full bill', async () => {
+    await turn('Table 5 pe ek butter naan laga do');
+    for (const text of ['Cash received 10 rupees, settle bill', 'UPI received Rs 20 settle order', 'cash and card received settle bill']) {
+      const response = await turn(text);
+      expect(response.steps).toEqual([]);
+    }
+    expect(await Sale.countDocuments({ businessId })).toBe(0);
+    expect(await Order.countDocuments({ businessId })).toBe(0);
+    expect((await turn('Cash received 42 rupees, settle bill')).order.isPaid).toBe(true);
+  });
+
+  it('settles an existing manual invoice without repricing variants, discounts or round-off', async () => {
+    await Product.updateOne({ _id: naan._id }, { $set: { variants: [{ name: 'Large', price: 50 }] } });
+    const saved = await orderService.saveAndPrintOrder(businessId, {
+      orderType: 'dineIn', tableNumber: 'T-5',
+      items: [{ productId: String(naan._id), name: 'Butter Naan (Large)', quantity: 2, price: 50, variantName: 'Large' }],
+      subtotal: 100, discountAmount: 10, taxAmount: 4.5, totalAmount: 95, roundOff: 0.5,
+      printType: 'bill', notes: 'manual-invoice',
+    });
+    saved.order.roundOff = 0.5;
+    await saved.order.save();
+    const before = JSON.parse(JSON.stringify(saved.order));
+    await require('../src/services/cartService').syncCart(businessId, {
+      orderType: 'dineIn', tableNumber: 'T-5',
+      items: [{ productId: String(naan._id), name: 'Butter Naan', quantity: 2, price: 50, effectivePrice: 50, variantName: 'Large' }],
+    });
+    const selection = await turn('Table 5 settle UPI');
+    if (selection.status !== 'needs_confirmation') throw new Error(JSON.stringify(selection));
+    expect(selection).toMatchObject({ status: 'needs_confirmation', preserveLocalDraft: true });
+    const paid = await turn('Haan confirm');
+    expect(paid.steps).toEqual(['settle_payment']);
+    expect(paid.order).toMatchObject({
+      isPaid: true, totalAmount: before.totalAmount, taxAmount: before.taxAmount,
+      discountAmount: before.discountAmount, roundOff: before.roundOff,
+    });
+    expect(JSON.parse(JSON.stringify((await Order.findById(saved.order._id)).items))).toEqual(before.items);
+    expect(paid.order.items[0]).toMatchObject({ price: 50, name: 'Butter Naan (Large)' });
+    expect(paid.printJobs).toHaveLength(1);
+    expect(await Sale.countDocuments({ businessId })).toBe(1);
+  });
+
+  it('understands Hindi UPI confirmation and rejects hypothetical, negative and expired approvals', async () => {
+    await turn('टेबल पांच पर एक बटर नान लगा दो');
+    for (const text of ['UPI payment not received, settle bill', 'If UPI received settle bill', 'Card payment received? Settle order', 'यूपीआई पेमेंट नहीं मिला, सेटल करो']) {
+      expect((await turn(text)).steps).toEqual([]);
+    }
+    await turn('Settle bill UPI');
+    await Session.updateOne({ businessId, sessionId }, { $set: { 'pending.createdAt': Date.now() - 180000 } });
+    expect((await turn('Yes')).steps).toEqual([]);
+    expect(await Sale.countDocuments({ businessId })).toBe(0);
+    const paid = await turn('यूपीआई पेमेंट मिल गया सेटल कर दो');
+    expect(paid.order.isPaid).toBe(true);
+    expect(paid.order.paymentMethod).toBe('UPI');
+  });
+
+  it('returns immutable delta KOT jobs and no print job for a repeated KOT', async () => {
+    await turn('Table 5 pe ek butter naan laga do');
+    const first = await turn('के ओ टी प्रिंट करो');
+    expect(first.printJobs[0]).toMatchObject({ type: 'kot', order: { items: [{ quantity: 1 }] } });
+    expect((await turn('Print K O T')).printJobs).toEqual([]);
+    await turn('Ek butter naan aur add karo');
+    const next = await turn('KOT print karo');
+    expect(next.printJobs[0].order.items[0].quantity).toBe(1);
+    expect(next.order.items[0].quantity).toBe(2);
+    expect(next.printJobs[0].id).not.toBe(first.printJobs[0].id);
   });
 
   it('never invents an order for an empty cart', async () => {
