@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
+import '../../core/navigation/storefront_route.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 import '../onboarding/business_settings_screen.dart';
@@ -4313,7 +4314,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Table QR Ordering',
-                            subtitle: 'apnaposs.vercel.app/${restaurant?.storefrontSlug ?? "company-name"}?R=R1&T=T01',
+                            subtitle: buildPublicStorefrontUri(
+                              restaurant?.storefrontSlug ?? 'company-name',
+                              restaurantCode: 'R1',
+                              tableCode: 'T01',
+                            ).toString().replaceFirst('https://', ''),
                             icon: Icons.qr_code_2_rounded,
                             accentColor: const Color(0xFF10B981),
                             badgeText: '${db.tables.length} Tables',
@@ -4329,7 +4334,9 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Customer Web Menu',
-                            subtitle: 'apnaposs.vercel.app/${restaurant?.storefrontSlug ?? "company-name"}',
+                            subtitle: buildPublicStorefrontUri(
+                              restaurant?.storefrontSlug ?? 'company-name',
+                            ).toString().replaceFirst('https://', ''),
                             icon: Icons.storefront_rounded,
                             accentColor: const Color(0xFFE65100),
                             badgeText: 'Online',
@@ -4687,8 +4694,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   Widget _buildCustomerStorefrontPreviewCard(RestaurantModel? restaurant, {required bool isMobile}) {
     final db = DatabaseService();
     final slug = restaurant?.storefrontSlug ?? 'company-name';
-    final storeUrl = 'https://apnaposs.vercel.app/$slug';
-    final displayUrl = 'https://apnaposs.vercel.app/$slug';
+    final storeUrl = buildPublicStorefrontUri(slug).toString();
     final isOnline = db.isStorefrontOnline;
     final themeColorHex = db.storefrontThemeColor;
     final themeColor = Color(themeColorHex);
@@ -4867,7 +4873,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       );
                     },
                     child: Text(
-                      displayUrl,
+                      storeUrl,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       softWrap: false,
@@ -5727,9 +5733,15 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                 child: Row(
                   children: [
-                    const Text(
-                      'apnaposs.vercel.app/',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: controller,
+                      builder: (_, value, _) {
+                        final uri = buildPublicStorefrontUri(RestaurantModel.slugify(value.text));
+                        return Text(
+                          '${uri.host}/${uri.pathSegments.length > 1 ? 'store/' : ''}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                        );
+                      },
                     ),
                     Expanded(
                       child: TextField(
@@ -5758,7 +5770,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       if (ctx.mounted) Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Store link updated to: apnaposs.vercel.app/$cleanSlug'),
+                          content: Text('Store link updated to: ${buildPublicStorefrontUri(cleanSlug).toString().replaceFirst('https://', '')}'),
                           backgroundColor: const Color(0xFF16A34A),
                           behavior: SnackBarBehavior.floating,
                         ),

@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'core/widgets/chotu_activation_host.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/glass_theme.dart';
 import 'core/navigation/storefront_route.dart';
+import 'core/navigation/merchant_section.dart';
+import 'core/navigation/merchant_web_router.dart';
 import 'core/database/database_service.dart';
 import 'core/services/sound_service.dart';
 import 'core/services/local_notification_service.dart';
@@ -72,9 +75,12 @@ void main() async {
     }
   }
 
-  // Launch via Customer Storefront (if web store URL), SuperAdmin on web, or fast animated SplashScreen
+  // Resolve public, admin, and merchant entry points before starting Flutter's
+  // navigation. A protected merchant URL must never skip session restoration.
+  final entryUri = Uri.base;
+  Uri? merchantWebLocation;
   Widget initialHome;
-  final webStoreParams = parseStorefrontRoute(Uri.base, isWeb: kIsWeb);
+  final webStoreParams = parseStorefrontRoute(entryUri, isWeb: kIsWeb);
   if (kIsWeb && webStoreParams != null && webStoreParams.slug.isNotEmpty) {
     await _initializeAppServices(waitForEndpoint: true);
     initialHome = CustomerStorefrontScreen(
@@ -82,23 +88,60 @@ void main() async {
       tableCode: webStoreParams.tableCode,
       restaurantCode: webStoreParams.restaurantCode,
     );
-  } else if (kIsWeb &&
-      (Uri.base.path.toLowerCase().contains('admin') ||
-          Uri.base.path.toLowerCase().contains('super'))) {
+  } else if (kIsWeb && _isAdminEntry(entryUri)) {
     await _initializeAppServices(waitForEndpoint: true);
     initialHome = const SuperAdminLoginScreen();
   } else {
     // Paint the branded first frame before any asynchronous service setup.
-    initialHome = const SplashScreen(initialize: _initializeAppServices);
+    if (kIsWeb) {
+      usePathUrlStrategy();
+      merchantWebLocation = entryUri;
+    }
+    initialHome = SplashScreen(
+      initialize: _initializeAppServices,
+      openLoginWhenSignedOut:
+          kIsWeb &&
+          (MerchantSection.fromUri(entryUri) != null ||
+              entryUri.path == '/login'),
+    );
   }
 
-  runApp(ProviderScope(child: ApnaPosApp(initialHome: initialHome)));
+  runApp(
+    ProviderScope(
+      child: ApnaPosApp(
+        initialHome: initialHome,
+        merchantWebLocation: merchantWebLocation,
+      ),
+    ),
+  );
+}
+
+bool _isAdminEntry(Uri uri) {
+  final segments = uri.pathSegments.where((segment) => segment.isNotEmpty);
+  final namespace =
+      segments.isNotEmpty && segments.first.toLowerCase() != 'index.html'
+      ? segments.first
+      : uri.fragment
+            .replaceFirst(RegExp(r'^/+'), '')
+            .split(RegExp(r'[/\?]'))
+            .first;
+  return const {
+    'admin',
+    'super',
+    'superadmin',
+    'super-admin',
+  }.contains(namespace.toLowerCase());
 }
 
 class ApnaPosApp extends StatefulWidget {
   final Widget initialHome;
+  final Uri? merchantWebLocation;
 
-  const ApnaPosApp({super.key, required this.initialHome});
+  const ApnaPosApp({
+    super.key,
+    required this.initialHome,
+    this.merchantWebLocation,
+  });
 
   @override
   State<ApnaPosApp> createState() => _ApnaPosAppState();
@@ -106,51 +149,109 @@ class ApnaPosApp extends StatefulWidget {
 
 class _ApnaPosAppState extends State<ApnaPosApp> {
   final _permissionObserver = PostLoginPermissionObserver();
+  MerchantWebRouterDelegate? _merchantRouter;
+  PlatformRouteInformationProvider? _merchantRouteInformation;
+
+  @override
+  void initState() {
+    super.initState();
+    final location = widget.merchantWebLocation;
+    if (location == null) return;
+    final relative = MerchantRouteParser.relativeUri(location);
+    _merchantRouteInformation = PlatformRouteInformationProvider(
+      initialRouteInformation: RouteInformation(uri: relative),
+    );
+    _merchantRouter = MerchantWebRouterDelegate(
+      navigatorKey: LocalNotificationService.navigatorKey,
+      initialUri: relative,
+      initialHome: widget.initialHome,
+      onGenerateRoute: _onGenerateRoute,
+      observers: [_permissionObserver, chotuRouteObserver],
+    );
+  }
+
+  @override
+  void dispose() {
+    _merchantRouteInformation?.dispose();
+    _merchantRouter?.dispose();
+    super.dispose();
+  }
+
+  Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
+    final name = settings.name;
+    final page = switch (name) {
+      '/splash' => const SplashScreen(),
+      '/login' => const LoginScreen(),
+      '/get-started' => const GetStartedScreen(),
+      // Route names can also arrive from browser history. Never use them to
+      // construct an authenticated shell without running the startup guard.
+      '/dashboard' =>
+        kIsWeb
+            ? const SplashScreen(
+                initialize: _initializeAppServices,
+                openLoginWhenSignedOut: true,
+              )
+            : const MainLayout(),
+      '/admin' => const SuperAdminLoginScreen(),
+      '/admin/dashboard' =>
+        _merchantRouter == null
+            ? const SuperAdminLayout()
+            : const SuperAdminLoginScreen(),
+      _ => null,
+    };
+    if (page != null) {
+      return MaterialPageRoute(builder: (_) => page, settings: settings);
+    }
+    if (!kIsWeb) {
+      return MaterialPageRoute(
+        builder: (_) => widget.initialHome,
+        settings: settings,
+      );
+    }
+    final uri = Uri.tryParse(name ?? '');
+    final storefront = uri == null
+        ? null
+        : parseStorefrontRoute(uri, isWeb: true);
+    if (storefront == null) return null;
+    return MaterialPageRoute(
+      builder: (_) => CustomerStorefrontScreen(
+        slug: storefront.slug,
+        restaurantCode: storefront.restaurantCode,
+        tableCode: storefront.tableCode,
+      ),
+      settings: settings,
+    );
+  }
+
+  Widget _wrapApp(BuildContext context, Widget? child) =>
+      SoundFeedbackWrapper(child: child ?? const SizedBox.shrink());
 
   @override
   Widget build(BuildContext context) {
+    final merchantRouter = _merchantRouter;
+    if (merchantRouter != null) {
+      return MaterialApp.router(
+        routeInformationProvider: _merchantRouteInformation,
+        routeInformationParser: const MerchantRouteParser(),
+        routerDelegate: merchantRouter,
+        title: 'Apna POS - Smart Restaurant Billing',
+        debugShowCheckedModeBanner: false,
+        theme: GlassTheme.themeData,
+        builder: _wrapApp,
+      );
+    }
     return MaterialApp(
       navigatorKey: LocalNotificationService.navigatorKey,
       navigatorObservers: [_permissionObserver, chotuRouteObserver],
       title: 'Apna POS - Smart Restaurant Billing',
       debugShowCheckedModeBanner: false,
       theme: GlassTheme.themeData,
-      builder: (context, child) {
-        return SoundFeedbackWrapper(child: child ?? const SizedBox.shrink());
-      },
+      builder: _wrapApp,
       // Native notification intents are consumed by LocalNotificationService.
       // Do not let a platform route bypass splash/session restoration.
       initialRoute: kIsWeb ? null : Navigator.defaultRouteName,
       home: widget.initialHome,
-      routes: {
-        '/splash': (context) => const SplashScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/get-started': (context) => const GetStartedScreen(),
-        '/dashboard': (context) => const MainLayout(),
-        '/admin': (context) => const SuperAdminLoginScreen(),
-        '/admin/dashboard': (context) => const SuperAdminLayout(),
-      },
-      onGenerateRoute: (settings) {
-        if (!kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => widget.initialHome,
-            settings: settings,
-          );
-        }
-        final uri = Uri.tryParse(settings.name ?? '');
-        final storefront = uri == null
-            ? null
-            : parseStorefrontRoute(uri, isWeb: kIsWeb);
-        if (storefront == null) return null;
-        return MaterialPageRoute(
-          builder: (_) => CustomerStorefrontScreen(
-            slug: storefront.slug,
-            restaurantCode: storefront.restaurantCode,
-            tableCode: storefront.tableCode,
-          ),
-          settings: settings,
-        );
-      },
+      onGenerateRoute: _onGenerateRoute,
     );
   }
 }

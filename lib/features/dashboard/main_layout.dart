@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/navigation/merchant_section.dart';
+import '../../core/navigation/merchant_web_router.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
@@ -80,6 +83,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   bool _isStaffDropdownOpen = false;
   bool _isWalletBalancePopupOpen = false;
   bool _isCheckingSubscriptionNavigation = false;
+  MerchantWebRouterDelegate? _webNavigation;
+  int _webSectionRequest = 0;
   String? _selectedTableForPos;
   OrderType? _selectedOrderTypeForPos;
   int _posTableSelectionToken = 0;
@@ -392,6 +397,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           _initInitialAccessibleTab();
         }
       });
+      if (accessChanged) _reportWebSection(replace: true);
     }
   }
 
@@ -404,7 +410,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     return true;
   }
 
-  void _selectTab(int index) {
+  void _selectTab(int index, {bool fromHistory = false, bool replaceUrl = false}) {
+    if (!fromHistory) _webSectionRequest++;
     if (!_canAccessTab(index)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -419,7 +426,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
     if (_selectedIndex != index) {
       setState(() {
-        _tabHistory.add(_selectedIndex);
+        if (!fromHistory) _tabHistory.add(_selectedIndex);
         _selectedIndex = index;
         if (index != 1) {
           _isPosFullScreen = false;
@@ -431,6 +438,126 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     } else if (index == 0) {
       _dashboardKey.currentState?.refreshDashboard();
     }
+    _reportWebSection(replace: fromHistory || replaceUrl);
+  }
+
+  void _reportWebSection({bool replace = false}) {
+    final navigation = _webNavigation;
+    final section = MerchantSection.fromTabIndex(_selectedIndex);
+    if (navigation == null || section == null || db.currentUser == null) return;
+    if (navigation.currentConfiguration == Uri(path: section.path)) return;
+    if (replace) {
+      Router.neglect(context, () => navigation.reportSection(section));
+    } else {
+      Router.navigate(context, () => navigation.reportSection(section));
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final navigation = MerchantWebRouterDelegate.maybeOf(context);
+    if (identical(navigation, _webNavigation)) return;
+    _webNavigation?.detach(_onWebSectionRequested);
+    _webNavigation = navigation;
+    if (navigation == null || db.currentUser == null) return;
+    navigation.attach(_onWebSectionRequested);
+    final requested = navigation.consumeRequestedSection();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || db.currentUser == null || _webNavigation != navigation) return;
+      if (requested == null) {
+        _reportWebSection(replace: true);
+      } else {
+        _onWebSectionRequested(requested);
+      }
+    });
+  }
+
+  void _onWebSectionRequested(MerchantSection section) {
+    if (!mounted || db.currentUser == null) return;
+    final request = ++_webSectionRequest;
+    final navigator = Navigator.of(context);
+    final shell = ModalRoute.of(context);
+    // Pop transient subroutes when the browser changes sections. The shell
+    // underneath stays mounted, including its offstage POS cart.
+    if (shell != null && shell.isActive && !shell.isCurrent) {
+      navigator.popUntil((route) => identical(route, shell));
+    }
+    if (_isSidebarOpen) _closeSidebar();
+    final index = section.index;
+    if (!_canAccessTab(index)) {
+      _selectTab(index); // Uses the standard access-denied notice.
+      _reportWebSection(replace: true);
+      return;
+    }
+    unawaited(_openSection(
+      index,
+      title: _getAvailableNavItems().firstWhere((item) => item.index == index).title,
+      fromHistory: true,
+      webRequest: request,
+    ));
+  }
+
+  Future<void> _openSection(
+    int index, {
+    required String title,
+    bool isPremium = false,
+    bool closeSidebar = false,
+    bool fromHistory = false,
+    int? webRequest,
+  }) async {
+    if (!_canAccessTab(index)) {
+      _selectTab(index, fromHistory: fromHistory);
+      if (fromHistory) _reportWebSection(replace: true);
+      return;
+    }
+
+    if (!fromHistory && _isCheckingSubscriptionNavigation) return;
+    final request = webRequest ?? ++_webSectionRequest;
+    final paidFeature = isPremium || index == 5 || index == 8;
+    if (paidFeature) {
+      final userId = db.currentUser?.id;
+      final businessId = db.currentBusinessId;
+      _isCheckingSubscriptionNavigation = true;
+      try {
+        await SubscriptionService().refreshAccess();
+      } finally {
+        _isCheckingSubscriptionNavigation = false;
+      }
+      if (!mounted || request != _webSectionRequest ||
+          db.currentUser?.id != userId || db.currentBusinessId != businessId) {
+        return;
+      }
+      if (!_canAccessTab(index)) {
+        _selectTab(index, fromHistory: fromHistory);
+        if (fromHistory) _reportWebSection(replace: true);
+        return;
+      }
+    }
+
+    if (closeSidebar) _closeSidebar();
+    if (paidFeature && !db.isSubscribed) {
+      if (fromHistory) _reportWebSection(replace: true);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SubscriptionScreen(
+            sourceFeature: title.toLowerCase(),
+            onNavigateToFeature: (target) {
+              if (target.contains('inventory')) {
+                _selectTab(5);
+              } else if (target.contains('loyalty')) {
+                _selectTab(8);
+              } else if (target.contains('campaign')) {
+                _selectTab(9);
+              }
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    _selectTab(index, fromHistory: fromHistory);
   }
 
   void _navigateToRootTab() {
@@ -510,6 +637,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
   @override
   void dispose() {
+    _webNavigation?.detach(_onWebSectionRequested);
     db.removeListener(_onDbUserChanged);
     _sidebarController.dispose();
     super.dispose();
@@ -1682,6 +1810,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             setState(() {
               _selectedIndex = prevIndex;
             });
+            _reportWebSection(replace: true);
             return;
           }
         }
@@ -1693,6 +1822,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           setState(() {
             _selectedIndex = rootIndex;
           });
+          _reportWebSection(replace: true);
           return;
         }
 
@@ -2172,59 +2302,12 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     final double textOpacity = isSmallScreen ? 1.0 : ((expansionFactor - 0.25) / 0.75).clamp(0.0, 1.0);
     final double badgeCornerOpacity = isSmallScreen ? 0.0 : (1.0 - (expansionFactor / 0.35)).clamp(0.0, 1.0);
 
-    Future<void> onTapAction() async {
-      if (!isPermitted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Access Restricted: You do not have permission for $title.'),
-            backgroundColor: const Color(0xFFDC2626),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
-
-      if (_isCheckingSubscriptionNavigation) return;
-      final paidFeature = isPremium || index == 5 || index == 8;
-      if (paidFeature) {
-        final userId = db.currentUser?.id;
-        final businessId = db.currentBusinessId;
-        _isCheckingSubscriptionNavigation = true;
-        try {
-          await SubscriptionService().refreshAccess();
-        } finally {
-          _isCheckingSubscriptionNavigation = false;
-        }
-        if (!mounted || db.currentUser?.id != userId || db.currentBusinessId != businessId) return;
-      }
-      final bool requiresSubscriptionUnlock = paidFeature && !db.isSubscribed;
-      if (requiresSubscriptionUnlock) {
-        if (isSmallScreen) _closeSidebar();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SubscriptionScreen(
-              sourceFeature: title.toLowerCase(),
-              onNavigateToFeature: (target) {
-                if (target.contains('inventory')) {
-                  _selectTab(5);
-                } else if (target.contains('loyalty')) {
-                  _selectTab(8);
-                } else if (target.contains('campaign')) {
-                  _selectTab(9);
-                }
-              },
-            ),
-          ),
-        );
-      } else {
-        _selectTab(index);
-        if (isSmallScreen) {
-          _closeSidebar();
-        }
-      }
-    }
+    Future<void> onTapAction() => _openSection(
+      index,
+      title: title,
+      isPremium: isPremium,
+      closeSidebar: isSmallScreen,
+    );
 
     final bool isCollapsedRail = !isSmallScreen && expansionFactor < 0.35;
     final bool showTileHighlight = isSelected && !isCollapsedRail;

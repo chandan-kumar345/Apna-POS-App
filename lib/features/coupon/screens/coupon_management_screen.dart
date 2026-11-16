@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/coupon_model.dart';
+import '../../../core/navigation/storefront_route.dart';
 import '../../../core/services/coupon_service.dart';
 import '../../storefront/models/storefront_model.dart';
 import '../../storefront/screens/customer_storefront_screen.dart';
@@ -1200,7 +1201,7 @@ class _CouponManagementScreenState extends State<CouponManagementScreen> {
                         style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white),
                       ),
                       Text(
-                        'apnaposs.vercel.app/$storeSlug',
+                        buildPublicStorefrontUri(storeSlug).toString().replaceFirst('https://', ''),
                         style: TextStyle(fontSize: 9, color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.w500),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

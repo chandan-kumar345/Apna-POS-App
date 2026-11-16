@@ -1,3 +1,38 @@
+import 'merchant_section.dart';
+
+const _adminRoots = {'admin', 'super', 'superadmin', 'super-admin'};
+const _protectedRoots = {
+  ..._adminRoots,
+  'login',
+  'splash',
+  'get-started',
+  'index.html',
+  'onboarding',
+};
+
+/// Builds a public link without mistaking a business name for an app section.
+/// Ordinary slugs keep their existing URLs, while reserved slugs use /store/.
+Uri buildPublicStorefrontUri(
+  String slug, {
+  String? restaurantCode,
+  String? tableCode,
+}) {
+  final cleanSlug = slug.trim().isEmpty ? 'store' : slug.trim();
+  final root = cleanSlug.toLowerCase();
+  final reserved =
+      _protectedRoots.contains(root) || MerchantSection.isRouteRoot(root);
+  final query = {
+    if (restaurantCode?.trim().isNotEmpty == true) 'R': restaurantCode!.trim(),
+    if (tableCode?.trim().isNotEmpty == true) 'T': tableCode!.trim(),
+  };
+  return Uri(
+    scheme: 'https',
+    host: 'apnaposs.vercel.app',
+    pathSegments: [if (reserved) 'store', cleanSlug],
+    queryParameters: query.isEmpty ? null : query,
+  );
+}
+
 // Public restaurant URLs are a web entry point. Native order intents use the
 // notification bridge and must never be interpreted as restaurant slugs.
 class StorefrontRouteParams {
@@ -13,7 +48,22 @@ class StorefrontRouteParams {
 }
 
 StorefrontRouteParams? parseStorefrontRoute(Uri uri, {required bool isWeb}) {
-  if (!isWeb) return null;
+  if (!isWeb || MerchantSection.fromUri(uri) != null) return null;
+
+  final pathTableMarker = RegExp(
+    r'(?:^|[&,])(?:T|TABLE)\s*=\s*[^&,]+|^T[0-9]+$',
+    caseSensitive: false,
+  );
+  final pathSegments = uri.pathSegments
+      .where((s) => s.trim().isNotEmpty)
+      .toList();
+  final root = pathSegments.firstOrNull?.toLowerCase();
+  final fragment = uri.fragment.replaceAll(RegExp(r'^[/#]+'), '').trim();
+  if (_adminRoots.contains(root)) return null;
+  if (root == null || root == 'index.html') {
+    final fragmentRoot = fragment.split(RegExp(r'[/\?]')).first.toLowerCase();
+    if (_adminRoots.contains(fragmentRoot)) return null;
+  }
 
   String? slug;
   String? rCode =
@@ -24,6 +74,7 @@ StorefrontRouteParams? parseStorefrontRoute(Uri uri, {required bool isWeb}) {
       uri.queryParameters['T'] ??
       uri.queryParameters['t'] ??
       uri.queryParameters['table'] ??
+      uri.queryParameters['TABLE'] ??
       uri.queryParameters['tableNumber'];
 
   void parseSegmentForParams(String seg) {
@@ -42,6 +93,17 @@ StorefrontRouteParams? parseStorefrontRoute(Uri uri, {required bool isWeb}) {
         }
       }
     } catch (_) {}
+  }
+
+  bool canUseBareSlug(List<String> segments) {
+    final first = segments.first.toLowerCase();
+    if (_protectedRoots.contains(first)) return false;
+    if (!MerchantSection.isRouteRoot(first)) return true;
+    // Preserve existing QR links for a restaurant whose name collides with a
+    // new merchant route. A plain path without a table stays reserved.
+    if (slug != null) return false;
+    if (tCode?.trim().isNotEmpty == true) return true;
+    return segments.length > 1 && pathTableMarker.hasMatch(segments[1]);
   }
 
   // 1. Query parameter: ?store=company-name or ?slug=company-name, ?table=T02, ?t=2, etc.
@@ -69,20 +131,9 @@ StorefrontRouteParams? parseStorefrontRoute(Uri uri, {required bool isWeb}) {
   }
 
   // 2. Direct Path: /company-name or /company-name/R=R1&T=T01
-  final pathSegments = uri.pathSegments
-      .where((s) => s.trim().isNotEmpty)
-      .toList();
   if (pathSegments.isNotEmpty) {
     final first = pathSegments.first.toLowerCase();
-    if (![
-      'admin',
-      'super',
-      'login',
-      'splash',
-      'dashboard',
-      'get-started',
-      'index.html',
-    ].contains(first)) {
+    if (canUseBareSlug(pathSegments)) {
       if (first == 'store' && pathSegments.length > 1) {
         slug = pathSegments[1].toLowerCase();
         if (pathSegments.length > 2) {
@@ -98,21 +149,27 @@ StorefrontRouteParams? parseStorefrontRoute(Uri uri, {required bool isWeb}) {
   }
 
   // 3. Fragment: #/company-name/R=R1&T=T01
-  final fragment = uri.fragment.replaceAll(RegExp(r'^[/#]+'), '').trim();
   if (fragment.isNotEmpty) {
-    final fragParts = fragment.split('?');
-    final fragPath = fragParts[0];
-    if (fragParts.length > 1) {
-      final qPairs = fragParts[1].split('&');
-      for (final qp in qPairs) {
-        final kv = qp.split('=');
-        if (kv.length == 2) {
-          final k = kv[0].trim().toUpperCase();
-          final v = kv[1].trim();
-          if (k == 'R') rCode ??= v;
-          if (k == 'T' || k == 'TABLE') tCode ??= v;
-        }
+    final queryStart = fragment.indexOf('?');
+    final fragPath = queryStart >= 0
+        ? fragment.substring(0, queryStart)
+        : fragment;
+    if (queryStart >= 0) {
+      final query = Uri.tryParse('/${fragment.substring(queryStart)}');
+      final params = (query?.queryParameters ?? const <String, String>{}).map(
+        (name, value) => MapEntry(name.toLowerCase(), value),
+      );
+      final fragmentSlug = params['store'] ?? params['slug'];
+      if (fragmentSlug?.trim().isNotEmpty == true) {
+        slug ??= fragmentSlug!.trim().toLowerCase();
       }
+      rCode ??= params['r'] ?? params['restaurant'] ?? params['restaurantcode'];
+      tCode ??=
+          params['t'] ??
+          params['table'] ??
+          params['tablenumber'] ??
+          params['tablecode'] ??
+          params['tableno'];
     }
     final fragSegments = fragPath
         .split('/')
@@ -120,14 +177,7 @@ StorefrontRouteParams? parseStorefrontRoute(Uri uri, {required bool isWeb}) {
         .toList();
     if (fragSegments.isNotEmpty) {
       final first = fragSegments.first.toLowerCase();
-      if (![
-        'admin',
-        'super',
-        'login',
-        'splash',
-        'dashboard',
-        'get-started',
-      ].contains(first)) {
+      if (canUseBareSlug(fragSegments)) {
         if (first == 'store' && fragSegments.length > 1) {
           slug ??= fragSegments[1].toLowerCase();
           if (fragSegments.length > 2) {

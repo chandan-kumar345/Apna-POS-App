@@ -7,14 +7,19 @@ import '../onboarding/business_settings_screen.dart';
 import '../onboarding/restaurant_onboarding_screen.dart';
 import 'create_profile_screen.dart';
 import 'get_started_screen.dart';
+import 'login_screen.dart';
 
 /// Resolve the locally restored session after startup, without a network gate.
 /// Keep incomplete owners on their saved setup step, as at interactive login.
 ({Widget screen, String routeName}) resolveStartupDestination({
   required UserModel? user,
   bool businessOnboarded = false,
+  bool openLoginWhenSignedOut = false,
 }) {
   if (user == null || user.id.trim().isEmpty) {
+    if (openLoginWhenSignedOut) {
+      return (screen: const LoginScreen(), routeName: '/login');
+    }
     return (screen: const GetStartedScreen(), routeName: '/get-started');
   }
   if (!user.isOwner || user.onboardingCompleted || businessOnboarded) {

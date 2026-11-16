@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/models/table_model.dart';
+import '../../core/navigation/storefront_route.dart';
 import '../../core/network/api_endpoints.dart';
 import '../storefront/screens/customer_storefront_screen.dart';
 
@@ -258,8 +259,11 @@ class _TableQrDownloadScreenState extends State<TableQrDownloadScreen> {
   }
 
   String _buildTableDirectUrl(int tableNum) {
-    final tCode = _formatTableCode(tableNum);
-    return 'https://apnaposs.vercel.app/$_companySlug?R=$_restaurantCode&T=$tCode';
+    return buildPublicStorefrontUri(
+      _companySlug,
+      restaurantCode: _restaurantCode,
+      tableCode: _formatTableCode(tableNum),
+    ).toString();
   }
 
   List<String> get _floors {

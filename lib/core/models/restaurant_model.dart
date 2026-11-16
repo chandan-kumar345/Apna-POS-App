@@ -1,3 +1,5 @@
+import '../navigation/storefront_route.dart';
+
 class RestaurantModel {
   final String id;
   final String name;
@@ -54,7 +56,7 @@ class RestaurantModel {
     return id.isNotEmpty ? 'store-$id' : 'apna-store';
   }
 
-  String get storefrontUrl => 'https://apnaposs.vercel.app/$storefrontSlug';
+  String get storefrontUrl => buildPublicStorefrontUri(storefrontSlug).toString();
 
   bool get showItemImages => posViewMode != 'without_image';
 

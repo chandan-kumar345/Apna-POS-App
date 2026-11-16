@@ -16,9 +16,15 @@ class SplashScreen extends StatefulWidget {
   static const completedLogoHoldDuration = Duration(milliseconds: 650);
   final Widget? targetScreenOverride;
   final Future<void> Function()? initialize;
+  final bool openLoginWhenSignedOut;
   static bool isSplashActive = true;
 
-  const SplashScreen({super.key, this.targetScreenOverride, this.initialize});
+  const SplashScreen({
+    super.key,
+    this.targetScreenOverride,
+    this.initialize,
+    this.openLoginWhenSignedOut = false,
+  });
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -140,6 +146,7 @@ class _SplashScreenState extends State<SplashScreen>
     final destination = resolveStartupDestination(
       user: db.currentUser,
       businessOnboarded: db.restaurant?.isOnboarded ?? false,
+      openLoginWhenSignedOut: widget.openLoginWhenSignedOut,
     );
     final targetScreen = widget.targetScreenOverride ?? destination.screen;
 
