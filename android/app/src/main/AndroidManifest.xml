@@ -80,6 +80,11 @@
                 <action android:name="FLUTTER_NOTIFICATION_CLICK" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Fallback assist receiver: immediately forwards to ChotuAssistActivity and finishes -->
+            <intent-filter android:priority="1">
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
         <!-- Dedicated transparent floating overlay for Chotu AI Voice Assistant triggered by hardware button -->
@@ -87,7 +92,7 @@
             android:name=".ChotuAssistActivity"
             android:exported="true"
             android:launchMode="singleInstance"
-            android:taskAffinity="com.apnapos.app.assist"
+            android:taskAffinity=""
             android:excludeFromRecents="true"
             android:theme="@style/ChotuAssistTheme"
             android:showWhenLocked="true"
@@ -95,7 +100,7 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <intent-filter>
+            <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

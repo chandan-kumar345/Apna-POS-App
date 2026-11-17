@@ -66,6 +66,35 @@ Future<void> _initializeAppServices({bool waitForEndpoint = false}) async {
   if (waitForEndpoint) await endpointReady;
 }
 
+/// Dedicated Dart entry point for Chotu AI voice assistant when activated via
+/// hardware button / Android Digital Assistant. Runs in a transparent activity
+/// directly over the native Android home screen without touching SplashScreen,
+/// MainLayout, or POS dashboard.
+@pragma('vm:entry-point')
+void chotuAssistMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _initializeAppServices();
+  runApp(
+    const ProviderScope(
+      child: ChotuAssistantApp(),
+    ),
+  );
+}
+
+class ChotuAssistantApp extends StatelessWidget {
+  const ChotuAssistantApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Chotu AI Assistant',
+      debugShowCheckedModeBanner: false,
+      theme: GlassTheme.themeData,
+      home: const ChotuAssistantOverlayScreen(),
+    );
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
@@ -76,21 +105,39 @@ void main() async {
     }
   }
 
-  // Resolve public, admin, and merchant entry points before starting Flutter's
-  // navigation. A protected merchant URL must never skip session restoration.
-  final entryUri = Uri.base;
-  Uri? merchantWebLocation;
-  Widget initialHome;
+  // Check if this instance is running in ChotuAssistActivity (via MethodChannel or route)
+  bool isAssistActivity = false;
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      isAssistActivity = await const MethodChannel('com.apnapos.app/chotu_assist_overlay')
+          .invokeMethod<bool>('isAssistActivity') ?? false;
+    } catch (_) {}
+  }
+
   final defaultPlatformRoute =
       WidgetsBinding.instance.platformDispatcher.defaultRouteName;
-  final isChotuAssist = !kIsWeb && defaultPlatformRoute == '/chotu-assist';
+  final isChotuAssist = isAssistActivity ||
+      (!kIsWeb &&
+          (defaultPlatformRoute == '/chotu-assist' ||
+              defaultPlatformRoute.contains('chotu')));
 
   if (isChotuAssist) {
     // Spun up via hardware assistant button as a transparent native overlay.
     // Initialize offline DB and printer without showing splash or POS layout.
     await _initializeAppServices();
-    initialHome = const ChotuAssistantOverlayScreen();
-  } else {
+    runApp(
+      const ProviderScope(
+        child: ChotuAssistantApp(),
+      ),
+    );
+    return;
+  }
+
+  // Resolve public, admin, and merchant entry points before starting Flutter's
+  // navigation. A protected merchant URL must never skip session restoration.
+  final entryUri = Uri.base;
+  Uri? merchantWebLocation;
+  Widget initialHome;
     final webStoreParams = parseStorefrontRoute(entryUri, isWeb: kIsWeb);
     if (kIsWeb && webStoreParams != null && webStoreParams.slug.isNotEmpty) {
       await _initializeAppServices(waitForEndpoint: true);
@@ -116,7 +163,6 @@ void main() async {
                 entryUri.path == '/login'),
       );
     }
-  }
 
   runApp(
     ProviderScope(

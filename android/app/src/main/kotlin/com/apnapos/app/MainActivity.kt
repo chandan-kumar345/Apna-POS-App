@@ -68,6 +68,16 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (intent?.action == Intent.ACTION_ASSIST || intent?.getBooleanExtra("chotu_activate", false) == true) {
+            val assistIntent = Intent(this, ChotuAssistActivity::class.java).apply {
+                action = Intent.ACTION_ASSIST
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
+            }
+            startActivity(assistIntent)
+            finish()
+            overridePendingTransition(0, 0)
+            return
+        }
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             splashScreen.setOnExitAnimationListener { view ->
@@ -205,6 +215,14 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_ASSIST || intent.getBooleanExtra("chotu_activate", false) == true) {
+            val assistIntent = Intent(this, ChotuAssistActivity::class.java).apply {
+                action = Intent.ACTION_ASSIST
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
+            }
+            startActivity(assistIntent)
+            return
+        }
         super.onNewIntent(intent)
         setIntent(intent)
         wakeAndShowOverLockScreen()
@@ -307,6 +325,13 @@ class MainActivity : FlutterActivity() {
                             result.error("UNAVAILABLE", "Assistant settings unavailable", null)
                         }
                     }
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.apnapos.app/chotu_assist_overlay")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isAssistActivity" -> result.success(false)
                     else -> result.notImplemented()
                 }
             }

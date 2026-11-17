@@ -53,10 +53,9 @@ class _ChotuAssistantOverlayScreenState
         if (didPop) return;
         _close();
       },
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        resizeToAvoidBottomInset: false,
-        body: ChotuVoiceSheet(
+      child: Material(
+        color: Colors.transparent,
+        child: ChotuVoiceSheet(
           autoStartListening: true,
           onClose: _close,
         ),

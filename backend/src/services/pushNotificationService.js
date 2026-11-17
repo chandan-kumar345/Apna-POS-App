@@ -165,7 +165,7 @@ class PushNotificationService {
   /**
    * Send push notification asynchronously (non-blocking)
    */
-  async sendPushNotification({ userId, token: explicitToken, platform: explicitPlatform, title, message, data = {}, sentTokens = null }) {
+  async sendPushNotification({ userId, token: explicitToken, platform: explicitPlatform, title, message, data = {}, sentTokens = null, imageUrl = null }) {
     try {
       const uid = userId ? userId.toString() : null;
       let token = explicitToken || (uid ? this.deviceTokens.get(uid) : null);
@@ -250,6 +250,9 @@ class PushNotificationService {
         androidTag = `chat_${data.chatId || data.customerPhone || 'msg'}`;
       }
 
+      // Resolve image URL for rich BigPicture notification (Cloudflare R2 or direct public URL)
+      const effectiveImageUrl = imageUrl || data.imageUrl || data.image || (data.type === 'daily_sales_summary' ? 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png' : null);
+
       // Sanitize all data entries into strings (FCM requirement for data payload)
       const sanitizedData = {};
       for (const [key, val] of Object.entries({ title, message, ...data })) {
@@ -260,6 +263,10 @@ class PushNotificationService {
       sanitizedData['click_action'] = 'FLUTTER_NOTIFICATION_CLICK';
       if (androidTag) {
         sanitizedData['notificationTag'] = androidTag;
+      }
+      if (effectiveImageUrl) {
+        sanitizedData['imageUrl'] = effectiveImageUrl;
+        sanitizedData['image'] = effectiveImageUrl;
       }
 
       // FCM High-Priority Payload
@@ -281,6 +288,7 @@ class PushNotificationService {
             default_vibrate_timings: true,
             default_light_settings: true,
             click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            ...(effectiveImageUrl ? { image: effectiveImageUrl } : {}),
             ...(androidTag ? { tag: androidTag } : {}),
           },
         },
@@ -290,14 +298,17 @@ class PushNotificationService {
           sound: 'notification_sound',
           android_channel_id: channelId,
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          ...(effectiveImageUrl ? { image: effectiveImageUrl } : {}),
           ...(androidTag ? { tag: androidTag } : {}),
         },
         data: sanitizedData,
       };
 
       // Android must execute the background handler to use device-local sound
-      // preferences. A notification block bypasses it while the app is sleeping.
-      if (platform === 'android') {
+      // preferences for orders. A notification block bypasses it while the app is sleeping.
+      // For image notifications (e.g. daily sales summary BigPicture banner), keeping the
+      // notification block is REQUIRED for Android OS to download and render the banner natively!
+      if (platform === 'android' && !effectiveImageUrl && isOrderRequest) {
         delete fcmPayload.notification;
         delete fcmPayload.android.notification;
       }
@@ -317,6 +328,7 @@ class PushNotificationService {
                 notification: {
                   title,
                   body: message,
+                  ...(effectiveImageUrl ? { image: effectiveImageUrl } : {}),
                 },
                 android: {
                   priority: 'HIGH',
@@ -331,6 +343,7 @@ class PushNotificationService {
                     default_vibrate_timings: true,
                     default_light_settings: true,
                     click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                    ...(effectiveImageUrl ? { image: effectiveImageUrl } : {}),
                     ...(androidTag ? { tag: androidTag } : {}),
                   },
                 },
@@ -351,7 +364,7 @@ class PushNotificationService {
               },
             };
 
-            if (platform === 'android') {
+            if (platform === 'android' && !effectiveImageUrl && isOrderRequest) {
               delete v1Payload.message.notification;
               delete v1Payload.message.android.notification;
             }

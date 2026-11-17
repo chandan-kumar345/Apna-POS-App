@@ -311,6 +311,7 @@ class SalesNotificationBannerGenerator {
     final titleSpan = const TextSpan(
       text: 'Daily Sales Summary',
       style: TextStyle(
+        fontFamily: 'Roboto',
         color: Colors.white,
         fontSize: 32.0,
         fontWeight: FontWeight.w800,
@@ -347,6 +348,7 @@ class SalesNotificationBannerGenerator {
     final dateSpan = TextSpan(
       text: dateLabel,
       style: const TextStyle(
+        fontFamily: 'Roboto',
         color: Color(0xFFF1F5F9),
         fontSize: 27.0,
         fontWeight: FontWeight.w600,
@@ -517,6 +519,7 @@ class SalesNotificationBannerGenerator {
     final titleSpan = TextSpan(
       text: title,
       style: TextStyle(
+        fontFamily: 'Roboto',
         color: titleColor,
         fontSize: 19.5,
         fontWeight: FontWeight.w600,
@@ -538,6 +541,7 @@ class SalesNotificationBannerGenerator {
     final valueSpan = TextSpan(
       text: value,
       style: TextStyle(
+        fontFamily: 'Roboto',
         color: Colors.white,
         fontSize: valueFontSize,
         fontWeight: FontWeight.w900,
@@ -794,6 +798,7 @@ class SalesNotificationBannerGenerator {
 
       footerSpan = TextSpan(
         style: const TextStyle(
+          fontFamily: 'Roboto',
           color: Color(0xFFCBD5E1),
           fontSize: 26.0,
           fontWeight: FontWeight.w500,
@@ -804,6 +809,7 @@ class SalesNotificationBannerGenerator {
           TextSpan(
             text: pctText,
             style: TextStyle(
+              fontFamily: 'Roboto',
               color: trendColor,
               fontWeight: FontWeight.w800,
             ),
@@ -814,6 +820,7 @@ class SalesNotificationBannerGenerator {
     } else if (hasSales) {
       footerSpan = const TextSpan(
         style: TextStyle(
+          fontFamily: 'Roboto',
           color: Color(0xFFCBD5E1),
           fontSize: 26.0,
           fontWeight: FontWeight.w500,
@@ -824,6 +831,7 @@ class SalesNotificationBannerGenerator {
           TextSpan(
             text: "on track",
             style: TextStyle(
+              fontFamily: 'Roboto',
               color: Color(0xFF00E599),
               fontWeight: FontWeight.w800,
             ),
@@ -835,6 +843,7 @@ class SalesNotificationBannerGenerator {
       footerSpan = const TextSpan(
         text: 'Ready for business! All registers open and catalog updated.',
         style: TextStyle(
+          fontFamily: 'Roboto',
           color: Color(0xFF94A3B8),
           fontSize: 25.0,
           fontWeight: FontWeight.w500,

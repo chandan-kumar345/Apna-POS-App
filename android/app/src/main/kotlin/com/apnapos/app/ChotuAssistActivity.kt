@@ -3,6 +3,8 @@ package com.apnapos.app
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -25,11 +27,17 @@ class ChotuAssistActivity : FlutterActivity() {
         return RenderMode.texture
     }
 
+    override fun getDartEntrypointFunctionName(): String {
+        return "chotuAssistMain"
+    }
+
     override fun getInitialRoute(): String {
         return "/chotu-assist"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        window.setDimAmount(0f)
         if (!intent.hasExtra("route")) {
             intent.putExtra("route", "/chotu-assist")
         }
@@ -64,6 +72,9 @@ class ChotuAssistActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "isAssistActivity" -> {
+                    result.success(true)
+                }
                 "closeAssist" -> {
                     finish()
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

@@ -116,17 +116,20 @@ async function pushNow() {
 
     console.log(`[PushNow] ✅ Created Notification record in DB: ${notification._id}`);
 
-    // Directly invoke pushNotificationService with explicit token and data payload
+    // Directly invoke pushNotificationService with explicit token, data payload and BigPicture banner imageUrl
     const pushResult = await pushNotificationService.sendPushNotification({
       token: user.pushToken,
       userId: user._id.toString(),
       businessId: bId.toString(),
       title,
       message,
+      imageUrl: 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png',
       data: {
         notificationId: notification._id.toString(),
         type: 'daily_sales_summary',
         entityType: 'sales_report',
+        imageUrl: 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png',
+        image: 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png',
         entityId: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
         notificationTag: 'daily_sales_summary',
         businessName: business?.name || 'Apna POS',

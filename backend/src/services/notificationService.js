@@ -83,20 +83,25 @@ class NotificationService {
 
             const dispatchedTokens = new Set();
             for (const uid of targetUserIds) {
+              const metaObj = typeof notification.metadata?.toObject === 'function'
+                ? notification.metadata.toObject()
+                : (notification.metadata || {});
+              const notifImageUrl = metaObj.imageUrl || metaObj.image || (notification.type === 'daily_sales_summary' ? 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png' : undefined);
+
               pushNotificationService.sendPushNotification({
                 userId: uid,
                 businessId,
                 title: notification.title,
                 message: notification.message,
+                imageUrl: notifImageUrl,
                 data: {
                   notificationId: notification._id.toString(),
                   type: notification.type,
                   entityType: notification.entityType,
                   entityId: notification.entityId || '',
                   notificationTag: notification.type === 'daily_sales_summary' ? 'daily_sales_summary' : undefined,
-                  ...(typeof notification.metadata?.toObject === 'function'
-                    ? notification.metadata.toObject()
-                    : (notification.metadata || {})),
+                  imageUrl: notifImageUrl,
+                  ...metaObj,
                 },
                 sentTokens: dispatchedTokens,
               });
