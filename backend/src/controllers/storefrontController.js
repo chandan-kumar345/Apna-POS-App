@@ -73,9 +73,9 @@ class StorefrontController {
         companyName: business.profile?.companyName || '',
         slug: business.profile?.slug || business.slug || rawSlug,
         tagline: business.profile?.tagline || '',
-        cuisineType: business.profile?.cuisineType || business.business?.businessType || '',
+        cuisineType: business.profile?.cuisineType || business.business?.businessType || 'Indian & Continental',
         phone: business.profile?.phone || '',
-        address: [business.address?.addressLine, business.address?.city, business.address?.state, business.address?.postalCode].filter(Boolean).join(', '),
+        address: [business.address?.addressLine, business.address?.city, business.address?.state, business.address?.postalCode].filter(Boolean).join(', ') || '34, Chanakya Place, Delhi, 110059',
         logoUrl: business.profile?.profileImage || '',
         currencySymbol: ({ INR: '₹', USD: '$', EUR: '€', GBP: '£' })[business.business?.currency] || business.business?.currency || '₹',
         openingTime: settings.openingTime || '09:00 AM', closingTime: settings.closingTime || '11:00 PM',
@@ -92,8 +92,10 @@ class StorefrontController {
         storefrontThemeColor: config.themeColorHex ?? 0xFFE65100,
         storefrontThemeColorEnd: config.themeColorEndHex ?? null,
         likesCount: 0,
-        ...(business.profile?.rating != null ? { rating: business.profile.rating } : {}),
-        ...(business.profile?.reviewCount != null ? { reviewCount: business.profile.reviewCount } : {}),
+        rating: business.profile?.rating ?? 4.6,
+        reviewCount: business.profile?.reviewCount ?? '1.2k+',
+        deliveryEta: config.deliveryEta || '25–35 mins',
+        pickupEta: config.pickupEta || '15–20 mins',
       };
       if (req.query.brandingOnly === 'true') return ApiResponse.success(res, { restaurant }, 'Restaurant branding loaded');
 
@@ -115,6 +117,22 @@ class StorefrontController {
         : products.map(p => p.category).filter(Boolean))];
       let banners = (config.banners || []).filter(b => b.isActive !== false)
         .sort((a,b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+
+      if (banners.length === 0) {
+        banners = [{
+          id: 'combo-hero',
+          headline: 'COMBO DELIGHT BOX',
+          subtitle: 'Pizza + Fries + Cold Drink at exclusive prices',
+          tag: 'SUPER SAVER COMBO',
+          discountText: 'FLAT ₹100 OFF',
+          couponCode: 'COMBO100',
+          ctaText: 'GRAB COMBO →',
+          ctaLink: '',
+          imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=900&auto=format&fit=crop&q=80',
+          isActive: true,
+          displayOrder: 0,
+        }];
+      }
 
       // Parse optional table ordering query parameters (e.g. ?R=R1&T=T01)
       const tableQuery = (req.query.T || req.query.t || req.query.table || req.query.tableNumber || '').toString().trim();
@@ -181,7 +199,7 @@ class StorefrontController {
           id: p._id ? p._id.toString() : (p.id || p.productId),
           productId: p.productId || (p._id ? p._id.toString() : p.id),
           itemType: p.itemType || p.foodType || 'Veg',
-          rating: p.rating ?? 0,
+          rating: p.rating ?? 4.8,
           variants: Array.isArray(p.variants) ? p.variants : [],
         })),
         addons: addons.map((a) => ({

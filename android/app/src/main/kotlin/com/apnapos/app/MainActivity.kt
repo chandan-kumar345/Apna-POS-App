@@ -159,6 +159,17 @@ class MainActivity : FlutterActivity() {
         wakeAndShowOverLockScreen()
         // Some vendor settings screens do not return an activity result.
         if (fullScreenPermissionSettingsPaused) completeFullScreenPermissionRequest()
+        if (chotuActivationPending) {
+            flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                MethodChannel(it, "com.apnapos.app/chotu_activation").invokeMethod("activate", null)
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // Keep the app alive and warm in the background so power button / assistant can open Chotu AI instantly
+        moveTaskToBack(true)
     }
 
     override fun onPause() {
@@ -277,10 +288,14 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.apnapos.app/chotu_activation")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "isPendingActivation" -> {
+                        val fresh = android.os.SystemClock.elapsedRealtime() < chotuActivationExpiresAt
+                        result.success(chotuActivationPending && fresh)
+                    }
                     "consumeActivation" -> {
                         val locked = (getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isDeviceLocked
                         val fresh = android.os.SystemClock.elapsedRealtime() < chotuActivationExpiresAt
-                        val pending = chotuActivationPending && fresh && !locked && isAppInForeground
+                        val pending = chotuActivationPending && fresh && !locked
                         if (pending || !fresh) chotuActivationPending = false
                         result.success(pending)
                     }

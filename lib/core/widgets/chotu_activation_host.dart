@@ -103,6 +103,7 @@ class _ChotuActivationHostState extends State<ChotuActivationHost>
       await Navigator.of(context).push(
         PageRouteBuilder<void>(
           opaque: false,
+          transitionDuration: const Duration(milliseconds: 150),
           barrierColor: Colors.transparent,
           pageBuilder: (_, _, _) => const ChotuVoiceSheet(),
         ),

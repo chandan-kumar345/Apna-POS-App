@@ -93,8 +93,28 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Even slow SDK/storage initialization starts after branding has painted.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_start());
+      if (mounted) {
+        unawaited(_checkChotuFastPath());
+        unawaited(_start());
+      }
     });
+  }
+
+  Future<void> _checkChotuFastPath() async {
+    try {
+      const channel = MethodChannel('com.apnapos.app/chotu_activation');
+      final isPending =
+          await channel.invokeMethod<bool>('isPendingActivation') ?? false;
+      if (isPending && mounted) {
+        // Fast path: skip the 4.2-second logo writing animation when opened via power button / assistant!
+        _animController.value = 1.0;
+        _writingComplete = true;
+        _completedLogoHeld = true;
+        _fallbackTimer?.cancel();
+        _logoHoldTimer?.cancel();
+        _continueWhenReady();
+      }
+    } catch (_) {}
   }
 
   Future<void> _start() async {

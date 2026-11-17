@@ -52,6 +52,15 @@ class ChotuActivationService extends ChangeNotifier {
     channel.setMethodCallHandler(null);
   }
 
+  Future<bool> isPendingActivation() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      return await channel.invokeMethod<bool>('isPendingActivation') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> consumeAssistantRequest() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     try {

@@ -21,11 +21,14 @@ class ChotuPrintDispatcher {
     final printer = BluetoothPrinterService();
     final order = OrderModel.fromJson(job['order'] as Map);
     if (job['type'] == 'kot') {
+      final items = order.items;
       return printer.printKOT(
         order: order,
         restaurant: db.restaurant,
         kotNumber: job['kotNumber']?.toString(),
-        customItemsToPrint: order.items,
+        customItemsToPrint: items.isNotEmpty ? items : null,
+        isReprint: job['isReprint'] == true ||
+            (job['kotNumber'] != null && job['kotNumber'].toString().isNotEmpty),
       );
     }
     return printer.printBill(
@@ -71,15 +74,16 @@ class ChotuPrintDispatcher {
       if (canDispatch?.call() == false) {
         return 'Account changed. Check the saved order in its original account before printing.';
       }
+      final rawId = raw is Map ? (raw['id']?.toString() ?? '') : '';
       if (raw is! Map ||
           raw['order'] is! Map ||
           !['kot', 'bill'].contains(raw['type']) ||
-          !RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(raw['id']?.toString() ?? '')) {
+          rawId.trim().isEmpty) {
         uncertain = true;
         continue;
       }
       final job = Map<String, dynamic>.from(raw);
-      final id = job['id'] as String;
+      final id = rawId.trim();
       if (claims.containsKey(id)) {
         uncertain |= claims[id] != 'submitted';
         continue;

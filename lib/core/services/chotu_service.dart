@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart' show Options;
 import '../network/api_client.dart';
@@ -12,6 +13,7 @@ import 'speech_recognition_service.dart';
 import 'chotu_gemini_client.dart';
 import 'chotu_automation_client.dart';
 import 'chotu_print_dispatcher.dart';
+import 'bluetooth_printer_service.dart';
 
 class ChotuCommandItem {
   final String? productId;
@@ -391,7 +393,7 @@ class ChotuService extends ChangeNotifier {
       // the Node token's subject/business. Tenant and actor still come from JWT.
       final mongoId = RegExp(r'^[a-fA-F0-9]{24}$');
       final localUserId = db.currentUser?.id ?? '';
-      final result = await _automationClient.runTurn(
+      var result = await _automationClient.runTurn(
         scope: scope,
         sessionId: activeSessionId,
         text: speechText,
@@ -457,10 +459,47 @@ class ChotuService extends ChangeNotifier {
           ));
         }
       }
-      if (_automationScope == scope && result['status'] == 'completed' && result['printJobs'] is List) {
-        final message = await ChotuPrintDispatcher().dispatch(scope, result['printJobs'] as List,
-          canDispatch: () => _automationScope == scope);
-        if (message != null) return {...result, 'chotuMessage': '${result['chotuMessage'] ?? ''} $message'};
+      bool physicalKotPrinted = false;
+      if (_automationScope == scope &&
+          result['status'] == 'completed' &&
+          result['printJobs'] is List &&
+          (result['printJobs'] as List).isNotEmpty) {
+        final message = await ChotuPrintDispatcher().dispatch(
+          scope,
+          result['printJobs'] as List,
+          canDispatch: () => _automationScope == scope,
+        );
+        if (message != null) {
+          physicalKotPrinted = true;
+          result = {
+            ...result,
+            'chotuMessage': '${result['chotuMessage'] ?? ''} $message',
+          };
+        }
+      }
+
+      // If user instructed to print KOT and no physical print job was processed from backend:
+      final intent = result['intent']?.toString() ?? '';
+      if (!physicalKotPrinted &&
+          (intent == 'SEND_KOT' || isKotPrintPhrase(speechText))) {
+        final targetTable = _currentTableContext ??
+            result['tableNumber']?.toString() ??
+            tableNumber ??
+            '';
+        final printed = await printKotDirectly(targetTable);
+        if (printed) {
+          final tableLabel =
+              targetTable.isNotEmpty ? 'Table $targetTable ka ' : '';
+          final kotSuccessMsg = '${tableLabel}KOT print bhej diya gaya hai.';
+          result = {
+            ...result,
+            'status': 'completed',
+            'chotuMessage': (result['chotuMessage'] != null &&
+                    (result['chotuMessage'] as String).isNotEmpty)
+                ? '${result['chotuMessage']} $kotSuccessMsg'
+                : kotSuccessMsg,
+          };
+        }
       }
       return result;
     } catch (_) {
@@ -484,6 +523,117 @@ class ChotuService extends ChangeNotifier {
   void startConversation({String? tableNumber}) {
     _activeSessionId = 'chotu_sess_${DateTime.now().microsecondsSinceEpoch}';
     _currentTableContext = tableNumber;
+  }
+
+  static bool isKotPrintPhrase(String text) {
+    final lower = text.toLowerCase();
+    return (lower.contains('kot') || lower.contains('kitchen')) &&
+        (lower.contains('print') ||
+            lower.contains('nikal') ||
+            lower.contains('bhej') ||
+            lower.contains('send') ||
+            lower.contains('karo') ||
+            lower.contains('do') ||
+            lower.contains('kerdo') ||
+            lower.contains('kardo') ||
+            lower.contains('de'));
+  }
+
+  /// Physical KOT Print Fallback: Directly prints Kitchen Order Ticket to the
+  /// connected Bluetooth or Windows thermal printer for the target table.
+  Future<bool> printKotDirectly(String tableNumber) async {
+    try {
+      final db = DatabaseService();
+      String resolvedNum = tableNumber
+          .replaceFirst(RegExp(r'^(?:table\s*|t[-\s]*)', caseSensitive: false), '')
+          .trim();
+
+      // If no table was explicitly provided, auto-resolve to the currently active or occupied table
+      if (resolvedNum.isEmpty) {
+        final activeTables = db.tables.where(
+          (t) => t.status == TableStatus.runningKot || t.status == TableStatus.occupied,
+        ).toList();
+        if (activeTables.isNotEmpty) {
+          resolvedNum = activeTables.first.tableNumber.toString();
+        } else if (db.orders.any((o) => o.status == OrderStatus.preparing || o.status == OrderStatus.pending)) {
+          final running = db.orders.firstWhere(
+            (o) => o.status == OrderStatus.preparing || o.status == OrderStatus.pending,
+          );
+          resolvedNum = (running.tableNumber ?? '')
+              .replaceFirst(RegExp(r'^(?:table\s*|t[-\s]*)', caseSensitive: false), '')
+              .trim();
+        }
+      }
+
+      final targetFormatted = resolvedNum.isEmpty ? tableNumber : 'T-$resolvedNum';
+
+      // 1. Look for existing running/preparing order for this table
+      OrderModel? order = db.orders.where((o) {
+        if (o.status == OrderStatus.completed || o.status == OrderStatus.cancelled) return false;
+        final t = (o.tableNumber ?? '')
+            .replaceFirst(RegExp(r'^(?:table\s*|t[-\s]*)', caseSensitive: false), '')
+            .trim();
+        return resolvedNum.isNotEmpty && t == resolvedNum;
+      }).firstOrNull;
+
+      // 2. If no active order, check live table cart or Chotu draft cart
+      List<CartItemModel> items = [];
+      if (order != null && order.items.isNotEmpty) {
+        items = order.items;
+      } else {
+        items = db.getLiveTableCart(targetFormatted).isNotEmpty
+            ? db.getLiveTableCart(targetFormatted)
+            : (db.getLiveTableCart(tableNumber).isNotEmpty
+                ? db.getLiveTableCart(tableNumber)
+                : db.getChotuDraftCart(targetFormatted));
+      }
+
+      if (items.isEmpty && order == null) {
+        debugPrint('[ChotuService] No items to print for table $tableNumber (resolved: $resolvedNum)');
+        return false;
+      }
+
+      final printOrder = order ??
+          OrderModel(
+            id: 'kot_${DateTime.now().millisecondsSinceEpoch}',
+            orderNumber: resolvedNum.isNotEmpty ? 'KOT-$resolvedNum' : 'KOT-${DateTime.now().millisecondsSinceEpoch % 1000}',
+            tableNumber: resolvedNum.isNotEmpty ? 'Table $resolvedNum' : (tableNumber.isNotEmpty ? tableNumber : 'Table 01'),
+            items: items,
+            subtotal: items.fold(0.0, (s, i) => s + i.totalPrice),
+            taxAmount: 0.0,
+            totalAmount: items.fold(0.0, (s, i) => s + i.totalPrice),
+            createdAt: DateTime.now().toIso8601String(),
+            status: OrderStatus.preparing,
+          );
+
+      final printer = BluetoothPrinterService();
+      bool connected = await printer.isConnected();
+      if (!connected) {
+        connected = await printer.autoConnectSavedPrinter();
+      }
+      if (!connected) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        connected = await printer.autoConnectSavedPrinter();
+      }
+
+      if (!connected) {
+        debugPrint('[ChotuService] Thermal printer is not connected for KOT print');
+        return false;
+      }
+
+      final success = await printer.printKOT(
+        order: printOrder,
+        restaurant: db.restaurant,
+        customItemsToPrint: items.isNotEmpty ? items : printOrder.items,
+        isReprint: true,
+      );
+
+      debugPrint('[ChotuService] printKotDirectly success: $success');
+      return success;
+    } catch (e) {
+      debugPrint('[ChotuService] printKotDirectly error: $e');
+      return false;
+    }
   }
 
   /// Sends speech transcription payload to backend Chotu API
@@ -693,6 +843,11 @@ class ChotuService extends ChangeNotifier {
     // 1. Immediately apply to local in-memory DatabaseService & trigger POS UI update
     _syncLocalCartAfterExecution(command);
     dispatchAction(command);
+
+    if (command.intent == 'SEND_KOT') {
+      final tableNum = command.tableNumber ?? _currentTableContext ?? '';
+      unawaited(printKotDirectly(tableNum));
+    }
 
     final commandId = 'cmd_${activeSessionId}_${DateTime.now().millisecondsSinceEpoch}';
 
