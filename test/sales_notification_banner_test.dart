@@ -51,5 +51,27 @@ void main() {
       final file = File(bannerPath!);
       expect(await file.exists(), isTrue);
     });
+
+    test('Generates banner with custom dateLabel, percentageChange, and yesterday comparison', () async {
+      final bannerPath = await SalesNotificationBannerGenerator.generateBannerFile(
+        totalSales: 12780.0,
+        orderCount: 73,
+        avgOrderValue: 175.0,
+        dateLabel: '16 Nov',
+        percentageChange: 12.0,
+        isHigher: true,
+        yesterdaySales: 11410.0,
+      );
+
+      expect(bannerPath, isNotNull);
+      final file = File(bannerPath!);
+      expect(await file.exists(), isTrue);
+      final bytes = await file.readAsBytes();
+      expect(bytes.length, greaterThan(500));
+      expect(bytes[0], 0x89);
+      expect(bytes[1], 0x50);
+      expect(bytes[2], 0x4E);
+      expect(bytes[3], 0x47);
+    });
   });
 }

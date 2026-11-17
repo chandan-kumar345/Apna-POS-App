@@ -26,6 +26,7 @@ import 'package:video_player_win/video_player_win.dart';
 import 'features/super_admin/screens/auth/super_admin_login_screen.dart';
 import 'features/super_admin/widgets/super_admin_layout.dart';
 import 'features/storefront/screens/customer_storefront_screen.dart';
+import 'features/pos/widgets/chotu_assistant_overlay_screen.dart';
 
 /// Restore the local session behind the already visible splash. Server probing,
 /// audio and notifications do not hold up entry into an offline-ready POS.
@@ -80,30 +81,41 @@ void main() async {
   final entryUri = Uri.base;
   Uri? merchantWebLocation;
   Widget initialHome;
-  final webStoreParams = parseStorefrontRoute(entryUri, isWeb: kIsWeb);
-  if (kIsWeb && webStoreParams != null && webStoreParams.slug.isNotEmpty) {
-    await _initializeAppServices(waitForEndpoint: true);
-    initialHome = CustomerStorefrontScreen(
-      slug: webStoreParams.slug,
-      tableCode: webStoreParams.tableCode,
-      restaurantCode: webStoreParams.restaurantCode,
-    );
-  } else if (kIsWeb && _isAdminEntry(entryUri)) {
-    await _initializeAppServices(waitForEndpoint: true);
-    initialHome = const SuperAdminLoginScreen();
+  final defaultPlatformRoute =
+      WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+  final isChotuAssist = !kIsWeb && defaultPlatformRoute == '/chotu-assist';
+
+  if (isChotuAssist) {
+    // Spun up via hardware assistant button as a transparent native overlay.
+    // Initialize offline DB and printer without showing splash or POS layout.
+    await _initializeAppServices();
+    initialHome = const ChotuAssistantOverlayScreen();
   } else {
-    // Paint the branded first frame before any asynchronous service setup.
-    if (kIsWeb) {
-      usePathUrlStrategy();
-      merchantWebLocation = entryUri;
+    final webStoreParams = parseStorefrontRoute(entryUri, isWeb: kIsWeb);
+    if (kIsWeb && webStoreParams != null && webStoreParams.slug.isNotEmpty) {
+      await _initializeAppServices(waitForEndpoint: true);
+      initialHome = CustomerStorefrontScreen(
+        slug: webStoreParams.slug,
+        tableCode: webStoreParams.tableCode,
+        restaurantCode: webStoreParams.restaurantCode,
+      );
+    } else if (kIsWeb && _isAdminEntry(entryUri)) {
+      await _initializeAppServices(waitForEndpoint: true);
+      initialHome = const SuperAdminLoginScreen();
+    } else {
+      // Paint the branded first frame before any asynchronous service setup.
+      if (kIsWeb) {
+        usePathUrlStrategy();
+        merchantWebLocation = entryUri;
+      }
+      initialHome = SplashScreen(
+        initialize: _initializeAppServices,
+        openLoginWhenSignedOut:
+            kIsWeb &&
+            (MerchantSection.fromUri(entryUri) != null ||
+                entryUri.path == '/login'),
+      );
     }
-    initialHome = SplashScreen(
-      initialize: _initializeAppServices,
-      openLoginWhenSignedOut:
-          kIsWeb &&
-          (MerchantSection.fromUri(entryUri) != null ||
-              entryUri.path == '/login'),
-    );
   }
 
   runApp(
@@ -180,6 +192,7 @@ class _ApnaPosAppState extends State<ApnaPosApp> {
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     final name = settings.name;
     final page = switch (name) {
+      '/chotu-assist' => const ChotuAssistantOverlayScreen(),
       '/splash' => const SplashScreen(),
       '/login' => const LoginScreen(),
       '/get-started' => const GetStartedScreen(),
@@ -249,7 +262,12 @@ class _ApnaPosAppState extends State<ApnaPosApp> {
       builder: _wrapApp,
       // Native notification intents are consumed by LocalNotificationService.
       // Do not let a platform route bypass splash/session restoration.
-      initialRoute: kIsWeb ? null : Navigator.defaultRouteName,
+      initialRoute: kIsWeb
+          ? null
+          : (WidgetsBinding.instance.platformDispatcher.defaultRouteName ==
+                  '/chotu-assist'
+              ? '/chotu-assist'
+              : Navigator.defaultRouteName),
       home: widget.initialHome,
       onGenerateRoute: _onGenerateRoute,
     );

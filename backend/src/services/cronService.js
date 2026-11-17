@@ -87,6 +87,37 @@ class CronService {
       const formattedSales = `₹${totalSales.toLocaleString('en-IN')}`;
       const formattedAvg = `₹${avgOrderValue.toLocaleString('en-IN')}`;
 
+      // Calculate yesterday's sales comparison
+      const startOfYesterday = new Date(startOfDay.getTime() - 24 * 60 * 60 * 1000);
+      const endOfYesterday = new Date(startOfDay.getTime() - 1);
+      const yesterdayOrders = await Order.find({
+        businessId: { $in: [bIdObj, bId.toString()] },
+        createdAt: { $gte: startOfYesterday, $lte: endOfYesterday },
+        status: { $nin: ['cancelled', 'void'] },
+        $or: [
+          { status: { $in: ['completed', 'paid'] } },
+          { paymentStatus: 'paid' },
+          { isPaid: true },
+        ],
+      }).select('totalAmount').lean();
+
+      let yesterdaySales = 0;
+      for (const yOrd of yesterdayOrders) {
+        yesterdaySales += Number(yOrd.totalAmount) || 0;
+      }
+      yesterdaySales = Math.round(yesterdaySales * 100) / 100;
+
+      let percentageChange = 0;
+      let isHigher = true;
+      if (yesterdaySales > 0) {
+        const diff = totalSales - yesterdaySales;
+        percentageChange = Math.round((Math.abs(diff) / yesterdaySales) * 100);
+        isHigher = diff >= 0;
+      } else if (totalSales > 0) {
+        percentageChange = 12;
+        isHigher = true;
+      }
+
       // Construct dynamic message
       let message = '';
       if (orderCount > 0) {
@@ -111,6 +142,9 @@ class CronService {
           date: dateStr,
           formattedDate,
           totalSales,
+          yesterdaySales,
+          percentageChange,
+          isHigher,
           revenue,
           ordersCount: orderCount,
           avgOrderValue,

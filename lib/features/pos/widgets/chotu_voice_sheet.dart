@@ -10,12 +10,14 @@ class ChotuVoiceSheet extends StatefulWidget {
   final String? tableNumber;
   final VoidCallback? onTranscriptionUpdated;
   final bool autoStartListening;
+  final VoidCallback? onClose;
 
   const ChotuVoiceSheet({
     super.key,
     this.tableNumber,
     this.onTranscriptionUpdated,
     this.autoStartListening = true,
+    this.onClose,
   });
 
   @override
@@ -193,7 +195,11 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet>
   void _close() {
     _speech.reset();
     _tts.stop();
-    Navigator.of(context).maybePop();
+    if (widget.onClose != null) {
+      widget.onClose!();
+    } else {
+      Navigator.of(context).maybePop();
+    }
   }
 
   String get _message {

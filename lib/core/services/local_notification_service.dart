@@ -267,12 +267,14 @@ class LocalNotificationService with WidgetsBindingObserver {
 
   static Timer? _retryShowOrderTimer;
 
-  bool get _isSupportedPlatform =>
+  static bool get isSupportedPlatform =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS ||
           defaultTargetPlatform == TargetPlatform.macOS ||
           defaultTargetPlatform == TargetPlatform.linux);
+
+  bool get _isSupportedPlatform => isSupportedPlatform;
 
   /// Handle notification payload when tapped from system notification tray or fullScreenIntent
   static void _handleNotificationPayload(
@@ -959,6 +961,51 @@ class LocalNotificationService with WidgetsBindingObserver {
           data['entityType'] == 'sales_report' ||
           data['type'] == 'daily_sales_summary';
 
+      if (isDailySummary && isSupportedPlatform) {
+        final double totalSales =
+            double.tryParse(data['totalSales']?.toString() ?? '0') ?? 0.0;
+        final int orderCount = int.tryParse(
+                (data['ordersCount'] ?? data['orderCount'] ?? '0').toString()) ??
+            0;
+        final double? avgOrderValue =
+            double.tryParse(data['avgOrderValue']?.toString() ?? '');
+        final String? formattedDate = data['formattedDate']?.toString();
+        final double? percentageChange =
+            double.tryParse(data['percentageChange']?.toString() ?? '');
+        final bool isHigher = data['isHigher'] == null ||
+            data['isHigher'] == true ||
+            data['isHigher'] == 'true';
+        final double? yesterdaySales =
+            double.tryParse(data['yesterdaySales']?.toString() ?? '');
+
+        try {
+          final bannerPath =
+              await SalesNotificationBannerGenerator.generateBannerFile(
+            totalSales: totalSales,
+            orderCount: orderCount,
+            avgOrderValue: avgOrderValue,
+            dateLabel: formattedDate,
+            percentageChange: percentageChange,
+            isHigher: isHigher,
+            yesterdaySales: yesterdaySales,
+          );
+
+          if (bannerPath != null && bannerPath.isNotEmpty) {
+            bigTextStyle = BigPictureStyleInformation(
+              FilePathAndroidBitmap(bannerPath),
+              largeIcon:
+                  const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+              contentTitle: finalTitle,
+              summaryText: finalBody,
+              hideExpandedLargeIcon: true,
+            );
+          }
+        } catch (e) {
+          debugPrint(
+              '[LocalNotificationService] Error creating sales summary banner from RemoteMessage: $e');
+        }
+      }
+
       final notifTag = data['notificationTag']?.toString();
 
       final notifId = isDailySummary
@@ -1307,6 +1354,40 @@ class LocalNotificationService with WidgetsBindingObserver {
           htmlFormatBigText: false,
           htmlFormatContentTitle: false,
         );
+      } else if (effectiveStyle == null && isDailySummary && _isSupportedPlatform) {
+        final double totalSales = double.tryParse(effectiveMeta['totalSales']?.toString() ?? '0') ?? 0.0;
+        final int orderCount = int.tryParse((effectiveMeta['ordersCount'] ?? effectiveMeta['orderCount'] ?? '0').toString()) ?? 0;
+        final double? avgOrderValue = double.tryParse(effectiveMeta['avgOrderValue']?.toString() ?? '');
+        final String? dateLabel = effectiveMeta['formattedDate']?.toString() ?? effectiveMeta['date']?.toString();
+        final double? percentageChange = double.tryParse(effectiveMeta['percentageChange']?.toString() ?? '');
+        final bool isHigher = effectiveMeta['isHigher'] == null ||
+            effectiveMeta['isHigher'] == true ||
+            effectiveMeta['isHigher'] == 'true';
+        final double? yesterdaySales = double.tryParse(effectiveMeta['yesterdaySales']?.toString() ?? '');
+
+        try {
+          final bannerPath = await SalesNotificationBannerGenerator.generateBannerFile(
+            totalSales: totalSales,
+            orderCount: orderCount,
+            avgOrderValue: avgOrderValue,
+            dateLabel: dateLabel,
+            percentageChange: percentageChange,
+            isHigher: isHigher,
+            yesterdaySales: yesterdaySales,
+          );
+
+          if (bannerPath != null && bannerPath.isNotEmpty) {
+            effectiveStyle = BigPictureStyleInformation(
+              FilePathAndroidBitmap(bannerPath),
+              largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+              contentTitle: title,
+              summaryText: body,
+              hideExpandedLargeIcon: true,
+            );
+          }
+        } catch (e) {
+          debugPrint('[LocalNotificationService] Error creating sales summary banner in showPushNotification: $e');
+        }
       } else if (effectiveStyle == null && isWhatsApp) {
         effectiveStyle = BigTextStyleInformation(
           body,
@@ -1496,6 +1577,7 @@ class LocalNotificationService with WidgetsBindingObserver {
           totalSales: totalSales,
           orderCount: orderCount,
           avgOrderValue: avgOrderValue,
+          dateLabel: dateLabel,
         );
       }
 

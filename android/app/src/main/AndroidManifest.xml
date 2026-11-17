@@ -80,6 +80,21 @@
                 <action android:name="FLUTTER_NOTIFICATION_CLICK" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+        </activity>
+
+        <!-- Dedicated transparent floating overlay for Chotu AI Voice Assistant triggered by hardware button -->
+        <activity
+            android:name=".ChotuAssistActivity"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.apnapos.app.assist"
+            android:excludeFromRecents="true"
+            android:theme="@style/ChotuAssistTheme"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />
