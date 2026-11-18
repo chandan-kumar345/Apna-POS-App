@@ -115,7 +115,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // We only call showNotificationFromRemoteMessage if:
     // - There is NO top-level notification block (data-only push), OR
     // - It is an incoming order requiring custom fullScreenIntent, Accept/Reject actions, and ringtone.
-    if (hasNotificationPayload && !isOrder && !isDailySummary) {
+    if (hasNotificationPayload && !isOrder) {
       debugPrint(
         '[FCM Background] System tray notification already rendered by Android OS. Skipping local duplicate.',
       );

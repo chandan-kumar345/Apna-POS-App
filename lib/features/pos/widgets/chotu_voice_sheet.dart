@@ -236,10 +236,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet>
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _close,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-              child: ColoredBox(color: Colors.black.withValues(alpha: 0.07)),
-            ),
+            child: const ColoredBox(color: Color(0x33000000)),
           ),
           Align(
             alignment: Alignment.bottomCenter,

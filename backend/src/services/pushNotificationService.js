@@ -251,7 +251,7 @@ class PushNotificationService {
       }
 
       // Resolve image URL for rich BigPicture notification (Cloudflare R2 or direct public URL)
-      const effectiveImageUrl = imageUrl || data.imageUrl || data.image || (data.type === 'daily_sales_summary' ? 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png' : null);
+      const effectiveImageUrl = imageUrl || data.imageUrl || data.image || null;
 
       // Sanitize all data entries into strings (FCM requirement for data payload)
       const sanitizedData = {};

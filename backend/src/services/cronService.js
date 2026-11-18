@@ -6,6 +6,7 @@ const User = require('../models/User');
 const Campaign = require('../models/Campaign');
 const notificationService = require('./notificationService');
 const campaignService = require('./campaignService');
+const salesBannerService = require('./salesBannerService');
 
 class CronService {
   constructor() {
@@ -129,6 +130,22 @@ class CronService {
       const bizName = business.name?.trim() || '';
       const title = bizName ? `${bizName} • Daily Sales Summary 📊 • ${formattedDate}` : `Daily Sales Summary 📊 • ${formattedDate}`;
 
+      // Generate dynamic high-res 3-card banner image with exact day metrics
+      let bannerUrl = null;
+      try {
+        bannerUrl = await salesBannerService.generateAndUploadBanner({
+          totalSales,
+          orderCount,
+          avgOrderValue,
+          dateLabel: formattedDate,
+          percentageChange,
+          isHigher,
+          yesterdaySales,
+        });
+      } catch (bannerErr) {
+        console.warn(`[CronService] Could not generate dynamic sales banner: ${bannerErr.message}`);
+      }
+
       const notification = await notificationService.createNotification({
         userId: business.ownerId,
         businessId: bId,
@@ -149,6 +166,8 @@ class CronService {
           ordersCount: orderCount,
           avgOrderValue,
           timezone,
+          imageUrl: bannerUrl,
+          image: bannerUrl,
           orders: orderBreakdown,
         },
         idempotencyKey,

@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.PixelFormat
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
@@ -36,10 +37,17 @@ class ChotuAssistActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        window.setDimAmount(0f)
+        intent.putExtra("background_mode", FlutterActivityLaunchConfigs.BackgroundMode.transparent.name)
         if (!intent.hasExtra("route")) {
             intent.putExtra("route", "/chotu-assist")
+        }
+        window.setFormat(PixelFormat.TRANSLUCENT)
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        window.setDimAmount(0f)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { splashScreenView ->
+                splashScreenView.remove()
+            }
         }
         super.onCreate(savedInstanceState)
         wakeAndUnlock()

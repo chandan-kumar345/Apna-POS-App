@@ -56,35 +56,34 @@ async function pushNow() {
       totalSales += Number(ord.totalAmount) || 0;
     }
 
-    // If no orders yet today, let's look at recent completed orders to get a realistic summary or benchmark
-    if (totalSales === 0) {
-      const recentOrders = await Order.find({
-        businessId: { $in: [bId, bId.toString()] },
-        status: { $nin: ['cancelled', 'void'] },
-      }).sort({ createdAt: -1 }).limit(20).lean();
+    const salesBannerService = require('./src/services/salesBannerService');
 
-      if (recentOrders.length > 0) {
-        for (const ord of recentOrders) {
-          totalSales += Number(ord.totalAmount) || 0;
-        }
-        orderCount = recentOrders.length;
-      } else {
-        totalSales = 12780;
-        orderCount = 73;
-      }
-    }
-
-    const avgOrderValue = orderCount > 0 ? Math.round(totalSales / orderCount) : 175;
+    const avgOrderValue = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
     const formattedDate = new Intl.DateTimeFormat('en-IN', {
       day: 'numeric',
       month: 'short',
     }).format(now);
 
+    const bannerUrl = await salesBannerService.generateAndUploadBanner({
+      totalSales,
+      orderCount,
+      avgOrderValue,
+      dateLabel: formattedDate,
+      percentageChange: 0,
+      isHigher: true,
+      yesterdaySales: 0,
+    });
+
     const formattedSales = `₹${totalSales.toLocaleString('en-IN')}`;
     const formattedAvg = `₹${avgOrderValue.toLocaleString('en-IN')}`;
 
     const title = `${business?.name ? business.name + ' • ' : ''}Daily Sales Summary 📊 • ${formattedDate}`;
-    const message = `🟢 Total Sales: ${formattedSales}  •  🔵 Total Orders: ${orderCount}  •  🟠 Avg Order Value: ${formattedAvg}`;
+    let message = '';
+    if (orderCount > 0) {
+      message = `🟢 Total Sales: ${formattedSales}  •  🔵 Total Orders: ${orderCount}  •  🟠 Avg Order Value: ${formattedAvg}`;
+    } else {
+      message = `Your daily business summary for ${formattedDate} is ready. No orders were recorded today. Tap to view sales report.`;
+    }
 
     console.log(`[PushNow] Dispatching Daily Sales Summary to device...`);
     console.log(`[PushNow] Title: "${title}"`);
@@ -123,13 +122,13 @@ async function pushNow() {
       businessId: bId.toString(),
       title,
       message,
-      imageUrl: 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png',
+      imageUrl: bannerUrl,
       data: {
         notificationId: notification._id.toString(),
         type: 'daily_sales_summary',
         entityType: 'sales_report',
-        imageUrl: 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png',
-        image: 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png',
+        imageUrl: bannerUrl,
+        image: bannerUrl,
         entityId: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
         notificationTag: 'daily_sales_summary',
         businessName: business?.name || 'Apna POS',

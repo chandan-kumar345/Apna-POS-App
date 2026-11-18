@@ -72,14 +72,16 @@ Future<void> _initializeAppServices({bool waitForEndpoint = false}) async {
 /// directly over the native Android home screen without touching SplashScreen,
 /// MainLayout, or POS dashboard.
 @pragma('vm:entry-point')
-void chotuAssistMain() async {
+void chotuAssistMain() {
   WidgetsFlutterBinding.ensureInitialized();
-  await _initializeAppServices();
+  // Mount transparent UI on frame 1 immediately to avoid any starting window delay
   runApp(
     const ProviderScope(
       child: ChotuAssistantApp(),
     ),
   );
+  // Initialize offline DB and printer in the background
+  unawaited(_initializeAppServices());
 }
 
 class ChotuAssistantApp extends StatelessWidget {
@@ -90,7 +92,14 @@ class ChotuAssistantApp extends StatelessWidget {
     return MaterialApp(
       title: 'Chotu AI Assistant',
       debugShowCheckedModeBanner: false,
-      theme: GlassTheme.themeData,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: Colors.transparent,
+        canvasColor: Colors.transparent,
+        dialogBackgroundColor: Colors.transparent,
+        colorScheme: const ColorScheme.dark(
+          surface: Colors.transparent,
+        ),
+      ),
       home: const ChotuAssistantOverlayScreen(),
     );
   }
@@ -123,14 +132,13 @@ void main() async {
               defaultPlatformRoute.contains('chotu')));
 
   if (isChotuAssist) {
-    // Spun up via hardware assistant button as a transparent native overlay.
-    // Initialize offline DB and printer without showing splash or POS layout.
-    await _initializeAppServices();
+    // Mount transparent UI on frame 1 immediately
     runApp(
       const ProviderScope(
         child: ChotuAssistantApp(),
       ),
     );
+    unawaited(_initializeAppServices());
     return;
   }
 

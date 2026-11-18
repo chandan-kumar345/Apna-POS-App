@@ -86,7 +86,7 @@ class NotificationService {
               const metaObj = typeof notification.metadata?.toObject === 'function'
                 ? notification.metadata.toObject()
                 : (notification.metadata || {});
-              const notifImageUrl = metaObj.imageUrl || metaObj.image || (notification.type === 'daily_sales_summary' ? 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev/notifications/1794945425203_d71785c0.png' : undefined);
+              const notifImageUrl = metaObj.imageUrl || metaObj.image || undefined;
 
               pushNotificationService.sendPushNotification({
                 userId: uid,
