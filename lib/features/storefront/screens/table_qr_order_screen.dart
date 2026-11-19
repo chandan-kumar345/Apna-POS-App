@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../services/customer_storefront_api_service.dart';
 import '../services/table_qr_phone_auth.dart';
 import '../widgets/storefront_product_detail_sheet.dart';
 import 'customer_my_orders_screen.dart';
+import '../../pos/widgets/pos_product_media_box.dart';
 
 enum _Page { home, menu, cart, login }
 
@@ -58,6 +60,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
   bool _checkoutLogin = false;
   bool _authBusy = false;
   bool _submitting = false;
+  bool _guestPromptOpen = false;
   int _lineSequence = 0;
   String? _error;
   String? _orderError;
@@ -74,6 +77,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
   int get _count => _cart.fold(0, (sum, line) => sum + line.quantity);
   TableQrBill get _bill => TableQrBill.calculate(_cart, _data.restaurant);
   String get _favoriteKey => 'qr_favorite_${_data.restaurant.id}';
+  String get _guestKey => 'qr_guest_${_data.restaurant.id}';
   String _money(double value) =>
       '${_data.restaurant.currencySymbol}${value.toStringAsFixed(value == value.truncateToDouble() ? 0 : 2)}';
 
@@ -87,7 +91,19 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (mounted) {
-        setState(() => _favorite = prefs.getBool(_favoriteKey) ?? false);
+        final raw = prefs.getString(_guestKey);
+        CustomerProfileModel? guest;
+        if (raw != null) {
+          final profile = CustomerProfileModel.fromJson(jsonDecode(raw));
+          if (profile.name.trim().isNotEmpty &&
+              RegExp(r'^[6-9][0-9]{9}$').hasMatch(profile.phone)) {
+            guest = profile;
+          }
+        }
+        setState(() {
+          _favorite = prefs.getBool(_favoriteKey) ?? false;
+          _customer = guest;
+        });
       }
     } catch (_) {}
     if (widget.preview || !mounted) return;
@@ -196,10 +212,15 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
 
   void _choose(MenuItemModel item) {
     if (!_canOrder || !_available(item)) return;
-    if (item.variants.isEmpty && _data.addOns.isEmpty) {
+    if (item.variants.isEmpty) {
       _add(StorefrontCartItem(uid: '', item: item));
       return;
     }
+    _showDetails(item);
+  }
+
+  void _showDetails(MenuItemModel item) {
+    if (_busy) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -242,11 +263,104 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
   }
 
   Future<void> _finishLogin(CustomerProfileModel? customer) async {
-    if (_busy) return;
+    if (_busy || _guestPromptOpen) return;
+    customer ??= _customer;
+    if (customer == null) {
+      _guestPromptOpen = true;
+      try {
+        customer = await _guestDetails();
+      } finally {
+        _guestPromptOpen = false;
+      }
+      if (!mounted || customer == null) return;
+      setState(() => _customer = customer);
+    }
     final checkout = _checkoutLogin;
     final back = _loginBack;
     _go(back);
     if (checkout) await _placeOrder(customer);
+  }
+
+  Future<CustomerProfileModel?> _guestDetails() async {
+    final name = TextEditingController();
+    final phone = TextEditingController();
+    final form = GlobalKey<FormState>();
+    final result = await showDialog<CustomerProfileModel>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Your details'),
+        content: Form(
+          key: form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'So the restaurant can identify and contact you about your order.',
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                key: const ValueKey('qr-guest-name'),
+                controller: name,
+                textCapitalization: TextCapitalization.words,
+                maxLength: 80,
+                decoration: _input('Your name'),
+                validator: (value) =>
+                    (value?.trim().length ?? 0) < 2 ? 'Enter your name' : null,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                key: const ValueKey('qr-guest-phone'),
+                controller: phone,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10),
+                ],
+                decoration: _input('10-digit mobile number'),
+                validator: (value) =>
+                    RegExp(r'^[6-9][0-9]{9}$').hasMatch(value ?? '')
+                    ? null
+                    : 'Enter a valid mobile number',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'We’ll remember these details on this device. No OTP is needed for guest orders.',
+                style: TextStyle(color: _muted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (!form.currentState!.validate()) return;
+              Navigator.pop(
+                ctx,
+                CustomerProfileModel(
+                  id: 'guest',
+                  name: name.text.trim(),
+                  phone: phone.text,
+                ),
+              );
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (result != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_guestKey, jsonEncode(result.toJson()));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    name.dispose();
+    phone.dispose();
+    return result;
   }
 
   Future<void> _placeOrder(CustomerProfileModel? customer) async {
@@ -624,6 +738,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
   }
 
   Widget _popularCard(MenuItemModel item) => _card(
+    onTap: () => _showDetails(item),
     padding: const EdgeInsets.all(5),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -695,6 +810,22 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
+                    avatar: category.isEmpty
+                        ? null
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(7),
+                            child: SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: _image(
+                                _productImage(
+                                  _data.menuItems.firstWhere(
+                                    (item) => item.category.trim() == category,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                     label: Text(category.isEmpty ? 'All' : category),
                     selected: _category == category,
                     onSelected: (_) => setState(() => _category = category),
@@ -792,6 +923,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
   }
 
   Widget _menuCard(MenuItemModel item) => _card(
+    onTap: () => _showDetails(item),
     padding: const EdgeInsets.all(8),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1022,14 +1154,16 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
               const SizedBox(height: 21),
               if (_customer != null) ...[
                 _notice(
-                  'Signed in as ${_customer!.phone}',
+                  '${_customer!.name} • ${_customer!.phone}',
                   icon: Icons.verified_user_outlined,
                 ),
                 TextButton(
                   onPressed: _busy
                       ? null
                       : () => _authorize(() async {
-                          await _auth.signOut();
+                          if (_customer?.id != 'guest') await _auth.signOut();
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.remove(_guestKey);
                           if (mounted) setState(() => _customer = null);
                         }),
                   child: const Text('Sign out'),
@@ -1129,6 +1263,14 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     child: Row(
       children: [
         IconButton(
+          style: IconButton.styleFrom(
+            foregroundColor: _ink,
+            backgroundColor: const Color(0xFFF2F5FA),
+            side: const BorderSide(color: _border),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
           onPressed: _busy ? null : _back,
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back',
@@ -1266,7 +1408,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     decoration: BoxDecoration(
       color: const Color(0xFFF6F8FE),
       border: Border.all(color: _border),
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(12),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -1295,6 +1437,10 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
         tooltip: tooltip,
         icon: Icon(icon, size: 16),
         color: _blue,
+        style: IconButton.styleFrom(
+          backgroundColor: const Color(0xFFE6EEFF),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+        ),
         constraints: const BoxConstraints.tightFor(width: 31, height: 36),
         padding: EdgeInsets.zero,
       );
@@ -1399,23 +1545,31 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     ),
   );
 
-  Widget _card({required Widget child, required EdgeInsetsGeometry padding}) =>
-      Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: const Color(0xFFE8EDF4)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x080F172A),
-              blurRadius: 6,
-              offset: Offset(0, 2),
-            ),
-          ],
+  Widget _card({
+    required Widget child,
+    required EdgeInsetsGeometry padding,
+    VoidCallback? onTap,
+  }) => Container(
+    padding: padding,
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: const Color(0xFFE8EDF4)),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x080F172A),
+          blurRadius: 6,
+          offset: Offset(0, 2),
         ),
-        child: child,
-      );
+      ],
+    ),
+    child: Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(onTap: onTap, child: child),
+    ),
+  );
 
   InputDecoration _input(String hint, {Widget? prefix, bool filled = false}) {
     final border = OutlineInputBorder(
@@ -1438,9 +1592,15 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
       ? item.imageUrl
       : (item.images.isEmpty ? '' : item.images.first);
 
-  Widget _photo(MenuItemModel item, double radius) => ClipRRect(
+  Widget _photo(MenuItemModel item, double radius) => PosProductMediaBox(
+    key: ValueKey('qr-media-${item.id}'),
+    item: item,
     borderRadius: BorderRadius.circular(radius),
-    child: _image(_productImage(item)),
+    autoPlayVideo: _page == _Page.menu || _page == _Page.home,
+    autoSlide: item.videoUrl.trim().isNotEmpty,
+    showDots: item.videoUrl.trim().isNotEmpty,
+    isMini: true,
+    onTap: () => _showDetails(item),
   );
 
   Widget _image(String path) {

@@ -70,6 +70,25 @@ describe('WhatsApp Order Notification & Accept/Reject Flow', () => {
     });
   });
 
+  it('two devices cannot accept and reject the same pending order', async () => {
+    const order = await Order.create({
+      businessId: business._id, orderNumber: 'TABLE-RACE-01',
+      orderType: 'dineIn', tableNumber: 'T01', status: 'pending',
+      items: [{ productId: testProduct._id, name: testProduct.name, quantity: 1, price: 250, foodType: 'veg' }],
+      subtotal: 250, totalAmount: 250, paymentMethod: 'Cash',
+      customerPhone: '', orderSource: 'storefront',
+    });
+    const responses = await Promise.all([
+      request(app).post(`/api/v1/orders/${order._id}/accept-whatsapp`)
+        .set('Authorization', `Bearer ${token}`).send({ prepTimeMinutes: 20 }),
+      request(app).post(`/api/v1/orders/${order._id}/reject-whatsapp`)
+        .set('Authorization', `Bearer ${token}`).send({ reason: 'Kitchen full' }),
+    ]);
+    expect(responses.map((res) => res.status).sort()).toEqual([200, 400]);
+    const saved = await Order.findById(order._id);
+    expect(['preparing', 'cancelled']).toContain(saved.status);
+  });
+
   afterEach(async () => {
     await Order.deleteMany({});
     await Product.deleteMany({});

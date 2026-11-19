@@ -1037,6 +1037,9 @@ class OrderService {
     if (order.status === 'cancelled') {
       throw ApiError.badRequest('Cannot accept an order that has already been cancelled');
     }
+    if (order.status !== 'pending') {
+      throw ApiError.badRequest('This order has already been handled on another device');
+    }
 
     const prepMins = Math.max(5, parseInt(estimatedPrepTimeMinutes || prepTimeMinutes, 10) || 20);
 
@@ -1051,7 +1054,28 @@ class OrderService {
     if (note) {
       order.notes = order.notes ? `${order.notes} | ${note}` : note;
     }
-    await order.save();
+    order = await Order.findOneAndUpdate(
+      { _id: order._id, businessId, status: 'pending' },
+      { $set: { status: order.status, whatsappDetails: order.whatsappDetails, notes: order.notes } },
+      { new: true, runValidators: true }
+    );
+    if (!order) throw ApiError.badRequest('This order has already been handled on another device');
+
+    // 4. Broadcast state updates to all terminals
+    try {
+      socketService.emitOrderUpdated(businessId, {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order: order.toJSON ? order.toJSON() : order,
+      });
+      socketService.emitWhatsAppOrderAccepted(businessId, {
+        order: order.toJSON ? order.toJSON() : order,
+        prepTimeMinutes: prepMins,
+      });
+    } catch (sockErr) {
+      console.warn('[acceptWhatsAppOrder] Socket warning:', sockErr.message);
+    }
 
     // 2. Resolve Business & WhatsApp context
     const business = await Business.findById(businessId).lean();
@@ -1112,22 +1136,6 @@ class OrderService {
       }
     }
 
-    // 4. Broadcast state updates to all terminals
-    try {
-      socketService.emitOrderUpdated(businessId, {
-        orderId: order._id.toString(),
-        orderNumber: order.orderNumber,
-        status: order.status,
-        order: order.toJSON ? order.toJSON() : order,
-      });
-      socketService.emitWhatsAppOrderAccepted(businessId, {
-        order: order.toJSON ? order.toJSON() : order,
-        prepTimeMinutes: prepMins,
-      });
-    } catch (sockErr) {
-      console.warn('[acceptWhatsAppOrder] Socket warning:', sockErr.message);
-    }
-
     return {
       success: true,
       order,
@@ -1158,8 +1166,8 @@ class OrderService {
       throw ApiError.notFound('Order not found');
     }
 
-    if (order.status !== 'pending' && order.whatsappDetails?.acceptanceStatus === 'accepted') {
-      throw ApiError.badRequest('Cannot reject an order that has already been accepted and is being prepared');
+    if (order.status !== 'pending') {
+      throw ApiError.badRequest('Cannot reject an order that has already been handled');
     }
 
     const cancelReason = (rejectionReason || reason || '').trim() || 'Restaurant unable to accept order at this time';
@@ -1174,7 +1182,31 @@ class OrderService {
     order.whatsappDetails.acceptanceStatus = 'rejected';
     order.whatsappDetails.rejectionReason = cancelReason;
     order.whatsappDetails.respondedAt = new Date();
-    await order.save();
+    order = await Order.findOneAndUpdate(
+      { _id: order._id, businessId, status: 'pending' },
+      { $set: {
+        status: order.status, cancelledAt: order.cancelledAt,
+        cancellationReason: cancelReason, whatsappDetails: order.whatsappDetails,
+      } },
+      { new: true, runValidators: true }
+    );
+    if (!order) throw ApiError.badRequest('This order has already been handled on another device');
+
+    // 5. Broadcast state updates to all terminals
+    try {
+      socketService.emitOrderUpdated(businessId, {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order: order.toJSON ? order.toJSON() : order,
+      });
+      socketService.emitWhatsAppOrderRejected(businessId, {
+        order: order.toJSON ? order.toJSON() : order,
+        reason: cancelReason,
+      });
+    } catch (sockErr) {
+      console.warn('[rejectWhatsAppOrder] Socket warning:', sockErr.message);
+    }
 
     // 2. Free table if dineIn
     if (order.tableNumber) {
@@ -1249,22 +1281,6 @@ class OrderService {
       } catch (waErr) {
         console.warn('[rejectWhatsAppOrder] WhatsApp customer notification notice:', waErr.message);
       }
-    }
-
-    // 5. Broadcast state updates to all terminals
-    try {
-      socketService.emitOrderUpdated(businessId, {
-        orderId: order._id.toString(),
-        orderNumber: order.orderNumber,
-        status: order.status,
-        order: order.toJSON ? order.toJSON() : order,
-      });
-      socketService.emitWhatsAppOrderRejected(businessId, {
-        order: order.toJSON ? order.toJSON() : order,
-        reason: cancelReason,
-      });
-    } catch (sockErr) {
-      console.warn('[rejectWhatsAppOrder] Socket warning:', sockErr.message);
     }
 
     return {

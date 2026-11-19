@@ -105,8 +105,10 @@ class SocketService {
       socket.on('order:modal_action', (data) => {
         try {
           const { orderId, orderNumber, action, prepTimeMinutes, reason, businessId } = data || {};
-          const bId = businessId || socket.businessId;
+          const bId = socket.businessId || businessId;
           if (!bId || !orderId) return;
+          if (businessId && socket.businessId && String(businessId) !== String(socket.businessId)) return;
+          if (!['accepted', 'rejected'].includes(action)) return;
 
           const cleanId = bId.toString();
           const dismissPayload = {
@@ -127,8 +129,6 @@ class SocketService {
             const uId = (socket.user.id || socket.user._id).toString();
             socket.to(`user_${uId}`).emit('whatsapp:order:dismiss', dismissPayload);
           }
-          socket.to('business_rest_001').emit('whatsapp:order:dismiss', dismissPayload);
-          socket.to('business_default').emit('whatsapp:order:dismiss', dismissPayload);
         } catch (err) {
           console.warn('[SocketService] Error processing order:modal_action:', err.message);
         }

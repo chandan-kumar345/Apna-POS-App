@@ -1165,9 +1165,13 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(
-                                _isTableOrder ? 'Send Order to Kitchen' : 'Proceed to Checkout',
-                                style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900),
+                              Flexible(
+                                child: Text(
+                                  _isTableOrder ? 'Send Order to Kitchen' : 'Proceed to Checkout',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900),
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Icon(

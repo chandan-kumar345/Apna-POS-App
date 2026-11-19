@@ -11,7 +11,6 @@ import '../../core/models/menu_item_model.dart';
 import '../../core/models/table_model.dart';
 import '../../core/services/order_service.dart';
 import '../../core/services/sound_service.dart';
-import '../../core/services/socket_service.dart';
 import '../../core/services/local_notification_service.dart';
 import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/services/firestore_service.dart';
@@ -398,6 +397,8 @@ class IncomingOrderAcceptScreen extends StatefulWidget {
           } else {
             nav.pushReplacementNamed('/dashboard');
           }
+        } else if (route != null && route.isActive) {
+          Navigator.of(ctx, rootNavigator: true).removeRoute(route);
         }
       } catch (e) {
         debugPrint(
@@ -826,16 +827,13 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen> {
     SoundService.playButtonClick();
     setState(() => _isProcessing = true);
 
-    try {
-      SocketService().emitOrderModalAction(
-        orderId: widget.orderId,
-        orderNumber: widget.orderNumber,
-        action: 'accepted',
-        prepTimeMinutes: _selectedPrepTime,
-      );
-    } catch (_) {}
+
 
     try {
+      final saved = await _orderService.acceptWhatsAppOrder(
+        widget.orderId, prepTimeMinutes: _selectedPrepTime,
+      );
+      if (!saved) throw StateError('Could not confirm acceptance. Please retry.');
       DatabaseService.markOrderDismissed(widget.orderId, widget.orderNumber);
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('pending_incoming_order_payload');
@@ -924,10 +922,7 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen> {
       }
 
       // Backend Acceptance Dispatch
-      await _orderService.acceptWhatsAppOrder(
-        widget.orderId,
-        prepTimeMinutes: _selectedPrepTime,
-      );
+
 
       unawaited(_db.syncOrdersOnly());
 
@@ -1156,26 +1151,20 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen> {
 
     setState(() => _isProcessing = true);
 
-    try {
-      SocketService().emitOrderModalAction(
-        orderId: widget.orderId,
-        orderNumber: widget.orderNumber,
-        action: 'rejected',
-        reason: selectedReason,
-      );
-    } catch (_) {}
+
 
     try {
+      final saved = await _orderService.rejectWhatsAppOrder(
+        widget.orderId, reason: selectedReason,
+      );
+      if (!saved) throw StateError('Could not confirm rejection. Please retry.');
       DatabaseService.markOrderDismissed(widget.orderId, widget.orderNumber);
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('pending_incoming_order_payload');
 
       _syncOrderToDatabase(targetStatus: OrderStatus.cancelled);
 
-      await _orderService.rejectWhatsAppOrder(
-        widget.orderId,
-        reason: selectedReason,
-      );
+
 
       try {
         FirestoreService().updateStorefrontOrderStatus(

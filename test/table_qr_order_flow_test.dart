@@ -4,6 +4,11 @@ import 'package:apna_pos/core/network/api_client.dart';
 import 'package:apna_pos/features/storefront/models/storefront_model.dart';
 import 'package:apna_pos/features/storefront/models/table_qr_bill.dart';
 import 'package:apna_pos/features/storefront/screens/table_qr_order_screen.dart';
+import 'package:apna_pos/features/storefront/widgets/storefront_product_detail_sheet.dart';
+import 'package:apna_pos/core/models/extra_model.dart';
+import 'package:apna_pos/core/services/socket_service.dart';
+import 'package:apna_pos/core/database/database_service.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,7 +57,14 @@ void main() {
             restaurant: restaurant,
             menuItems: [pizza, side],
             categories: const ['All', 'Pizza', 'Sides'],
-            addOns: const [],
+            addOns: [
+              ExtraModel(
+                id: 'cheese',
+                name: 'Cheese',
+                price: 20,
+                type: 'addon',
+              ),
+            ],
             banners: const [],
             isOnline: true,
             themeColorHex: 0xFF064CF5,
@@ -141,6 +153,18 @@ void main() {
       );
       expect(api.requests, isEmpty);
       await tap(tester, find.text('Continue as guest'));
+      expect(api.requests, isEmpty);
+      await tap(tester, find.text('Continue'));
+      expect(find.text('Enter your name'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('qr-guest-name')),
+        'Aman',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('qr-guest-phone')),
+        '9876543210',
+      );
+      await tap(tester, find.text('Continue'));
       expect(api.requests, hasLength(1));
       final order = api.requests.single;
       expect(order, containsPair('tableNumber', 'T01'));
@@ -151,7 +175,13 @@ void main() {
       expect(order, containsPair('deliveryCharge', 0));
       expect(order, containsPair('notes', 'Less spicy'));
       expect(order, containsPair('paymentMethod', 'Pay at Counter / Table'));
-      expect(order, containsPair('customerPhone', ''));
+      expect(order, containsPair('customerPhone', '9876543210'));
+      expect(order, containsPair('customerName', 'Aman'));
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        jsonDecode(prefs.getString('qr_guest_${restaurant.id}')!)['name'],
+        'Aman',
+      );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },
@@ -169,4 +199,62 @@ void main() {
     expect(add.every((button) => button.onPressed == null), isTrue);
     expect(find.text('View cart'), findsNothing);
   });
+
+  testWidgets(
+    'product tap opens details and ADD skips customization without variants',
+    (tester) async {
+      await open(tester);
+      await tap(tester, find.text('Explore menu'));
+      await tap(tester, find.text(pizza.name));
+      expect(find.byType(StorefrontProductDetailSheet), findsOneWidget);
+      Navigator.of(
+        tester.element(find.byType(StorefrontProductDetailSheet)),
+      ).pop();
+      await tester.pumpAndSettle();
+      await tap(tester, find.text('+ ADD').first);
+      expect(find.byType(StorefrontProductDetailSheet), findsNothing);
+      expect(find.text('View cart'), findsOneWidget);
+      final button = tester.widget<IconButton>(
+        find.byWidgetPredicate(
+          (widget) => widget is IconButton && widget.tooltip == 'Back',
+        ),
+      );
+      expect(button.style, isNotNull);
+    },
+  );
+
+  testWidgets(
+    'a returning guest is restored without a login or details popup',
+    (tester) async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'qr_guest_${restaurant.id}',
+        jsonEncode({'id': 'guest', 'name': 'Aman', 'phone': '9876543210'}),
+      );
+      await open(tester);
+      await tap(tester, find.text('Account'));
+      expect(find.text('Aman • 9876543210'), findsOneWidget);
+      expect(find.text('Send OTP'), findsNothing);
+      expect(find.text('Your details'), findsNothing);
+    },
+  );
+
+  test(
+    'remote decisions are remembered even before an alert is showing',
+    () async {
+      await Future.wait([
+        SocketService.recordHandledOrder('remote-1', 'ORD-1'),
+        SocketService.recordHandledOrder('remote-2', 'ORD-2'),
+      ]);
+      expect(DatabaseService.isOrderDismissed('remote-1'), isTrue);
+      expect(DatabaseService.isOrderDismissed('remote-2'), isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      final keys =
+          jsonDecode(prefs.getString('apna_handled_order_keys')!) as Map;
+      expect(
+        keys.keys,
+        containsAll(['remote-1', 'remote-2', 'ORD-1', 'ORD-2']),
+      );
+    },
+  );
 }

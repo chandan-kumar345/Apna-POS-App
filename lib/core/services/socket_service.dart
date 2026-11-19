@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../network/api_endpoints.dart';
@@ -322,14 +323,16 @@ class SocketService {
     try {
       if (data == null) return;
       final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
-      final orderId = (rawMap['orderId'] ?? rawMap['_id'] ?? rawMap['id'] ?? '').toString();
-      final orderNumber = rawMap['orderNumber']?.toString();
-      final status = rawMap['status']?.toString().toLowerCase();
+      final order = rawMap['order'] is Map ? Map<String, dynamic>.from(rawMap['order']) : rawMap;
+      final orderId = (rawMap['orderId'] ?? order['_id'] ?? order['id'] ?? '').toString();
+      final orderNumber = (rawMap['orderNumber'] ?? order['orderNumber'])?.toString();
+      final status = (rawMap['status'] ?? order['status'])?.toString().toLowerCase();
 
       debugPrint('[SocketService] Received order:updated event for: ${orderNumber ?? orderId} (Status: $status)');
 
       // If order transitioned out of pending, dismiss modal and stop ringtone on all devices
-      if (status != null && status != 'pending') {
+      if (status != null && status.isNotEmpty && status != 'pending' && (orderId.isNotEmpty || (orderNumber?.isNotEmpty ?? false))) {
+        unawaited(recordHandledOrder(orderId, orderNumber));
         SoundService.stopOrderRingtone();
         IncomingOrderAcceptScreen.dismissIfShowing(
           orderId: orderId,
@@ -833,6 +836,8 @@ class SocketService {
       final orderNumber = rawMap['orderNumber']?.toString();
       final action = rawMap['action']?.toString() ?? 'handled';
       final reason = rawMap['reason']?.toString();
+      if (orderId.isEmpty && (orderNumber?.isEmpty ?? true)) return;
+      unawaited(recordHandledOrder(orderId, orderNumber));
 
       debugPrint('[SocketService] 🔔 Received whatsapp:order:dismiss for order: $orderId (#$orderNumber, Action: $action)');
 
@@ -868,6 +873,8 @@ class SocketService {
       final orderMap = rawMap['order'] is Map ? Map<String, dynamic>.from(rawMap['order'] as Map) : rawMap;
       final orderId = (orderMap['_id'] ?? orderMap['id'] ?? rawMap['orderId'] ?? '').toString();
       final orderNumber = (orderMap['orderNumber'] ?? rawMap['orderNumber'])?.toString();
+      if (orderId.isEmpty && (orderNumber?.isEmpty ?? true)) return;
+      unawaited(recordHandledOrder(orderId, orderNumber));
 
       debugPrint('[SocketService] 🔔 Received whatsapp:order:accepted for order: $orderId (#$orderNumber)');
       SoundService.stopOrderRingtone();
@@ -897,6 +904,8 @@ class SocketService {
       final orderId = (orderMap['_id'] ?? orderMap['id'] ?? rawMap['orderId'] ?? '').toString();
       final orderNumber = (orderMap['orderNumber'] ?? rawMap['orderNumber'])?.toString();
       final reason = rawMap['reason']?.toString();
+      if (orderId.isEmpty && (orderNumber?.isEmpty ?? true)) return;
+      unawaited(recordHandledOrder(orderId, orderNumber));
 
       debugPrint('[SocketService] 🔔 Received whatsapp:order:rejected for order: $orderId (#$orderNumber)');
       SoundService.stopOrderRingtone();
@@ -920,7 +929,38 @@ class SocketService {
     }
   }
 
-  /// Broadcast interactive order modal action (accept/reject) to all other devices in real-time (<15ms)
+  /// Remember resolved orders even when their alert has not opened yet.
+  /// Native/background delivery reads the same store after resuming.
+  static Future<void> _handledWriteQueue = Future.value();
+
+  static Future<void> recordHandledOrder(String id, String? number) {
+    DatabaseService.markOrderDismissed(id, number);
+    final write = _handledWriteQueue.then((_) => _recordHandledOrder(id, number));
+    _handledWriteQueue = write.catchError((Object error) {
+      debugPrint('[SocketService] Could not persist handled order: $error');
+    });
+    return _handledWriteQueue;
+  }
+
+  static Future<void> _recordHandledOrder(String id, String? number) async {
+    if (id.trim().isEmpty && (number?.trim().isEmpty ?? true)) return;
+    DatabaseService.markOrderDismissed(id, number);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final raw = prefs.getString('apna_handled_order_keys');
+    final keys = <String, dynamic>{};
+    try {
+      if (raw != null) keys.addAll(Map<String, dynamic>.from(jsonDecode(raw)));
+    } catch (_) {}
+    final now = DateTime.now().millisecondsSinceEpoch;
+    keys.removeWhere((_, value) => now - (int.tryParse(value.toString()) ?? 0) >= 86400000);
+    for (final key in [id, number ?? ''].where((key) => key.trim().isNotEmpty)) {
+      keys[key] = now;
+    }
+    await prefs.setString('apna_handled_order_keys', jsonEncode(keys));
+  }
+
+  /// Broadcast interactive order modal action to the other signed-in devices.
   void emitOrderModalAction({
     required String orderId,
     String? orderNumber,
