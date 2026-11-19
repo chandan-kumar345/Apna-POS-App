@@ -9,7 +9,8 @@ import 'chotu_voice_sheet.dart';
 /// on top of the native Android home screen or lock screen without loading
 /// the full POS dashboard or tables screen.
 class ChotuAssistantOverlayScreen extends StatefulWidget {
-  const ChotuAssistantOverlayScreen({super.key});
+  const ChotuAssistantOverlayScreen({super.key, this.prepare});
+  final Future<void> Function()? prepare;
 
   @override
   State<ChotuAssistantOverlayScreen> createState() =>
@@ -18,21 +19,18 @@ class ChotuAssistantOverlayScreen extends StatefulWidget {
 
 class _ChotuAssistantOverlayScreenState
     extends State<ChotuAssistantOverlayScreen> {
-  static const _overlayChannel =
-      MethodChannel('com.apnapos.app/chotu_assist_overlay');
+  static const _overlayChannel = MethodChannel(
+    'com.apnapos.app/chotu_assist_overlay',
+  );
   bool _closing = false;
+  Future<void>? _initializing;
 
-  @override
-  void initState() {
-    super.initState();
-    _ensureServicesReady();
-  }
-
-  void _ensureServicesReady() {
-    if (!DatabaseService().isInitialized) {
-      unawaited(DatabaseService().init().catchError((e) {
-        debugPrint('[ChotuAssistantOverlay] Database init fallback error: $e');
-      }));
+  Future<void> _prepare() async {
+    try {
+      await (_initializing ??= (widget.prepare ?? DatabaseService().init)());
+    } catch (_) {
+      _initializing = null;
+      rethrow;
     }
   }
 
@@ -58,6 +56,7 @@ class _ChotuAssistantOverlayScreenState
         child: ChotuVoiceSheet(
           autoStartListening: true,
           onClose: _close,
+          prepare: _prepare,
         ),
       ),
     );

@@ -1,5 +1,15 @@
 # Chotu AI order automation
 
+## Native popup follow-up 2026-11-20
+
+Status: FINALIZED
+
+Show a readable native loading card during cold Flutter startup, restore the
+assistant session once before checking access, and make popup text independent
+of the host dark theme. Preserve manual ordering and server authorization.
+Verify foreground wake behavior and document that closed/force-stopped app
+hotword listening is unsupported without a dedicated offline wake model/service.
+
 ## Voice, KOT delivery and settlement follow-up — 2026-11-16
 
 Status: FINALIZED

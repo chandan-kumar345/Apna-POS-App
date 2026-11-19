@@ -67,6 +67,15 @@ Future<void> _initializeAppServices({bool waitForEndpoint = false}) async {
   if (waitForEndpoint) await endpointReady;
 }
 
+/// Restore only the resources needed by the assistant, after its first frame.
+Future<void> _initializeAssistantServices() async {
+  unawaited(ApiEndpoints.initialize().catchError((Object error) {
+    debugPrint('Assistant endpoint initialization: $error');
+  }));
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await DatabaseService().init();
+}
+
 /// Dedicated Dart entry point for Chotu AI voice assistant when activated via
 /// hardware button / Android Digital Assistant. Runs in a transparent activity
 /// directly over the native Android home screen without touching SplashScreen,
@@ -81,7 +90,7 @@ void chotuAssistMain() {
     ),
   );
   // Initialize offline DB and printer in the background
-  unawaited(_initializeAppServices());
+  // The visible overlay initializes once, then checks restored session access.
 }
 
 class ChotuAssistantApp extends StatelessWidget {
@@ -92,15 +101,12 @@ class ChotuAssistantApp extends StatelessWidget {
     return MaterialApp(
       title: 'Chotu AI Assistant',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
+      theme: ThemeData.light(useMaterial3: true).copyWith(
         scaffoldBackgroundColor: Colors.transparent,
         canvasColor: Colors.transparent,
-        dialogBackgroundColor: Colors.transparent,
-        colorScheme: const ColorScheme.dark(
-          surface: Colors.transparent,
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF225EC6)),
       ),
-      home: const ChotuAssistantOverlayScreen(),
+      home: ChotuAssistantOverlayScreen(prepare: _initializeAssistantServices),
     );
   }
 }
@@ -138,7 +144,7 @@ void main() async {
         child: ChotuAssistantApp(),
       ),
     );
-    unawaited(_initializeAppServices());
+    // Preparation is owned by ChotuAssistantOverlayScreen after its first frame.
     return;
   }
 

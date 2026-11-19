@@ -176,7 +176,7 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.byType(BackdropFilter), findsWidgets);
+      expect(find.byKey(const ValueKey('chotu-glass-panel')), findsOneWidget);
       expect(find.byType(Image), findsNothing);
       expect(find.text('Start'), findsNothing);
       expect(speechService.isListening, isTrue);

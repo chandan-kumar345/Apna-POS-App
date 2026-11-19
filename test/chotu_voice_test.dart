@@ -196,7 +196,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       // Verify the assistant opens over the POS with glass and one title.
-      expect(find.byType(BackdropFilter), findsWidgets);
+      expect(find.byKey(const ValueKey('chotu-glass-panel')), findsOneWidget);
       expect(find.byType(ChotuVoiceSheet), findsOneWidget);
       expect(find.text('Chotu AI'), findsOneWidget);
       expect(find.byKey(const ValueKey('chotu-glass-panel')), findsOneWidget);

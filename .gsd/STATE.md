@@ -1,5 +1,18 @@
 # Current task state
 
+2026-11-20: Native Chotu popup startup/readability fix built and installed on the
+connected phone. Added native startup card, one assistant-specific preparation
+flow before access/mic, scoped light theme with stronger surface/text contrast,
+and removed panel blur. Main POS bootstrap and order/payment logic unchanged.
+34 combined Flutter checks pass; three-file analysis clean; ARM64 profile APK
+built in 198.7s / 91.5 MB, adb install Success. Initial-window observation:
+old 4694ms WARM versus new 2793ms COLD; not a controlled benchmark or command-
+ready timing. Real phone popup inspected and mic reached no-speech state; no
+orders/payments submitted. Artifact: build/chotu_popup_validation/apna-pos-chotu-popup.apk.
+Evidence/limits: docs/chotu-ai/POPUP_2026-11-20.md. Closed-app Hello Chotu remains
+unimplemented; foreground wake and assistant entry are supported. Background
+wake needs an offline keyword model/service; force-stop cannot be bypassed.
+
 2026-11-17: Chotu voice follow-up implemented and validated locally. Confirmed
 enabled Cash/UPI/Card settlement, preserved issued invoice money, immutable
 native print jobs with durable claims, Hindi/Hinglish normalization and mic

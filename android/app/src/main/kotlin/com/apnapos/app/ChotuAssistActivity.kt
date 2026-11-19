@@ -6,6 +6,12 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.ProgressBar
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -16,6 +22,48 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class ChotuAssistActivity : FlutterActivity() {
+    private var startupCard: FrameLayout? = null
+    private var flutterVisible = false
+
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        flutterVisible = true
+        startupCard?.let { (it.parent as? android.view.ViewGroup)?.removeView(it) }
+        startupCard = null
+    }
+
+    private fun showStartupCard() {
+        if (flutterVisible) return
+        fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+        val root = FrameLayout(this)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(20), dp(22), dp(20))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(250, 252, 255))
+                cornerRadius = dp(26).toFloat()
+            }
+        }
+        card.addView(TextView(this).apply {
+            text = "Chotu AI"
+            textSize = 20f
+            setTextColor(Color.rgb(16, 43, 72))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        card.addView(TextView(this).apply {
+            text = "Getting ready…"
+            textSize = 14f
+            setTextColor(Color.rgb(53, 73, 95))
+            setPadding(0, dp(12), 0, dp(16))
+        })
+        card.addView(ProgressBar(this), LinearLayout.LayoutParams(dp(28), dp(28)))
+        root.addView(card, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM
+        ).apply { setMargins(dp(16), dp(16), dp(16), dp(24)) })
+        addContentView(root, android.view.ViewGroup.LayoutParams(-1, -1))
+        startupCard = root
+    }
     companion object {
         private const val OVERLAY_CHANNEL = "com.apnapos.app/chotu_assist_overlay"
     }
@@ -50,6 +98,7 @@ class ChotuAssistActivity : FlutterActivity() {
             }
         }
         super.onCreate(savedInstanceState)
+        showStartupCard()
         wakeAndUnlock()
     }
 

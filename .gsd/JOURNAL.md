@@ -1252,3 +1252,5 @@ artifact hash, screenshots and limits: docs/chotu-ai/VALIDATION_2026-11-17.md.
 No production DB changes/deployment. No connected phone; live mic/printer/OEM
 shortcut checks unavailable. Always-on background hotword remains a separate
 phase. Existing journal bytes preserved because this file has mixed encoding.
+
+2026-11-20: Native Chotu popup fixed and installed. Native startup card, one scoped initialization, readable light theme and blur removal. 34 Flutter tests pass; three-file analysis clean; APK 198.7s / 91.5 MB, install Success. Window timing: old WARM 4694ms, new COLD 2793ms (different states; not a controlled benchmark). Phone appearance/mic startup checked without orders. Closed-app hotword remains unsupported pending offline keyword model/service. Details and logs: docs/chotu-ai/POPUP_2026-11-20.md and build/chotu_popup_validation/.

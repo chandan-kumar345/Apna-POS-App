@@ -69,6 +69,11 @@ No frontend edits, production database mutation, deployment or commit requested.
    device's missing token restored through normal sign-in.
 # Chotu voice follow-up — 2026-11-16
 
+2026-11-20 popup follow-up: native loading card, single assistant preparation,
+theme/contrast and blur removal implemented; 34 tests pass; APK installed and
+phone appearance/window timing verified. See docs/chotu-ai/POPUP_2026-11-20.md.
+Requested closed-app hotword activation remains a separate unfinished phase.
+
 Execute sequentially: diagnosis → confirmed multi-method settlement → durable
 native printing → recognition/foreground wake + assistant entry → regression
 and Android build. Plan: docs/chotu-ai/VOICE_IMPLEMENTATION_PLAN_2026-11-16.md.

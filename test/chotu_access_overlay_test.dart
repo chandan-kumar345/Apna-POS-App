@@ -283,6 +283,55 @@ void main() {
   }
 
   testWidgets(
+    'popup is visible before preparation and health waits for restored session',
+    (tester) async {
+      final ready = Completer<void>();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: ChotuVoiceSheet(prepare: () => ready.future),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Chotu AI'), findsOneWidget);
+      expect(find.text('Connecting…'), findsOneWidget);
+      expect(adapter.checks, 0);
+      final field = tester.element(
+        find.byKey(const ValueKey('chotu-order-input')),
+      );
+      expect(Theme.of(field).brightness, Brightness.light);
+      ready.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(adapter.checks, 1);
+      expect(speech.isListening, isTrue);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('failed preparation stays gated and can retry', (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChotuVoiceSheet(
+          prepare: () async {
+            if (attempts++ == 0) throw StateError('restore failed');
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(adapter.checks, 0);
+    expect(find.text('Session could not load. Please retry.'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(adapter.checks, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
     'transparent compact overlay starts the mic after access is verified',
     (tester) async {
       await open(tester);
@@ -336,7 +385,7 @@ void main() {
     (tester) async {
       await open(tester);
       speech.updateTranscription('cash received settle bill');
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump();
       expect(speech.isListening, isFalse);
       expect(speech.liveTranscription, isEmpty);
