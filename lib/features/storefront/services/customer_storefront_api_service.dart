@@ -10,8 +10,34 @@ import '../../../core/services/firestore_service.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../models/storefront_model.dart';
 import 'storefront_order_service.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
+import 'package:dio/dio.dart';
+import '../models/customer_order_status.dart';
 
 class CustomerStorefrontApiService {
+  static Future<void> _historyWrites = Future.value();
+
+  Future<List<CustomerOrderTrackingModel>> orderHistory(String restaurantId) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      return (jsonDecode(prefs.getString('customer_orders_$restaurantId') ?? '[]') as List)
+          .map((entry) => CustomerOrderTrackingModel.fromJson(Map<String, dynamic>.from(entry)))
+          .toList();
+    } catch (_) { return []; }
+  }
+
+  Future<void> _rememberOrder(CustomerOrderTrackingModel order) {
+    final save = _historyWrites.then((_) async {
+      final history = await orderHistory(order.restaurantId);
+      history.removeWhere((entry) => entry.orderId == order.orderId);
+      history.insert(0, order);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('customer_orders_${order.restaurantId}',
+          jsonEncode(history.take(50).map((entry) => entry.toJson()).toList()));
+    });
+    return _historyWrites = save.catchError((Object _) {});
+  }
   static final CustomerStorefrontApiService _instance = CustomerStorefrontApiService._internal();
   factory CustomerStorefrontApiService() => _instance;
   CustomerStorefrontApiService._internal();
@@ -284,17 +310,65 @@ class CustomerStorefrontApiService {
       await prefs.setString(_prefActiveOrderKey, jsonEncode(trackingModel.toJson()));
     } catch (_) {}
 
+    await _rememberOrder(trackingModel);
     return trackingModel;
   }
 
   /// Real-time stream of order status updates
-  Stream<CustomerOrderTrackingModel?> streamOrderStatus(String orderId) {
-    StreamController<CustomerOrderTrackingModel?> controller = StreamController.broadcast();
+  Stream<CustomerOrderTrackingModel?> streamOrderStatus(
+    String orderId, {
+    CustomerOrderTrackingModel? receipt,
+    RestaurantModel? restaurant,
+  }) {
+    late StreamController<CustomerOrderTrackingModel?> controller;
+    StreamSubscription<Map<String, dynamic>?>? subscription;
+    Timer? timer;
+    var polling = false;
+    var authoritative = false;
+    CustomerOrderTrackingModel? latest = receipt;
+
+    void emit(Map<String, dynamic> data) {
+      if (controller.isClosed) return;
+      final status = CustomerOrderStatus.resolve(data);
+      final base = latest;
+      if (base == null) return;
+      // Terminal receipts cannot regress when an older cache snapshot arrives.
+      if (['completed', 'cancelled'].contains(base.status) &&
+          base.status != status.name) {
+        return;
+      }
+      latest = base.copyWith(
+        status: status.name,
+        currentStepIndex: status.step,
+        paymentStatus: data['paymentStatus']?.toString() ?? base.paymentStatus,
+      );
+      controller.add(latest);
+      unawaited(_rememberOrder(latest!));
+    }
+
+    Future<void> refresh() async {
+      if (polling || controller.isClosed || receipt == null || restaurant == null) return;
+      polling = true;
+      try {
+        final response = await ApiClient().get(
+          '${ApiEndpoints.storefrontOrder(restaurant.storefrontSlug)}/${Uri.encodeComponent(orderId)}/status',
+          queryParameters: {'orderNumber': receipt.orderNumber},
+          options: Options(receiveTimeout: const Duration(seconds: 8), sendTimeout: const Duration(seconds: 8)),
+        );
+        if (response is Map && response['data'] is Map) {
+          authoritative = true;
+          emit(Map<String, dynamic>.from(response['data']));
+        }
+      } catch (_) {
+        // A transient connection failure must not reset a known order status.
+      } finally { polling = false; }
+    }
 
     // 1. Check local order first
     void checkLocal() {
       final local = _db.orders.where((o) => o.id == orderId || o.orderNumber == orderId).firstOrNull;
       if (local != null) {
+        if (authoritative) return;
         int stepIdx = 0;
         if (local.status == OrderStatus.preparing) stepIdx = 1;
         if (local.status == OrderStatus.ready) stepIdx = 2;
@@ -317,28 +391,30 @@ class CustomerStorefrontApiService {
           deliveryAddress: local.deliveryAddress ?? '',
           createdAt: DateTime.tryParse(local.createdAt) ?? DateTime.now(),
         );
-        controller.add(model);
+        latest ??= model;
+        final json = local.toJson();
+        if (local.items.any((line) => line.kotQuantity > 0)) json['kotStatus'] = 'sent';
+        emit(json);
       }
     }
 
-    checkLocal();
-
-    // 2. Listen to Firestore for live multi-device updates
-    final sub = _firestore.streamStorefrontOrder(orderId).listen((docData) {
-      if (docData != null) {
-        try {
-          final model = CustomerOrderTrackingModel.fromJson(docData);
-          controller.add(model);
-        } catch (_) {}
-      } else {
+    controller = StreamController<CustomerOrderTrackingModel?>(
+      onListen: () {
+        if (latest != null) controller.add(latest);
+        _db.addListener(checkLocal);
         checkLocal();
-      }
-    });
-
-    controller.onCancel = () {
-      sub.cancel();
-    };
-
+        subscription = _firestore.streamStorefrontOrder(orderId).listen((data) {
+          if (data != null && !authoritative) emit(data);
+        }, onError: (Object _) {});
+        unawaited(refresh());
+        timer = Timer.periodic(const Duration(seconds: 3), (_) => unawaited(refresh()));
+      },
+      onCancel: () async {
+        timer?.cancel();
+        _db.removeListener(checkLocal);
+        await subscription?.cancel();
+      },
+    );
     return controller.stream;
   }
 

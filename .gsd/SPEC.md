@@ -1,5 +1,16 @@
 # Chotu AI order automation
 
+## Customer storefront sheet/media follow-up 2026-11-20
+
+Status: FINALIZED
+
+Guest details must open as a readable bottom sheet; product details use 60% of
+screen height with scrolling content and fixed purchase controls. Enable muted
+independent product video playback and existing completion-driven video/image
+carousel. Render up to ten available popular products, improve rounded search,
+and preserve menu dimensions when keyboard insets appear. Preserve concurrent
+order-tracking edits already present in this checkout; no production data writes.
+
 ## Native popup follow-up 2026-11-20
 
 Status: FINALIZED

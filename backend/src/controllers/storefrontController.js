@@ -32,6 +32,46 @@ function slugify(text) {
 }
 
 class StorefrontController {
+  // Receipt holders can track status without a merchant login. Return no
+  // customer/contact/billing data and require both receipt identifiers.
+  async getOrderStatus(req, res, next) {
+    try {
+      const { orderId, slug } = req.params;
+      const number = String(req.query.orderNumber || '').trim();
+      if (!/^[a-f0-9]{24}$/i.test(orderId) || !number) {
+        throw ApiError.notFound('Order not found');
+      }
+      const order = await Order.findOne({ _id: orderId, orderNumber: number })
+        .select('businessId status paymentStatus kotStatus orderNumber whatsappDetails.acceptanceStatus').lean();
+      if (!order) throw ApiError.notFound('Order not found');
+      const business = await Business.findById(order.businessId)
+        .select('profile.name profile.companyName profile.slug slug storefront.slug').lean();
+      const names = [
+        String(order.businessId), business?.profile?.slug, business?.slug,
+        business?.storefront?.slug,
+        business?.profile?.name && slugify(business.profile.name),
+        business?.profile?.companyName && slugify(business.profile.companyName),
+      ];
+      if (!business || !names.some((name) => name && name.toLowerCase() === slug.toLowerCase())) {
+        throw ApiError.notFound('Order not found');
+      }
+      let kotStatus = order.kotStatus;
+      if (['pending', 'preparing'].includes(order.status)) {
+        const table = await Table.findOne({
+          businessId: order.businessId,
+          $or: [{ currentOrderId: orderId }, { activeOrderNumber: order.orderNumber }],
+        }).select('status').lean();
+        if (['runningKot', 'running_kot'].includes(table?.status)) kotStatus = 'running';
+      }
+      res.set('Cache-Control', 'no-store');
+      return ApiResponse.success(res, {
+        orderId, status: order.status, paymentStatus: order.paymentStatus,
+        kotStatus,
+        acceptanceStatus: order.whatsappDetails?.acceptanceStatus,
+      });
+    } catch (error) { next(error); }
+  }
+
   async getStorefront(req, res, next) {
     try {
       const rawSlug = (req.params.slug || '').trim().toLowerCase();

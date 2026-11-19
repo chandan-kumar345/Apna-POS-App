@@ -1,3 +1,5 @@
+import 'customer_order_status.dart';
+
 class CustomerAddressModel {
   final String id;
   final String label; // 'Home', 'Work', 'Other'
@@ -234,37 +236,21 @@ class CustomerOrderTrackingModel {
   });
 
   List<CustomerTimelineStep> get timelineSteps {
+    final resolved = CustomerOrderStatus.resolve({'status': status});
+    if (resolved == CustomerOrderStatus.cancelled) {
+      return const [CustomerTimelineStep(title: 'Cancelled', isActive: true)];
+    }
+    final titles = [
+      resolved == CustomerOrderStatus.pending ? 'Awaiting restaurant acceptance' : 'Confirmed',
+      'Preparing', 'Ready', 'Completed',
+    ];
     return [
-      CustomerTimelineStep(
-        title: status == 'pending' ? 'Awaiting restaurant acceptance' : 'Order Confirmed',
-        time: '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}',
-        isCompleted: status != 'pending' && currentStepIndex >= 0,
-        isActive: currentStepIndex == 0,
-      ),
-      CustomerTimelineStep(
-        title: 'Preparing Your Food',
-        time: currentStepIndex >= 1
-            ? '${createdAt.add(const Duration(minutes: 5)).hour.toString().padLeft(2, '0')}:${createdAt.add(const Duration(minutes: 5)).minute.toString().padLeft(2, '0')}'
-            : null,
-        isCompleted: currentStepIndex >= 1,
-        isActive: currentStepIndex == 1,
-      ),
-      CustomerTimelineStep(
-        title: 'Out for Delivery',
-        time: currentStepIndex >= 2
-            ? '${createdAt.add(const Duration(minutes: 20)).hour.toString().padLeft(2, '0')}:${createdAt.add(const Duration(minutes: 20)).minute.toString().padLeft(2, '0')}'
-            : null,
-        isCompleted: currentStepIndex >= 2,
-        isActive: currentStepIndex == 2,
-      ),
-      CustomerTimelineStep(
-        title: 'Delivered',
-        time: currentStepIndex >= 3
-            ? '${createdAt.add(const Duration(minutes: 32)).hour.toString().padLeft(2, '0')}:${createdAt.add(const Duration(minutes: 32)).minute.toString().padLeft(2, '0')}'
-            : null,
-        isCompleted: currentStepIndex >= 3,
-        isActive: currentStepIndex == 3,
-      ),
+      for (var i = 0; i < titles.length; i++)
+        CustomerTimelineStep(
+          title: titles[i],
+          isCompleted: resolved != CustomerOrderStatus.pending && resolved.step >= i,
+          isActive: resolved.step == i,
+        ),
     ];
   }
 

@@ -106,6 +106,14 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
         });
       }
     } catch (_) {}
+    try {
+      final history = await CustomerStorefrontApiService().orderHistory(
+        _data.restaurant.id,
+      );
+      if (mounted && history.isNotEmpty) {
+        setState(() => _receipt = history.first);
+      }
+    } catch (_) {}
     if (widget.preview || !mounted) return;
     try {
       final customer = await _auth.restore();
@@ -285,72 +293,109 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     final name = TextEditingController();
     final phone = TextEditingController();
     final form = GlobalKey<FormState>();
-    final result = await showDialog<CustomerProfileModel>(
+    final result = await showModalBottomSheet<CustomerProfileModel>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Your details'),
-        content: Form(
-          key: form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'So the restaurant can identify and contact you about your order.',
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                key: const ValueKey('qr-guest-name'),
-                controller: name,
-                textCapitalization: TextCapitalization.words,
-                maxLength: 80,
-                decoration: _input('Your name'),
-                validator: (value) =>
-                    (value?.trim().length ?? 0) < 2 ? 'Enter your name' : null,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                key: const ValueKey('qr-guest-phone'),
-                controller: phone,
-                keyboardType: TextInputType.phone,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(10),
-                ],
-                decoration: _input('10-digit mobile number'),
-                validator: (value) =>
-                    RegExp(r'^[6-9][0-9]{9}$').hasMatch(value ?? '')
-                    ? null
-                    : 'Enter a valid mobile number',
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'We’ll remember these details on this device. No OTP is needed for guest orders.',
-                style: TextStyle(color: _muted, fontSize: 12),
-              ),
-            ],
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Theme(
+        data: ThemeData.light(
+          useMaterial3: true,
+        ).copyWith(colorScheme: ColorScheme.fromSeed(seedColor: _blue)),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            MediaQuery.viewInsetsOf(ctx).bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Your details',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Form(
+                  key: form,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'So the restaurant can identify and contact you about your order.',
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        key: const ValueKey('qr-guest-name'),
+                        controller: name,
+                        textCapitalization: TextCapitalization.words,
+                        maxLength: 80,
+                        decoration: _input('Your name'),
+                        validator: (value) => (value?.trim().length ?? 0) < 2
+                            ? 'Enter your name'
+                            : null,
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        key: const ValueKey('qr-guest-phone'),
+                        controller: phone,
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
+                        ],
+                        decoration: _input('10-digit mobile number'),
+                        validator: (value) =>
+                            RegExp(r'^[6-9][0-9]{9}$').hasMatch(value ?? '')
+                            ? null
+                            : 'Enter a valid mobile number',
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'We’ll remember these details on this device. No OTP is needed for guest orders.',
+                        style: TextStyle(color: _muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        if (!form.currentState!.validate()) return;
+                        Navigator.pop(
+                          ctx,
+                          CustomerProfileModel(
+                            id: 'guest',
+                            name: name.text.trim(),
+                            phone: phone.text,
+                          ),
+                        );
+                      },
+                      child: const Text('Continue'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (!form.currentState!.validate()) return;
-              Navigator.pop(
-                ctx,
-                CustomerProfileModel(
-                  id: 'guest',
-                  name: name.text.trim(),
-                  phone: phone.text,
-                ),
-              );
-            },
-            child: const Text('Continue'),
-          ),
-        ],
       ),
     );
     if (result != null) {
@@ -511,6 +556,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
           textTheme: theme.textTheme.apply(bodyColor: _ink, displayColor: _ink),
         ),
         child: Scaffold(
+          resizeToAvoidBottomInset: false,
           backgroundColor: const Color(0xFFEDF3FD),
           body: SafeArea(
             child: Center(
@@ -554,7 +600,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
   // 01 / Table home
   Widget _home() {
     final restaurant = _data.restaurant;
-    final popular = _data.menuItems.where(_available).take(2).toList();
+    final popular = _data.menuItems.where(_available).take(10).toList();
     final banners = _data.banners.where(
       (banner) => banner.imageUrl.trim().isNotEmpty,
     );
@@ -704,17 +750,18 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
             const SizedBox(height: 20),
             _title('Popular picks', 20),
             const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _popularCard(popular.first)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: popular.length > 1
-                      ? _popularCard(popular[1])
-                      : const SizedBox(),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) => Wrap(
+                spacing: 10,
+                runSpacing: 12,
+                children: [
+                  for (final item in popular)
+                    SizedBox(
+                      width: (constraints.maxWidth - 10) / 2,
+                      child: _popularCard(item),
+                    ),
+                ],
+              ),
             ),
           ],
           const SizedBox(height: 16),
@@ -793,11 +840,35 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
           child: TextField(
             controller: _search,
             onChanged: (_) => setState(() {}),
-            decoration: _input(
-              'Search pizzas, sides & drinks',
-              prefix: const Icon(Icons.search),
-              filled: true,
-            ),
+            style: const TextStyle(color: _ink, fontSize: 14),
+            decoration:
+                _input(
+                  'Search pizzas, sides & drinks',
+                  prefix: const Icon(
+                    Icons.search_rounded,
+                    size: 21,
+                    color: _muted,
+                  ),
+                  filled: true,
+                ).copyWith(
+                  fillColor: const Color(0xFFF2F5FA),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFFDCE4EE)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Color(0xFFDCE4EE)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: _blue, width: 1.5),
+                  ),
+                ),
           ),
         ),
         SizedBox(
@@ -1597,9 +1668,10 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     item: item,
     borderRadius: BorderRadius.circular(radius),
     autoPlayVideo: _page == _Page.menu || _page == _Page.home,
-    autoSlide: item.videoUrl.trim().isNotEmpty,
+    autoSlide: true,
     showDots: item.videoUrl.trim().isNotEmpty,
-    isMini: true,
+    isMini: false,
+    independentPlayback: true,
     onTap: () => _showDetails(item),
   );
 

@@ -9,6 +9,10 @@ import 'package:apna_pos/core/models/extra_model.dart';
 import 'package:apna_pos/core/services/socket_service.dart';
 import 'package:apna_pos/core/database/database_service.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +20,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/storefront_order_adapter.dart';
 
 void main() {
+  final captureKey = GlobalKey();
+  Future<void> capture(WidgetTester tester, String name) async {
+    final directory = Platform.environment['STOREFRONT_CAPTURE_DIR'];
+    if (directory == null) return;
+    await tester.runAsync(() async {
+      final boundary =
+          captureKey.currentContext!.findRenderObject()
+              as RenderRepaintBoundary;
+      final rendered = await boundary.toImage(pixelRatio: 1);
+      final data = await rendered.toByteData(format: ui.ImageByteFormat.png);
+      Directory(directory).createSync(recursive: true);
+      File('$directory/$name.png').writeAsBytesSync(data!.buffer.asUint8List());
+      rendered.dispose();
+    });
+  }
+
+  setUpAll(() async {
+    final fontPath = Platform.environment['STOREFRONT_FONT'];
+    if (fontPath != null) {
+      final font = FontLoader('Roboto')
+        ..addFont(
+          Future.value(ByteData.sublistView(File(fontPath).readAsBytesSync())),
+        );
+      await font.load();
+      final icons = FontLoader('MaterialIcons')..addFont(Future.value(ByteData.sublistView(File('${File(fontPath).parent.path}/materialicons-regular.otf').readAsBytesSync())));
+      await icons.load();
+    }
+  });
   final restaurant = RestaurantModel(
     id: StorefrontOrderAdapter.businessId,
     slug: 'pizza-47',
@@ -45,42 +77,48 @@ void main() {
     WidgetTester tester, {
     bool valid = true,
     bool preview = false,
+    List<MenuItemModel>? products,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      MaterialApp(
-        home: TableQrOrderScreen(
-          data: StorefrontData(
-            restaurant: restaurant,
-            menuItems: [pizza, side],
-            categories: const ['All', 'Pizza', 'Sides'],
-            addOns: [
-              ExtraModel(
-                id: 'cheese',
-                name: 'Cheese',
-                price: 20,
-                type: 'addon',
+      RepaintBoundary(
+        key: captureKey,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(fontFamily: 'Roboto'),
+          home: TableQrOrderScreen(
+            data: StorefrontData(
+              restaurant: restaurant,
+              menuItems: products ?? [pizza, side],
+              categories: const ['All', 'Pizza', 'Sides'],
+              addOns: [
+                ExtraModel(
+                  id: 'cheese',
+                  name: 'Cheese',
+                  price: 20,
+                  type: 'addon',
+                ),
+              ],
+              banners: const [],
+              isOnline: true,
+              themeColorHex: 0xFF064CF5,
+              tableInfo: StorefrontTableInfo(
+                isValid: valid,
+                tableCode: 'T01',
+                isTableOrdering: true,
               ),
-            ],
-            banners: const [],
-            isOnline: true,
-            themeColorHex: 0xFF064CF5,
-            tableInfo: StorefrontTableInfo(
-              isValid: valid,
-              tableCode: 'T01',
-              isTableOrdering: true,
             ),
-          ),
-          tableCode: 'T01',
-          preview: preview,
-          onRefresh: () async {},
-          avatar: (_, _, size) => SizedBox(
-            width: size,
-            height: size,
-            child: const Icon(Icons.local_pizza),
+            tableCode: 'T01',
+            preview: preview,
+            onRefresh: () async {},
+            avatar: (_, _, size) => SizedBox(
+              width: size,
+              height: size,
+              child: const Icon(Icons.local_pizza),
+            ),
           ),
         ),
       ),
@@ -153,6 +191,15 @@ void main() {
       );
       expect(api.requests, isEmpty);
       await tap(tester, find.text('Continue as guest'));
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(
+        Theme.of(
+          tester.element(find.byKey(const ValueKey('qr-guest-name'))),
+        ).brightness,
+        Brightness.light,
+      );
+      await capture(tester, 'guest-details');
       expect(api.requests, isEmpty);
       await tap(tester, find.text('Continue'));
       expect(find.text('Enter your name'), findsOneWidget);
@@ -207,6 +254,15 @@ void main() {
       await tap(tester, find.text('Explore menu'));
       await tap(tester, find.text(pizza.name));
       expect(find.byType(StorefrontProductDetailSheet), findsOneWidget);
+      await capture(tester, 'product-details');
+      final sheet = tester.getSize(find.byType(StorefrontProductDetailSheet));
+      expect(
+        sheet.height,
+        closeTo(
+          tester.view.physicalSize.height / tester.view.devicePixelRatio * 0.6,
+          1,
+        ),
+      );
       Navigator.of(
         tester.element(find.byType(StorefrontProductDetailSheet)),
       ).pop();
@@ -220,6 +276,33 @@ void main() {
         ),
       );
       expect(button.style, isNotNull);
+    },
+  );
+
+  testWidgets(
+    'popular picks includes ten products and search keyboard keeps menu size',
+    (tester) async {
+      await open(
+        tester,
+        products: List.generate(
+          12,
+          (i) => MenuItemModel(
+            id: 'pick-$i',
+            name: 'Pick ${i + 1}',
+            description: '',
+            category: 'Pizza',
+            price: 100,
+          ),
+        ),
+      );
+      expect(find.text('Pick 10'), findsOneWidget);
+      expect(find.text('Pick 11'), findsNothing);
+      await tap(tester, find.text('Explore menu'));
+      final before = tester.getSize(find.byType(Scaffold).first);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.getSize(find.byType(Scaffold).first), before);
     },
   );
 

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/restaurant_model.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../services/customer_storefront_api_service.dart';
+import '../models/customer_order_status.dart';
 
 class CustomerMyOrdersScreen extends StatefulWidget {
   final CustomerOrderTrackingModel order;
@@ -28,24 +29,63 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
   late CustomerOrderTrackingModel _currentOrder;
   final CustomerStorefrontApiService _apiService = CustomerStorefrontApiService();
   StreamSubscription<CustomerOrderTrackingModel?>? _orderStreamSub;
+  late String _section;
+  final Map<String, CustomerOrderTrackingModel> _orders = {};
+  CustomerOrderStatus get _status => CustomerOrderStatus.resolve({'status': _currentOrder.status});
+  String get _orderSection => _status == CustomerOrderStatus.cancelled ? 'Cancelled'
+      : _status == CustomerOrderStatus.completed ? 'Completed' : 'Active';
 
   @override
   void initState() {
     super.initState();
     _currentOrder = widget.order;
+    _section = _orderSection;
+    _orders[_currentOrder.orderId] = _currentOrder;
+    unawaited(_loadHistory());
+    _subscribeToOrderUpdates();
+  }
+
+  Future<void> _loadHistory() async {
+    final history = await _apiService.orderHistory(_currentOrder.restaurantId);
+    if (!mounted) return;
+    setState(() {
+      for (final order in history) {
+        _orders.putIfAbsent(order.orderId, () => order);
+      }
+    });
+  }
+
+  String _bucket(CustomerOrderTrackingModel order) {
+    final status = CustomerOrderStatus.resolve({'status': order.status});
+    return status == CustomerOrderStatus.cancelled ? 'Cancelled'
+        : status == CustomerOrderStatus.completed ? 'Completed' : 'Active';
+  }
+
+  Future<void> _selectOrder(CustomerOrderTrackingModel order) async {
+    await _orderStreamSub?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _currentOrder = order;
+      _section = _orderSection;
+    });
     _subscribeToOrderUpdates();
   }
 
   void _subscribeToOrderUpdates() {
-    _orderStreamSub = _apiService.streamOrderStatus(_currentOrder.orderId).listen((updated) {
+    _orderStreamSub = _apiService.streamOrderStatus(
+      _currentOrder.orderId, receipt: _currentOrder, restaurant: widget.restaurant,
+    ).listen((updated) {
       if (updated != null && mounted) {
         setState(() {
+          final previousSection = _orderSection;
           // Status-only updates may omit the receipt lines and kitchen note.
           _currentOrder = _currentOrder.copyWith(
             status: updated.status,
             currentStepIndex: updated.currentStepIndex,
             paymentStatus: updated.paymentStatus,
           );
+          _orders[_currentOrder.orderId] = _currentOrder;
+          if (previousSection != _orderSection) _section = _orderSection;
         });
       }
     });
@@ -58,7 +98,8 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
   }
 
   String get _displayTable {
-    if (widget.tableCode != null && widget.tableCode!.trim().isNotEmpty) {
+    if (_currentOrder.orderId == widget.order.orderId &&
+        widget.tableCode != null && widget.tableCode!.trim().isNotEmpty) {
       return widget.tableCode!.trim();
     }
     if (_currentOrder.deliveryAddress.toLowerCase().contains('table')) {
@@ -76,7 +117,9 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
   }
 
   Color get _statusColor {
-    switch (_currentOrder.currentStepIndex) {
+    if (_status == CustomerOrderStatus.cancelled) return const Color(0xFFB42318);
+    if (_status == CustomerOrderStatus.pending) return const Color(0xFF64748B);
+    switch (_status.step) {
       case 0:
         return const Color(0xFF0284C7); // Sky blue
       case 1:
@@ -90,20 +133,7 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
     }
   }
 
-  String get _statusLabel {
-    switch (_currentOrder.currentStepIndex) {
-      case 0:
-        return 'Order Confirmed';
-      case 1:
-        return 'Cooking in Kitchen';
-      case 2:
-        return 'Ready to Serve';
-      case 3:
-        return 'Served at Table';
-      default:
-        return _currentOrder.status.toUpperCase();
-    }
-  }
+  String get _statusLabel => _status.label;
 
   @override
   Widget build(BuildContext context) {
@@ -182,6 +212,31 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Wrap(spacing: 8, children: [
+                for (final section in ['Active', 'Completed', 'Cancelled'])
+                  ChoiceChip(
+                    label: Text(section), selected: _section == section,
+                    onSelected: (_) => setState(() => _section = section),
+                  ),
+              ]),
+              const SizedBox(height: 16),
+              for (final order in _orders.values.where((order) =>
+                  _bucket(order) == _section && order.orderId != _currentOrder.orderId))
+                Card(
+                  child: ListTile(
+                    title: Text(order.orderNumber),
+                    subtitle: Text(CustomerOrderStatus.resolve({'status': order.status}).label),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _selectOrder(order),
+                  ),
+                ),
+              if (_section != _orderSection &&
+                  !_orders.values.any((order) => _bucket(order) == _section))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 30),
+                  child: Text('No ${_section.toLowerCase()} orders in this tracking view.'),
+                ),
+              if (_section == _orderSection) ...[
               // 1. Order Status Hero Card
               _buildHeroStatusCard(themeColor),
 
@@ -206,6 +261,7 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
               _buildActionButtons(themeColor),
 
               const SizedBox(height: 24),
+              ],
             ],
           ),
         ),
@@ -327,16 +383,29 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
   }
 
   Widget _buildKitchenTimelineCard(Color themeColor) {
-    final stepIdx = _currentOrder.currentStepIndex;
+    if (_status == CustomerOrderStatus.cancelled) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: const Color(0xFFFFF0EE), borderRadius: BorderRadius.circular(20)),
+        child: const Row(children: [
+          Icon(Icons.cancel_outlined, color: Color(0xFFB42318)),
+          SizedBox(width: 12),
+          Expanded(child: Text('This order was cancelled. It will not be prepared.')),
+        ]),
+      );
+    }
+    final stepIdx = _status.step;
 
     final steps = [
       {
-        'title': 'Order Placed & Confirmed',
-        'subtitle': 'Sent to kitchen display & accepted',
+        'title': _status == CustomerOrderStatus.pending ? 'Awaiting acceptance' : 'Confirmed',
+        'subtitle': _status == CustomerOrderStatus.pending
+            ? 'Waiting for the restaurant to accept your order'
+            : 'Your order has been accepted by the restaurant',
         'icon': Icons.check_circle_rounded,
       },
       {
-        'title': 'Cooking in Kitchen',
+        'title': 'Preparing',
         'subtitle': 'Chef is preparing your fresh meal',
         'icon': Icons.outdoor_grill_rounded,
       },
@@ -346,8 +415,8 @@ class _CustomerMyOrdersScreenState extends State<CustomerMyOrdersScreen> {
         'icon': Icons.room_service_rounded,
       },
       {
-        'title': 'Served at Table $_displayTable',
-        'subtitle': 'Enjoy your meal! Let us know if you need anything',
+        'title': 'Completed',
+        'subtitle': 'Your order is complete. Thank you!',
         'icon': Icons.dining_rounded,
       },
     ];

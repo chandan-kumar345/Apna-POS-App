@@ -1089,8 +1089,10 @@ class StorefrontMenuView extends StatelessWidget {
                       child: PosProductMediaBox(
                         key: ValueKey('storefront-product-${item.id}'),
                         item: item,
-                        autoPlayVideo: false,
-                        showDots: false,
+                        autoPlayVideo: true,
+                        independentPlayback: true,
+                        autoSlide: true,
+                        showDots: item.videoUrl.trim().isNotEmpty || item.images.length > 1,
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),

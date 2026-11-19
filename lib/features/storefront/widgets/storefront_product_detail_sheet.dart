@@ -6,7 +6,8 @@ import '../models/storefront_model.dart';
 
 class StorefrontProductDetailSheet extends StatefulWidget {
   final MenuItemModel item;
-  final Function(StorefrontCartItem cartItem, {bool openCartImmediately}) onAddToCart;
+  final Function(StorefrontCartItem cartItem, {bool openCartImmediately})
+  onAddToCart;
   final Color themeColor;
   final Color? themeColorEnd;
   final bool isOnline;
@@ -23,10 +24,12 @@ class StorefrontProductDetailSheet extends StatefulWidget {
   });
 
   @override
-  State<StorefrontProductDetailSheet> createState() => _StorefrontProductDetailSheetState();
+  State<StorefrontProductDetailSheet> createState() =>
+      _StorefrontProductDetailSheetState();
 }
 
-class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSheet> {
+class _StorefrontProductDetailSheetState
+    extends State<StorefrontProductDetailSheet> {
   late List<ProductSizeOption> _sizes;
   ProductSizeOption? _selectedSize;
   late List<StorefrontAddonItem> _addons;
@@ -80,8 +83,11 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
           }
         }
 
-        final double effectivePrice = v.effectivePrice > 0 ? v.effectivePrice : v.price;
-        final double? origPrice = (v.hasDiscount && v.discountPercent > 0 && v.price > effectivePrice)
+        final double effectivePrice = v.effectivePrice > 0
+            ? v.effectivePrice
+            : v.price;
+        final double? origPrice =
+            (v.hasDiscount && v.discountPercent > 0 && v.price > effectivePrice)
             ? v.price
             : null;
 
@@ -126,11 +132,15 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
           return false;
         }
         if (extra.categoryId.isNotEmpty &&
-            extra.categoryId.toLowerCase() != widget.item.category.toLowerCase()) {
+            extra.categoryId.toLowerCase() !=
+                widget.item.category.toLowerCase()) {
           return false;
         }
         final type = extra.type.toLowerCase();
-        return type == 'addon' || type == 'extra' || type == 'topping' || extra.price > 0;
+        return type == 'addon' ||
+            type == 'extra' ||
+            type == 'topping' ||
+            extra.price > 0;
       }).toList();
 
       if (matched.isNotEmpty) {
@@ -157,9 +167,13 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
         lowerNames.contains('large') ||
         lowerNames.contains('reg')) {
       return 'Select Size';
-    } else if (lowerNames.contains('half') || lowerNames.contains('full') || lowerNames.contains('quarter')) {
+    } else if (lowerNames.contains('half') ||
+        lowerNames.contains('full') ||
+        lowerNames.contains('quarter')) {
       return 'Select Portion';
-    } else if (lowerNames.contains('ml') || lowerNames.contains('ltr') || lowerNames.contains('liter')) {
+    } else if (lowerNames.contains('ml') ||
+        lowerNames.contains('ltr') ||
+        lowerNames.contains('liter')) {
       return 'Select Volume';
     } else if (lowerNames.contains('gm') || lowerNames.contains('kg')) {
       return 'Select Weight';
@@ -168,15 +182,20 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
   }
 
   double get _unitPrice {
-    final base = _selectedSize != null ? _selectedSize!.price : widget.item.effectivePrice;
-    final addonsTotal = _addons.where((a) => a.isSelected).fold(0.0, (sum, a) => sum + a.price);
+    final base = _selectedSize != null
+        ? _selectedSize!.price
+        : widget.item.effectivePrice;
+    final addonsTotal = _addons
+        .where((a) => a.isSelected)
+        .fold(0.0, (sum, a) => sum + a.price);
     return base + addonsTotal;
   }
 
   double get _totalPrice => _unitPrice * _quantity;
 
   Widget _buildVegBadge() {
-    final isVeg = widget.item.itemType.toLowerCase().contains('veg') &&
+    final isVeg =
+        widget.item.itemType.toLowerCase().contains('veg') &&
         !widget.item.itemType.toLowerCase().contains('non');
     final color = isVeg ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
@@ -200,10 +219,19 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: ThemeData.light(useMaterial3: true).copyWith(
+        colorScheme: ColorScheme.fromSeed(seedColor: widget.themeColor),
+      ),
+      child: Builder(builder: _buildSheet),
+    );
+  }
+
+  Widget _buildSheet(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Container(
-      height: screenHeight * 0.90,
+      height: screenHeight * 0.60,
       decoration: const BoxDecoration(
         color: Color(0xFFEFF3F8), // Neumorphic base
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -234,13 +262,15 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                   Stack(
                     children: [
                       Container(
-                        height: 250,
+                        height: (screenHeight * 0.22).clamp(120.0, 180.0),
                         width: double.infinity,
                         margin: const EdgeInsets.symmetric(horizontal: 14),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(22),
                           child: PosProductMediaBox(
-                            key: ValueKey('detail_media_${widget.item.id}_${widget.item.imageUrl}_${widget.item.videoUrl}_${widget.item.images.length}'),
+                            key: ValueKey(
+                              'detail_media_${widget.item.id}_${widget.item.imageUrl}_${widget.item.videoUrl}_${widget.item.images.length}',
+                            ),
                             item: widget.item,
                             fit: BoxFit.cover,
                             borderRadius: BorderRadius.circular(22),
@@ -264,9 +294,14 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                         top: 10,
                         right: 24,
                         child: _buildCircularButton(
-                          icon: _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          iconColor: _isFavorite ? Colors.red : const Color(0xFF0F172A),
-                          onTap: () => setState(() => _isFavorite = !_isFavorite),
+                          icon: _isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          iconColor: _isFavorite
+                              ? Colors.red
+                              : const Color(0xFF0F172A),
+                          onTap: () =>
+                              setState(() => _isFavorite = !_isFavorite),
                         ),
                       ),
 
@@ -275,18 +310,31 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                         bottom: 12,
                         left: 26,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A).withValues(alpha: 0.85),
+                            color: const Color(
+                              0xFF0F172A,
+                            ).withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: const [
-                              BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
                             ],
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.local_fire_department_rounded, color: Color(0xFFFF5722), size: 16),
+                              Icon(
+                                Icons.local_fire_department_rounded,
+                                color: Color(0xFFFF5722),
+                                size: 16,
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 'Bestseller',
@@ -353,12 +401,18 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                                 ),
                               ),
                             ],
-                            if (widget.item.hasDiscount && widget.item.discountPercent > 0) ...[
+                            if (widget.item.hasDiscount &&
+                                widget.item.discountPercent > 0) ...[
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -379,20 +433,39 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                         // Rating & Bestseller row
                         Row(
                           children: [
-                            const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 18),
+                            const Icon(
+                              Icons.star_rounded,
+                              color: Color(0xFFFFB800),
+                              size: 18,
+                            ),
                             const SizedBox(width: 4),
                             const Text(
                               '4.7',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
                             ),
                             const Text(
                               ' (320+)',
-                              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Color(0xFF64748B),
+                              ),
                             ),
                             const SizedBox(width: 10),
-                            Container(width: 1, height: 12, color: const Color(0xFFCBD5E1)),
+                            Container(
+                              width: 1,
+                              height: 12,
+                              color: const Color(0xFFCBD5E1),
+                            ),
                             const SizedBox(width: 10),
-                            const Icon(Icons.local_fire_department_rounded, color: Color(0xFFFF5722), size: 16),
+                            const Icon(
+                              Icons.local_fire_department_rounded,
+                              color: Color(0xFFFF5722),
+                              size: 16,
+                            ),
                             const SizedBox(width: 3),
                             const Text(
                               'Bestseller',
@@ -442,9 +515,14 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                                 ),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: widget.themeColor.withValues(alpha: 0.1),
+                                  color: widget.themeColor.withValues(
+                                    alpha: 0.1,
+                                  ),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -501,7 +579,8 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: _addons.length,
-                              separatorBuilder: (ctx, idx) => const SizedBox(width: 10),
+                              separatorBuilder: (ctx, idx) =>
+                                  const SizedBox(width: 10),
                               itemBuilder: (ctx, idx) {
                                 final addon = _addons[idx];
                                 return GestureDetector(
@@ -511,14 +590,21 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                                     });
                                   },
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: addon.isSelected
-                                          ? widget.themeColor.withValues(alpha: 0.08)
+                                          ? widget.themeColor.withValues(
+                                              alpha: 0.08,
+                                            )
                                           : Colors.white,
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                        color: addon.isSelected ? widget.themeColor : const Color(0xFFE2E8F0),
+                                        color: addon.isSelected
+                                            ? widget.themeColor
+                                            : const Color(0xFFE2E8F0),
                                         width: addon.isSelected ? 1.8 : 1.2,
                                       ),
                                       boxShadow: [
@@ -528,7 +614,9 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                                           blurRadius: 4,
                                         ),
                                         BoxShadow(
-                                          color: const Color(0xFF94A3B8).withValues(alpha: 0.15),
+                                          color: const Color(
+                                            0xFF94A3B8,
+                                          ).withValues(alpha: 0.15),
                                           offset: const Offset(2, 2.5),
                                           blurRadius: 5,
                                         ),
@@ -538,25 +626,36 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                                       children: [
                                         if (addon.imageUrl.isNotEmpty) ...[
                                           ClipRRect(
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                             child: Image.network(
                                               addon.imageUrl,
                                               width: 44,
                                               height: 44,
                                               fit: BoxFit.cover,
-                                              errorBuilder: (c, e, s) => Container(
-                                                width: 44,
-                                                height: 44,
-                                                color: const Color(0xFFE2E8F0),
-                                                child: const Icon(Icons.fastfood_rounded, size: 20, color: Color(0xFF94A3B8)),
-                                              ),
+                                              errorBuilder: (c, e, s) =>
+                                                  Container(
+                                                    width: 44,
+                                                    height: 44,
+                                                    color: const Color(
+                                                      0xFFE2E8F0,
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.fastfood_rounded,
+                                                      size: 20,
+                                                      color: Color(0xFF94A3B8),
+                                                    ),
+                                                  ),
                                             ),
                                           ),
                                           const SizedBox(width: 10),
                                         ],
                                         Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
                                           children: [
                                             Text(
                                               addon.name,
@@ -582,13 +681,19 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                                           width: 26,
                                           height: 26,
                                           decoration: BoxDecoration(
-                                            color: addon.isSelected ? widget.themeColor : const Color(0xFFF1F5F9),
+                                            color: addon.isSelected
+                                                ? widget.themeColor
+                                                : const Color(0xFFF1F5F9),
                                             shape: BoxShape.circle,
                                           ),
                                           child: Icon(
-                                            addon.isSelected ? Icons.check : Icons.add,
+                                            addon.isSelected
+                                                ? Icons.check
+                                                : Icons.add,
                                             size: 16,
-                                            color: addon.isSelected ? Colors.white : widget.themeColor,
+                                            color: addon.isSelected
+                                                ? Colors.white
+                                                : widget.themeColor,
                                           ),
                                         ),
                                       ],
@@ -614,7 +719,9 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                         border: Border.all(color: const Color(0xFFDDE3EC)),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF94A3B8).withValues(alpha: 0.22),
+                            color: const Color(
+                              0xFF94A3B8,
+                            ).withValues(alpha: 0.22),
                             offset: const Offset(1.5, 1.5),
                             blurRadius: 3,
                             spreadRadius: -0.5,
@@ -626,18 +733,31 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                           ),
                         ],
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
                       child: Row(
                         children: [
-                          const Icon(Icons.edit_note_rounded, color: Color(0xFF94A3B8), size: 22),
+                          const Icon(
+                            Icons.edit_note_rounded,
+                            color: Color(0xFF94A3B8),
+                            size: 22,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: _instructionsController,
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF0F172A),
+                              ),
                               decoration: const InputDecoration(
                                 hintText: 'Add special instructions (optional)',
-                                hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                                hintStyle: TextStyle(
+                                  fontSize: 12.5,
+                                  color: Color(0xFF94A3B8),
+                                ),
                                 border: InputBorder.none,
                                 isDense: true,
                               ),
@@ -659,7 +779,9 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF94A3B8).withValues(alpha: 0.18),
@@ -737,15 +859,21 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                       child: ElevatedButton(
                         onPressed: () {
                           final cartItem = StorefrontCartItem(
-                            uid: 'cart_${DateTime.now().millisecondsSinceEpoch}',
+                            uid:
+                                'cart_${DateTime.now().millisecondsSinceEpoch}',
                             item: widget.item,
                             selectedSize: _selectedSize,
-                            selectedAddons: _addons.where((a) => a.isSelected).toList(),
+                            selectedAddons: _addons
+                                .where((a) => a.isSelected)
+                                .toList(),
                             instructions: _instructionsController.text.trim(),
                             quantity: _quantity,
                           );
 
-                          widget.onAddToCart(cartItem, openCartImmediately: false);
+                          widget.onAddToCart(
+                            cartItem,
+                            openCartImmediately: false,
+                          );
                           Navigator.of(context).pop();
                         },
                         style: ElevatedButton.styleFrom(
@@ -753,7 +881,9 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                           foregroundColor: Colors.white,
                           elevation: 3,
                           shadowColor: widget.themeColor.withValues(alpha: 0.5),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
                         ),
                         child: Text(
                           'Add to Cart • ₹${_totalPrice.toStringAsFixed(0)}',
@@ -779,7 +909,8 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
     return LayoutBuilder(
       builder: (context, constraints) {
         // If more than 3 options or on narrow mobile width, use horizontal scroll view
-        final bool useHorizontalScroll = _sizes.length > 3 || constraints.maxWidth < 360;
+        final bool useHorizontalScroll =
+            _sizes.length > 3 || constraints.maxWidth < 360;
 
         if (useHorizontalScroll) {
           return SingleChildScrollView(
@@ -819,7 +950,9 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
         decoration: BoxDecoration(
-          color: isSelected ? widget.themeColor.withValues(alpha: 0.08) : Colors.white,
+          color: isSelected
+              ? widget.themeColor.withValues(alpha: 0.08)
+              : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? widget.themeColor : const Color(0xFFE2E8F0),
@@ -854,7 +987,9 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                    color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
+                    color: isSelected
+                        ? widget.themeColor
+                        : const Color(0xFF0F172A),
                   ),
                 ),
                 if (size.description.isNotEmpty) ...[
@@ -878,10 +1013,13 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
-                        color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
+                        color: isSelected
+                            ? widget.themeColor
+                            : const Color(0xFF0F172A),
                       ),
                     ),
-                    if (size.originalPrice != null && size.originalPrice! > size.price) ...[
+                    if (size.originalPrice != null &&
+                        size.originalPrice! > size.price) ...[
                       const SizedBox(width: 4),
                       Text(
                         '₹${size.originalPrice!.toStringAsFixed(0)}',
@@ -928,7 +1066,11 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
         color: Colors.white,
         shape: BoxShape.circle,
         boxShadow: [
-          const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+          const BoxShadow(
+            color: Colors.white,
+            offset: Offset(-2, -2),
+            blurRadius: 4,
+          ),
           BoxShadow(
             color: const Color(0xFF94A3B8).withValues(alpha: 0.3),
             offset: const Offset(2, 2.5),
@@ -941,9 +1083,7 @@ class _StorefrontProductDetailSheetState extends State<StorefrontProductDetailSh
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
-          child: Center(
-            child: Icon(icon, size: 20, color: iconColor),
-          ),
+          child: Center(child: Icon(icon, size: 20, color: iconColor)),
         ),
       ),
     );

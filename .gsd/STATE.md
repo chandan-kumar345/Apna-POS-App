@@ -1,5 +1,17 @@
 # Current task state
 
+2026-11-20 storefront sheets/media implemented locally: guest form bottom sheet,
+60% product detail with fixed footer/scroll body, ten available popular products,
+rounded search and stable keyboard layout. QR and regular menu media now enable
+muted independent playback and completion-driven slides. QR checks 7 pass and
+media checks 11 pass; 2 real-font screenshot captures pass and were inspected.
+Final web release built in 118.5s. Sheet sources analyze cleanly; regular menu
+retains 2 pre-existing style infos outside this change. Evidence:
+docs/STOREFRONT_SHEETS_2026-11-20.md and build/storefront_sheet_validation/.
+No deployment or production order/payment. Existing uncommitted order-tracking
+changes in backend/models/API/my-orders/QR screen preserved; no whole-file
+commit or push performed.
+
 2026-11-20: Native Chotu popup startup/readability fix built and installed on the
 connected phone. Added native startup card, one assistant-specific preparation
 flow before access/mic, scoped light theme with stronger surface/text contrast,
