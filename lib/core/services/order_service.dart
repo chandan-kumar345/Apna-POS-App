@@ -51,9 +51,7 @@ class OrderService {
         'orderType': isTableDineIn ? OrderType.dineIn.name : order.orderType.name,
         'orderSource': order.orderSource ?? 'pos',
         'isKot': isKotOrUnpaid,
-        'status': isTableDineIn && !isPaid
-            ? (order.status == OrderStatus.preparing ? 'preparing' : 'pending')
-            : (isPaid ? 'completed' : order.status.name),
+        'status': isPaid ? 'completed' : order.status.name,
         'tableNumber': isTableDineIn ? (order.tableNumber ?? '') : '',
         'deliveryAddress': order.orderType == OrderType.delivery ? (order.deliveryAddress ?? '') : '',
         'customerId': order.customerId ?? '',
@@ -113,19 +111,19 @@ class OrderService {
         final orderData = (response['data']['order'] ?? response['data']) as Map<String, dynamic>?;
         if (orderData != null) {
           final remoteOrder = OrderModel.fromJson(orderData).copyWith(isSynced: true);
-          if (isTableDineIn && !isPaid) {
-            return remoteOrder.copyWith(
-              status: order.status == OrderStatus.preparing ? OrderStatus.preparing : OrderStatus.pending,
-              isPaid: false,
-              paymentStatus: 'pending',
-              paymentMethod: 'Pay at Counter / Table',
-              tableNumber: order.tableNumber,
-            );
+          if (remoteOrder.status != OrderStatus.completed &&
+              remoteOrder.status != OrderStatus.cancelled &&
+              order.status.index > remoteOrder.status.index) {
+            // Replaying a creation is idempotent on the server. Retry a later
+            // local status change through the status endpoint before acknowledging it.
+            final updated = await updateOrderStatus(remoteOrder.id, order.status);
+            if (updated == null) throw StateError('Order status was not acknowledged');
+            return updated.copyWith(isSynced: true);
           }
           return remoteOrder;
         }
       }
-      return order.copyWith(isSynced: true);
+      throw StateError('Order was not acknowledged by the server');
     } catch (e) {
       debugPrint('[OrderService.createOrder] error: $e');
       rethrow;

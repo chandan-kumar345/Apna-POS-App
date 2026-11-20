@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'table_qr_phone_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/order_model.dart';
@@ -96,6 +97,7 @@ class StorefrontOrderService {
       response = await ApiClient().post(
         ApiEndpoints.storefrontOrder(slug),
         data: payload,
+        options: await TableQrPhoneAuth(restaurantId: restaurant.id).options(),
       );
     } on ApiException catch (error) {
       if (error.statusCode == 400 || error.statusCode == 422) {

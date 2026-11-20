@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/storefront_order_adapter.dart';
+import 'support/storefront_customer_auth_adapter.dart';
 
 void main() {
   final captureKey = GlobalKey();
@@ -44,7 +45,16 @@ void main() {
           Future.value(ByteData.sublistView(File(fontPath).readAsBytesSync())),
         );
       await font.load();
-      final icons = FontLoader('MaterialIcons')..addFont(Future.value(ByteData.sublistView(File('${File(fontPath).parent.path}/materialicons-regular.otf').readAsBytesSync())));
+      final icons = FontLoader('MaterialIcons')
+        ..addFont(
+          Future.value(
+            ByteData.sublistView(
+              File(
+                '${File(fontPath).parent.path}/materialicons-regular.otf',
+              ).readAsBytesSync(),
+            ),
+          ),
+        );
       await icons.load();
     }
   });
@@ -133,6 +143,43 @@ void main() {
   }
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'WhatsApp login opens OTP/name sheet; wrong code stays and blank name defaults',
+    (tester) async {
+      final dio = ApiClient().dio;
+      final old = dio.httpClientAdapter;
+      final oldInterceptors = List.of(dio.interceptors);
+      dio.interceptors.clear();
+      final authApi = StorefrontCustomerAuthAdapter();
+      dio.httpClientAdapter = authApi;
+      addTearDown(() {
+        dio.httpClientAdapter = old;
+        dio.interceptors.addAll(oldInterceptors);
+      });
+      await open(tester);
+      await tap(tester, find.text('Account'));
+      await capture(tester, 'whatsapp-login');
+      await tester.enterText(
+        find.byKey(const ValueKey('table-phone')),
+        '9876543210',
+      );
+      await tap(tester, find.text('Send OTP'));
+      expect(find.text('Verify your number'), findsOneWidget);
+      expect(find.byKey(const ValueKey('table-customer-name')), findsOneWidget);
+      await capture(tester, 'whatsapp-otp');
+      await tester.enterText(find.byKey(const ValueKey('table-otp')), '111111');
+      await tap(tester, find.text('Continue'));
+      expect(find.text('Code is incorrect or expired.'), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('table-otp')), '654321');
+      await tap(tester, find.text('Continue'));
+      expect(find.text('Verify your number'), findsNothing);
+      expect(authApi.requests, isEmpty);
+      await tap(tester, find.text('Account'));
+      expect(find.textContaining('Valued Customer'), findsOneWidget);
+      expect(find.text('My orders'), findsOneWidget);
+    },
+  );
 
   test(
     'table bill rounds to paise and does not charge tax for a non-GST outlet',

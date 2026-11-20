@@ -14,17 +14,37 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import 'package:dio/dio.dart';
 import '../models/customer_order_status.dart';
+import 'table_qr_phone_auth.dart';
 
 class CustomerStorefrontApiService {
   static Future<void> _historyWrites = Future.value();
 
-  Future<List<CustomerOrderTrackingModel>> orderHistory(String restaurantId) async {
+  Future<List<CustomerOrderTrackingModel>> orderHistory(
+    String restaurantId,
+  ) async {
+    final auth = TableQrPhoneAuth(restaurantId: restaurantId);
+    if (await auth.token() != null) {
+      try {
+        return await auth.orders();
+      } catch (_) {
+        return [];
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
     try {
-      return (jsonDecode(prefs.getString('customer_orders_$restaurantId') ?? '[]') as List)
-          .map((entry) => CustomerOrderTrackingModel.fromJson(Map<String, dynamic>.from(entry)))
+      return (jsonDecode(
+                prefs.getString('customer_orders_$restaurantId') ?? '[]',
+              )
+              as List)
+          .map(
+            (entry) => CustomerOrderTrackingModel.fromJson(
+              Map<String, dynamic>.from(entry),
+            ),
+          )
           .toList();
-    } catch (_) { return []; }
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> _rememberOrder(CustomerOrderTrackingModel order) {
@@ -33,12 +53,16 @@ class CustomerStorefrontApiService {
       history.removeWhere((entry) => entry.orderId == order.orderId);
       history.insert(0, order);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('customer_orders_${order.restaurantId}',
-          jsonEncode(history.take(50).map((entry) => entry.toJson()).toList()));
+      await prefs.setString(
+        'customer_orders_${order.restaurantId}',
+        jsonEncode(history.take(50).map((entry) => entry.toJson()).toList()),
+      );
     });
     return _historyWrites = save.catchError((Object _) {});
   }
-  static final CustomerStorefrontApiService _instance = CustomerStorefrontApiService._internal();
+
+  static final CustomerStorefrontApiService _instance =
+      CustomerStorefrontApiService._internal();
   factory CustomerStorefrontApiService() => _instance;
   CustomerStorefrontApiService._internal();
 
@@ -48,115 +72,66 @@ class CustomerStorefrontApiService {
   static const String _prefCustomerKey = 'customer_storefront_active_profile';
   static const String _prefActiveOrderKey = 'customer_storefront_active_order';
 
-  // In-memory verification cache: phone -> otp
-  final Map<String, String> _otpCache = {};
+  final Map<String, ConfirmTablePhone> _verification = {};
 
-  /// Generate and send 6-digit OTP to mobile number
-  Future<String> sendOtp(String phone) async {
-    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-
-    // In dev / test we provide 123456 or a valid 6-digit pin
-    final otp = (100000 + Random().nextInt(900000)).toString();
-    _otpCache[cleanPhone] = otp;
-    debugPrint('[CustomerStorefrontApiService] Sent OTP $otp to $cleanPhone');
-
-    // Push OTP session to Firestore if available
-    try {
-      await _firestore.saveCustomerProfile({
-        'id': 'otp_${cleanPhone.replaceAll('+', '')}',
-        'phone': cleanPhone,
-        'lastOtp': otp,
-        'otpExpiresAt': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-      });
-    } catch (_) {}
-
-    return otp;
+  Future<String> sendOtp(String phone, {required String restaurantId}) async {
+    final business = restaurantId;
+    if (business.isEmpty)
+      throw StateError('Choose a restaurant before signing in.');
+    final challenge = await TableQrPhoneAuth(
+      restaurantId: business,
+    ).send(phone);
+    final key = '$business|${phone.replaceAll(RegExp(r'\D'), '')}';
+    _verification[key] = (code, {name}) async {
+      final customer = await challenge.confirm!(code, name: name);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('customer_auth_restaurant', business);
+      await _saveProfileLocally(customer);
+      return customer;
+    };
+    return 'whatsapp';
   }
 
-  /// Verify 6-digit OTP code
-  Future<CustomerProfileModel?> verifyOtp(String phone, String otp) async {
-    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    final cachedOtp = _otpCache[cleanPhone];
-
-    // Allow generated OTP, universal test OTP "123456", or any 6-digit in test environment
-    final isValid = (otp == cachedOtp) || (otp == '123456') || (otp.length == 6);
-    if (!isValid) return null;
-
-    final customerId = 'cust_${cleanPhone.replaceAll('+', '')}';
-
-    // 1. Try to load existing profile from Firestore
-    CustomerProfileModel? profile;
+  Future<CustomerProfileModel?> verifyOtp(
+    String phone,
+    String otp, {
+    required String restaurantId,
+  }) async {
+    final key = '$restaurantId|${phone.replaceAll(RegExp(r'\D'), '')}';
+    final verify = _verification[key];
+    if (verify == null) return null;
     try {
-      final cloudData = await _firestore.getCustomerProfile(cleanPhone);
-      if (cloudData != null) {
-        profile = CustomerProfileModel.fromJson(cloudData);
-      }
-    } catch (e) {
-      debugPrint('[CustomerStorefrontApiService] Cloud fetch note: $e');
+      final customer = await verify(otp);
+      _verification.remove(key);
+      return customer;
+    } catch (_) {
+      return null;
     }
-
-    // 2. If not found in Cloud, check local storage
-    if (profile == null) {
-      final local = await getCurrentCustomer();
-      if (local != null && (local.phone == cleanPhone || local.id == customerId)) {
-        profile = local;
-      }
-    }
-
-    // 3. If new user, create initial profile with default addresses matching design
-    if (profile == null) {
-      profile = CustomerProfileModel(
-        id: customerId,
-        phone: cleanPhone.startsWith('+91') ? cleanPhone : '+91 $cleanPhone',
-        name: 'Chandan Kumar',
-        email: 'chandan@example.com',
-        addresses: const [
-          CustomerAddressModel(
-            id: 'addr_home',
-            label: 'Home',
-            fullAddress: '34, 34, Chanakya Place, Delhi, Delhi - 110021',
-            landmark: 'Near Metro Station',
-            pinCode: '110021',
-            isDefault: true,
-          ),
-          CustomerAddressModel(
-            id: 'addr_work',
-            label: 'Work',
-            fullAddress: 'Sector 62, Noida - 201309',
-            landmark: 'Industrial Area',
-            pinCode: '201309',
-            isDefault: false,
-          ),
-        ],
-        createdAt: DateTime.now(),
-        lastLoginAt: DateTime.now(),
-      );
-    } else {
-      profile = profile.copyWith(lastLoginAt: DateTime.now());
-    }
-
-    // Save session locally and sync to Cloud
-    await _saveProfileLocally(profile);
-    try {
-      await _firestore.saveCustomerProfile(profile.toJson());
-    } catch (_) {}
-
-    return profile;
   }
 
   /// Get active logged-in customer profile
-  Future<CustomerProfileModel?> getCurrentCustomer() async {
+  Future<CustomerProfileModel?> getCurrentCustomer({
+    String? restaurantId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final business =
+        restaurantId ?? prefs.getString('customer_auth_restaurant');
+    if (business == null || business.isEmpty) return null;
+    CustomerProfileModel? customer;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_prefCustomerKey);
-      if (raw != null && raw.isNotEmpty) {
-        final map = jsonDecode(raw) as Map<String, dynamic>;
-        return CustomerProfileModel.fromJson(map);
-      }
-    } catch (e) {
-      debugPrint('[CustomerStorefrontApiService] Error reading local profile: $e');
+      customer = await TableQrPhoneAuth(restaurantId: business).restore();
+    } catch (_) {
+      return null;
     }
-    return null;
+    if (customer == null) return null;
+    try {
+      final cached = CustomerProfileModel.fromJson(
+        jsonDecode(prefs.getString(_prefCustomerKey) ?? '{}'),
+      );
+      if (cached.id == customer.id)
+        return customer.copyWith(addresses: cached.addresses);
+    } catch (_) {}
+    return customer;
   }
 
   /// Update customer profile details
@@ -166,13 +141,17 @@ class CustomerStorefrontApiService {
       await _firestore.saveCustomerProfile(profile.toJson());
       return true;
     } catch (e) {
-      debugPrint('[CustomerStorefrontApiService] Error syncing profile to cloud: $e');
+      debugPrint(
+        '[CustomerStorefrontApiService] Error syncing profile to cloud: $e',
+      );
       return true; // Local persistence succeeded
     }
   }
 
   /// Add or update an address
-  Future<CustomerProfileModel?> saveAddress(CustomerAddressModel address) async {
+  Future<CustomerProfileModel?> saveAddress(
+    CustomerAddressModel address,
+  ) async {
     final current = await getCurrentCustomer();
     if (current == null) return null;
 
@@ -200,7 +179,9 @@ class CustomerStorefrontApiService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefCustomerKey, jsonEncode(profile.toJson()));
     } catch (e) {
-      debugPrint('[CustomerStorefrontApiService] Error saving profile locally: $e');
+      debugPrint(
+        '[CustomerStorefrontApiService] Error saving profile locally: $e',
+      );
     }
   }
 
@@ -221,12 +202,15 @@ class CustomerStorefrontApiService {
     OrderType orderType = OrderType.delivery,
   }) async {
     final now = DateTime.now();
-    final datePrefix = '${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final datePrefix =
+        '${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     final randomSuffix = (1000 + Random().nextInt(9000)).toString();
     final orderNumber = '#ORD-$datePrefix-$randomSuffix';
     final orderId = 'ord_${now.millisecondsSinceEpoch}_$randomSuffix';
     final nowIso = now.toIso8601String();
-    final bool isDineIn = orderType == OrderType.dineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+    final bool isDineIn =
+        orderType == OrderType.dineIn ||
+        (tableNumber != null && tableNumber.trim().isNotEmpty);
     final String resolvedAddress = isDineIn
         ? 'Table ${tableNumber?.trim() ?? "Dine-In"}'
         : '${selectedAddress.label}: ${selectedAddress.fullAddress}';
@@ -235,10 +219,15 @@ class CustomerStorefrontApiService {
     final itemSummaries = cartItems.map((c) {
       return CustomerOrderItemSummary(
         name: c.item.name,
-        size: c.selectedSize != null ? '${c.selectedSize!.name} (${c.selectedSize!.description})' : '',
+        size: c.selectedSize != null
+            ? '${c.selectedSize!.name} (${c.selectedSize!.description})'
+            : '',
         quantity: c.quantity,
         price: c.unitPrice,
-        addons: c.selectedAddons.where((a) => a.isSelected).map((a) => a.name).toList(),
+        addons: c.selectedAddons
+            .where((a) => a.isSelected)
+            .map((a) => a.name)
+            .toList(),
         instructions: c.instructions.isNotEmpty ? c.instructions : null,
       );
     }).toList();
@@ -258,41 +247,62 @@ class CustomerStorefrontApiService {
       tax: tax,
       discount: discount,
       grandTotal: grandTotal,
-      paymentMethod: (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty)) ? 'Pay at Counter / Table' : paymentMethod,
-      paymentStatus: (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty)) ? 'Pending' : (paymentMethod == 'Cash on Delivery' ? 'Pending' : 'Paid'),
+      paymentMethod:
+          (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty))
+          ? 'Pay at Counter / Table'
+          : paymentMethod,
+      paymentStatus:
+          (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty))
+          ? 'Pending'
+          : (paymentMethod == 'Cash on Delivery' ? 'Pending' : 'Paid'),
       deliveryAddress: resolvedAddress,
       deliveryInstructions: deliveryInstructions,
       createdAt: now,
     );
 
-    final bool isTableDineIn = isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
-    final bool resolvedIsPaid = isTableDineIn ? false : (paymentMethod != 'Cash on Delivery');
-    final String resolvedPaymentStatus = isTableDineIn ? 'pending' : (resolvedIsPaid ? 'paid' : 'pending');
-    final String resolvedPaymentMethod = isTableDineIn ? 'Pay at Counter / Table' : (paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI');
+    final bool isTableDineIn =
+        isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+    final bool resolvedIsPaid = isTableDineIn
+        ? false
+        : (paymentMethod != 'Cash on Delivery');
+    final String resolvedPaymentStatus = isTableDineIn
+        ? 'pending'
+        : (resolvedIsPaid ? 'paid' : 'pending');
+    final String resolvedPaymentMethod = isTableDineIn
+        ? 'Pay at Counter / Table'
+        : (paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI');
 
     try {
-      final savedOrder = await StorefrontOrderService().submit(OrderModel(
-        id: orderId,
-        orderNumber: orderNumber,
-        items: cartItems.map((c) => c.toCartItemModel()).toList(),
-        orderType: isDineIn ? OrderType.dineIn : orderType,
-        tableNumber: tableNumber?.trim(),
-        status: OrderStatus.pending,
-        subtotal: subtotal,
-        discountAmount: discount,
-        taxAmount: tax,
-        deliveryCharge: isDineIn ? 0 : deliveryFee,
-        totalAmount: grandTotal,
-        paymentMethod: resolvedPaymentMethod,
-        paymentStatus: resolvedPaymentStatus,
-        isPaid: resolvedIsPaid,
-        customerName: customer.name,
-        customerPhone: customer.phone,
-        deliveryAddress: resolvedAddress,
-        createdAt: nowIso,
-        orderSource: 'storefront',
-      ), restaurant, notes: deliveryInstructions);
-      await _db.placeOnlineStorefrontOrder(savedOrder, skipFirestoreSync: true, showIncomingAlert: false);
+      final savedOrder = await StorefrontOrderService().submit(
+        OrderModel(
+          id: orderId,
+          orderNumber: orderNumber,
+          items: cartItems.map((c) => c.toCartItemModel()).toList(),
+          orderType: isDineIn ? OrderType.dineIn : orderType,
+          tableNumber: tableNumber?.trim(),
+          status: OrderStatus.pending,
+          subtotal: subtotal,
+          discountAmount: discount,
+          taxAmount: tax,
+          deliveryCharge: isDineIn ? 0 : deliveryFee,
+          totalAmount: grandTotal,
+          paymentMethod: resolvedPaymentMethod,
+          paymentStatus: resolvedPaymentStatus,
+          isPaid: resolvedIsPaid,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          deliveryAddress: resolvedAddress,
+          createdAt: nowIso,
+          orderSource: 'storefront',
+        ),
+        restaurant,
+        notes: deliveryInstructions,
+      );
+      await _db.placeOnlineStorefrontOrder(
+        savedOrder,
+        skipFirestoreSync: true,
+        showIncomingAlert: false,
+      );
       trackingModel = trackingModel.copyWith(
         orderId: savedOrder.id,
         orderNumber: savedOrder.orderNumber,
@@ -300,14 +310,19 @@ class CustomerStorefrontApiService {
         paymentStatus: savedOrder.paymentStatus,
       );
     } catch (error) {
-      debugPrint('[CustomerStorefrontApiService] Restaurant order submission failed: $error');
+      debugPrint(
+        '[CustomerStorefrontApiService] Restaurant order submission failed: $error',
+      );
       return null;
     }
 
     // 6. Cache active order locally
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_prefActiveOrderKey, jsonEncode(trackingModel.toJson()));
+      await prefs.setString(
+        _prefActiveOrderKey,
+        jsonEncode(trackingModel.toJson()),
+      );
     } catch (_) {}
 
     await _rememberOrder(trackingModel);
@@ -347,13 +362,20 @@ class CustomerStorefrontApiService {
     }
 
     Future<void> refresh() async {
-      if (polling || controller.isClosed || receipt == null || restaurant == null) return;
+      if (polling ||
+          controller.isClosed ||
+          receipt == null ||
+          restaurant == null)
+        return;
       polling = true;
       try {
         final response = await ApiClient().get(
           '${ApiEndpoints.storefrontOrder(restaurant.storefrontSlug)}/${Uri.encodeComponent(orderId)}/status',
           queryParameters: {'orderNumber': receipt.orderNumber},
-          options: Options(receiveTimeout: const Duration(seconds: 8), sendTimeout: const Duration(seconds: 8)),
+          options: Options(
+            receiveTimeout: const Duration(seconds: 8),
+            sendTimeout: const Duration(seconds: 8),
+          ),
         );
         if (response is Map && response['data'] is Map) {
           authoritative = true;
@@ -361,12 +383,16 @@ class CustomerStorefrontApiService {
         }
       } catch (_) {
         // A transient connection failure must not reset a known order status.
-      } finally { polling = false; }
+      } finally {
+        polling = false;
+      }
     }
 
     // 1. Check local order first
     void checkLocal() {
-      final local = _db.orders.where((o) => o.id == orderId || o.orderNumber == orderId).firstOrNull;
+      final local = _db.orders
+          .where((o) => o.id == orderId || o.orderNumber == orderId)
+          .firstOrNull;
       if (local != null) {
         if (authoritative) return;
         int stepIdx = 0;
@@ -393,7 +419,8 @@ class CustomerStorefrontApiService {
         );
         latest ??= model;
         final json = local.toJson();
-        if (local.items.any((line) => line.kotQuantity > 0)) json['kotStatus'] = 'sent';
+        if (local.items.any((line) => line.kotQuantity > 0))
+          json['kotStatus'] = 'sent';
         emit(json);
       }
     }
@@ -407,7 +434,10 @@ class CustomerStorefrontApiService {
           if (data != null && !authoritative) emit(data);
         }, onError: (Object _) {});
         unawaited(refresh());
-        timer = Timer.periodic(const Duration(seconds: 3), (_) => unawaited(refresh()));
+        timer = Timer.periodic(
+          const Duration(seconds: 3),
+          (_) => unawaited(refresh()),
+        );
       },
       onCancel: () async {
         timer?.cancel();
@@ -420,11 +450,20 @@ class CustomerStorefrontApiService {
 
   /// Update order status for simulation or POS trigger
   Future<void> updateOrderStatus(String orderId, int stepIndex) async {
-    final statuses = ['confirmed', 'preparing', 'out_for_delivery', 'delivered'];
-    final status = stepIndex >= 0 && stepIndex < statuses.length ? statuses[stepIndex] : 'confirmed';
+    final statuses = [
+      'confirmed',
+      'preparing',
+      'out_for_delivery',
+      'delivered',
+    ];
+    final status = stepIndex >= 0 && stepIndex < statuses.length
+        ? statuses[stepIndex]
+        : 'confirmed';
 
     // Update in local POS
-    final localOrder = _db.orders.where((o) => o.id == orderId || o.orderNumber == orderId).firstOrNull;
+    final localOrder = _db.orders
+        .where((o) => o.id == orderId || o.orderNumber == orderId)
+        .firstOrNull;
     if (localOrder != null) {
       OrderStatus posStatus = OrderStatus.pending;
       if (stepIndex == 1) posStatus = OrderStatus.preparing;

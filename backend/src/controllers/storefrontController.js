@@ -101,6 +101,7 @@ class StorefrontController {
       if (!business) throw new ApiError(404, 'Storefront business not found');
       const businessId = business._id;
 
+
       const config = business.storefront || {};
       const settings = business.orderSettings || {};
       const services = Object.entries(settings.services || {})
@@ -296,6 +297,13 @@ class StorefrontController {
 
       const businessId = business._id;
 
+      let verifiedCustomer = null;
+      if (req.get('x-storefront-session')) {
+        verifiedCustomer = (await require('../services/storefrontCustomerAuthService')
+          .authenticate(businessId, req.get('x-storefront-session'))).customer;
+        orderPayload.customerName = verifiedCustomer.name || 'Valued Customer';
+        orderPayload.customerPhone = verifiedCustomer.phone;
+      }
       const rawOrderType = (orderPayload.orderType || (orderPayload.tableNumber ? 'dineIn' : 'delivery')).toString();
       const cleanType = rawOrderType.toLowerCase().replace(/[-_\s]/g, '');
       const isDineIn = cleanType.includes('dine') || !!orderPayload.tableNumber || !!orderPayload.T;
@@ -372,6 +380,7 @@ class StorefrontController {
         deliveryAddress: isDineIn ? '' : (orderPayload.deliveryAddress || ''),
         customerName: orderPayload.customerName || (isDineIn ? `Guest (Table ${tableNumber || 'Dine-In'})` : 'Online Guest'),
         customerPhone: orderPayload.customerPhone || '',
+        ...(verifiedCustomer ? { customerId: verifiedCustomer._id } : {}),
         orderSource: (orderPayload.orderSource || '').toString().toLowerCase() === 'profile' ? 'profile' : 'storefront',
         notes: orderPayload.notes || '',
       });

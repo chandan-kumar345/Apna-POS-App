@@ -1256,3 +1256,29 @@ phase. Existing journal bytes preserved because this file has mixed encoding.
 2026-11-20: Native Chotu popup fixed and installed. Native startup card, one scoped initialization, readable light theme and blur removal. 34 Flutter tests pass; three-file analysis clean; APK 198.7s / 91.5 MB, install Success. Window timing: old WARM 4694ms, new COLD 2793ms (different states; not a controlled benchmark). Phone appearance/mic startup checked without orders. Closed-app hotword remains unsupported pending offline keyword model/service. Details and logs: docs/chotu-ai/POPUP_2026-11-20.md and build/chotu_popup_validation/.
 
 2026-11-20 customer storefront: guest details changed to readable bottom sheet; product detail sheet is 60 percent with scroll/fixed purchase footer; ten popular items wrap; rounded search and stable keyboard layout. QR and regular storefront cards enable independent muted video and completion-driven image/video slides. QR tests 7 pass, media 11 pass, capture checks 2 pass; screenshots visually checked. Evidence: docs/STOREFRONT_SHEETS_2026-11-20.md and build/storefront_sheet_validation/. Pre-existing tracking edits preserved; no deployment, production orders or payment writes.
+
+
+## 2026-11-20 - Web and phone order status synchronization
+
+Fixed stale table-order caches overriding server Completed, Cancelled and Ready
+statuses. The three refresh paths now share server-authoritative merging, match
+canonical IDs/order numbers, and explicitly reconcile older cached active orders
+outside the recent page. Creation replays preserve terminal server states and
+retry later local status changes through the status API. Local status/payment
+changes remain queued until acknowledgement; legacy completed/cancelled records
+are retained and retried when the server is still active. Reconnect refreshes
+orders. Closed-order table carts clear locally without writing table changes
+back to the server or clearing newer active orders. No UI/business workflow changes.
+
+Evidence: original-source regression log reproduces stale Pending statuses and
+creation-response downgrades (build/order_status_sync_baseline.log). Final selected
+suite: 00:07 +80: All tests passed! (build/order_status_sync_verified_regressions.log),
+including 22 new synchronization checks. Two existing multi_order_isolation widget
+tests fail unchanged on original source too (6 pass, 2 fail; existing_baseline.log).
+Static analysis: same four original diagnostics; no new diagnostics in final code.
+Final web release: Built build/web, 112.0s. Android profile: Built
+build/app/outputs/flutter-apk/app-profile.apk, 202.7s. Both builds use the production
+API URL. Compiler input hashes match both final changed source files for web and
+Android (build/order_status_sync_source_verification.json). git diff --check clean.
+All evidence logs start with build/order_status_sync_. No production database
+writes, web deployment, or device installation performed.

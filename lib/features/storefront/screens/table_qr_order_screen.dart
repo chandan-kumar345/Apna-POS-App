@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/network/api_exception.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,7 +50,8 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
   final _note = TextEditingController();
   final _phone = TextEditingController();
   final _code = TextEditingController();
-  final _auth = TableQrPhoneAuth();
+  late final _auth = TableQrPhoneAuth(restaurantId: _data.restaurant.id);
+  final _otpName = TextEditingController();
   final _cart = <StorefrontCartItem>[];
   _Page _page = _Page.home;
   _Page _loginBack = _Page.home;
@@ -119,7 +120,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
       final customer = await _auth.restore();
       if (mounted &&
           _page != _Page.login &&
-          _customer == null &&
+          (_customer == null || _customer?.id == 'guest') &&
           customer != null) {
         setState(() => _customer = customer);
       }
@@ -134,6 +135,7 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     _note.dispose();
     _phone.dispose();
     _code.dispose();
+    _otpName.dispose();
     super.dispose();
   }
 
@@ -475,36 +477,174 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
       setState(() => _error = 'Enter a valid 10-digit Indian mobile number.');
       return;
     }
+    var sent = false;
     await _authorize(() async {
       final challenge = await _auth.send('+91${_phone.text}');
       if (!mounted) return;
+      sent = true;
       setState(() {
         _verify = challenge.confirm;
         if (challenge.verified != null) _customer = challenge.verified;
       });
     });
-    if (mounted && _customer != null && _checkoutLogin) {
-      await _finishLogin(_customer);
-    }
+    if (mounted && sent && _verify != null) await _showOtpSheet();
   }
 
-  Future<void> _verifyCode() async {
-    if (_busy || _verify == null) return;
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(_code.text)) {
-      setState(() => _error = 'Enter the six-digit code from your SMS.');
-      return;
-    }
-    await _authorize(() async {
-      final customer = await _verify!(_code.text);
-      if (!mounted) return;
-      setState(() {
-        _customer = customer;
-        _verify = null;
-        _code.clear();
-      });
-    });
-    if (mounted && _customer != null && _checkoutLogin) {
+  Future<void> _showOtpSheet() async {
+    _code.clear();
+    _otpName.clear();
+    var working = false;
+    String? error;
+    final verified = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Theme(
+        data: ThemeData.light(useMaterial3: true),
+        child: StatefulBuilder(
+          builder: (ctx, update) {
+            Future<void> submit() async {
+              if (working || _verify == null) return;
+              if (!RegExp(r'^\d{6}$').hasMatch(_code.text)) {
+                update(() => error = 'Enter the six-digit WhatsApp code.');
+                return;
+              }
+              update(() {
+                working = true;
+                error = null;
+              });
+              try {
+                final customer = await _verify!(
+                  _code.text,
+                  name: _otpName.text,
+                );
+                if (!mounted) return;
+                setState(() {
+                  _customer = customer;
+                  _verify = null;
+                  _error = null;
+                });
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              } catch (e) {
+                if (ctx.mounted) {
+                  update(() {
+                    working = false;
+                    error = e is ApiException
+                        ? e.message
+                        : 'Unable to verify the code. Please try again.';
+                  });
+                }
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.viewInsetsOf(ctx).bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Verify your number',
+                            style: TextStyle(
+                              color: _ink,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: working ? null : () => Navigator.pop(ctx),
+                          icon: const Icon(Icons.close, color: _muted),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      'Enter the WhatsApp code sent to +91 ${_phone.text}.',
+                      style: const TextStyle(color: _muted, height: 1.4),
+                    ),
+                    const SizedBox(height: 18),
+                    TextField(
+                      key: const ValueKey('table-otp'),
+                      controller: _code,
+                      enabled: !working,
+                      keyboardType: TextInputType.number,
+                      autofillHints: const [AutofillHints.oneTimeCode],
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(6),
+                      ],
+                      style: const TextStyle(
+                        color: _ink,
+                        fontSize: 20,
+                        letterSpacing: 5,
+                      ),
+                      decoration: _input('6-digit code'),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      key: const ValueKey('table-customer-name'),
+                      controller: _otpName,
+                      enabled: !working,
+                      maxLength: 80,
+                      textCapitalization: TextCapitalization.words,
+                      style: const TextStyle(color: _ink),
+                      decoration: _input('Your name (optional)'),
+                      onSubmitted: (_) => submit(),
+                    ),
+                    const Text(
+                      'You can leave your name blank. We’ll save it as Valued Customer.',
+                      style: TextStyle(color: _muted, fontSize: 12),
+                    ),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          error!,
+                          style: const TextStyle(color: Color(0xFFB42318)),
+                        ),
+                      ),
+                    const SizedBox(height: 18),
+                    FilledButton(
+                      onPressed: working ? null : submit,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _blue,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(working ? 'Verifying…' : 'Continue'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    if (mounted && verified == true) {
       await _finishLogin(_customer);
+      final history = await CustomerStorefrontApiService().orderHistory(
+        _data.restaurant.id,
+      );
+      if (mounted && history.isNotEmpty) {
+        setState(() => _receipt = history.first);
+      }
     }
   }
 
@@ -515,26 +655,13 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     });
     try {
       await action();
-    } on FirebaseAuthException catch (error) {
-      if (mounted) {
-        setState(
-          () => _error = switch (error.code) {
-            'invalid-verification-code' =>
-              'That code is incorrect. Please try again.',
-            'session-expired' =>
-              'That code expired. Use Change number to request a new one.',
-            'too-many-requests' =>
-              'Too many attempts. Try again later or continue as a guest.',
-            _ =>
-              'SMS verification is unavailable right now. You can continue as a guest.',
-          },
-        );
-      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
     } catch (_) {
       if (mounted) {
         setState(
           () => _error =
-              'SMS verification is unavailable right now. You can continue as a guest.',
+              'WhatsApp verification is unavailable right now. You can continue as a guest.',
         );
       }
     } finally {
@@ -1186,14 +1313,13 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     ],
   );
 
-  // 04 / Customer login, with guest checkout
+  // Customer identity remains separate from merchant login and guest checkout.
   Widget _login() {
-    final verifying = _verify != null;
     final restaurant = _data.restaurant;
     return Column(
       children: [
         _header(
-          '',
+          'Login',
           trailing: TextButton(
             onPressed: _busy ? null : () => _finishLogin(null),
             child: const Text('Skip'),
@@ -1201,120 +1327,168 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(17, 0, 17, 16),
+            padding: const EdgeInsets.fromLTRB(17, 12, 17, 16),
             children: [
-              Center(
-                child: widget.avatar(restaurant.logoUrl, restaurant.name, 76),
-              ),
-              const SizedBox(height: 13),
-              const Center(child: _PhoneIllustration()),
-              const SizedBox(height: 16),
-              Center(
-                child: _title(
-                  'Welcome to ${restaurant.name}',
-                  23,
-                  centered: true,
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Sign in with your mobile number to attach it to your order.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _muted, height: 1.4),
-              ),
-              const SizedBox(height: 21),
-              if (_customer != null) ...[
-                _notice(
-                  '${_customer!.name} • ${_customer!.phone}',
-                  icon: Icons.verified_user_outlined,
-                ),
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _authorize(() async {
-                          if (_customer?.id != 'guest') await _auth.signOut();
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.remove(_guestKey);
-                          if (mounted) setState(() => _customer = null);
-                        }),
-                  child: const Text('Sign out'),
-                ),
-              ] else ...[
-                Text(
-                  verifying ? 'Verification code' : 'Mobile number',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  key: ValueKey(verifying ? 'table-otp' : 'table-phone'),
-                  controller: verifying ? _code : _phone,
-                  enabled: !_busy,
-                  keyboardType: TextInputType.number,
-                  autofillHints: [
-                    verifying
-                        ? AutofillHints.oneTimeCode
-                        : AutofillHints.telephoneNumberNational,
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: _border),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x0C064CF5),
+                      blurRadius: 24,
+                      offset: Offset(0, 8),
+                    ),
                   ],
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(verifying ? 6 : 10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: widget.avatar(
+                        restaurant.logoUrl,
+                        restaurant.name,
+                        76,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Center(child: _PhoneIllustration()),
+                    const SizedBox(height: 20),
+                    _title(
+                      _customer == null
+                          ? 'Welcome to ${restaurant.name}'
+                          : 'Your profile',
+                      23,
+                      centered: true,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Log in to track your orders and save your favourites.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _muted,
+                        height: 1.4,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    if (_customer != null) ...[
+                      _notice(
+                        '${_customer!.name} • ${_customer!.phone}',
+                        icon: Icons.verified_user_outlined,
+                      ),
+                      const SizedBox(height: 16),
+                      _primary(
+                        'My orders',
+                        _busy ? null : _myOrders,
+                        icon: Icons.receipt_long_outlined,
+                      ),
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => _authorize(() async {
+                                if (_customer?.id != 'guest') {
+                                  await _auth.signOut();
+                                }
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.remove(_guestKey);
+                                if (mounted) {
+                                  setState(() {
+                                    _customer = null;
+                                    _receipt = null;
+                                    _verify = null;
+                                  });
+                                }
+                              }),
+                        child: const Text('Sign out'),
+                      ),
+                    ] else ...[
+                      const Text(
+                        'Mobile number',
+                        style: TextStyle(
+                          color: _ink,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        key: const ValueKey('table-phone'),
+                        controller: _phone,
+                        enabled: !_busy,
+                        keyboardType: TextInputType.phone,
+                        autofillHints: const [
+                          AutofillHints.telephoneNumberNational,
+                        ],
+                        style: const TextStyle(color: _ink, fontSize: 14),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
+                        ],
+                        onChanged: (_) {
+                          if (_verify != null) setState(() => _verify = null);
+                        },
+                        onSubmitted: (_) => _sendCode(),
+                        decoration: _input(
+                          'Enter mobile number',
+                          prefix: const _IndiaDialCode(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _primary(
+                        _authBusy
+                            ? 'Sending…'
+                            : _verify == null
+                            ? 'Send OTP'
+                            : 'Enter OTP',
+                        _busy || widget.preview
+                            ? null
+                            : _verify == null
+                            ? _sendCode
+                            : _showOtpSheet,
+                        icon: Icons.arrow_forward_rounded,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'We’ll send a six-digit code on WhatsApp.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: _muted, fontSize: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_verify != null)
+                        TextButton(
+                          onPressed: _busy ? null : _sendCode,
+                          child: const Text('Resend code'),
+                        ),
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Color(0xFFB42318)),
+                          ),
+                        ),
+                      const SizedBox(height: 18),
+                      OutlinedButton(
+                        onPressed: _busy ? null : () => _finishLogin(null),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _blue,
+                          side: const BorderSide(color: _blue),
+                          minimumSize: const Size.fromHeight(46),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text('Continue as guest'),
+                      ),
+                    ],
                   ],
-                  onSubmitted: (_) => verifying ? _verifyCode() : _sendCode(),
-                  decoration: _input(
-                    verifying ? 'Enter six-digit code' : 'Enter mobile number',
-                    prefix: verifying ? null : const _IndiaDialCode(),
-                  ),
                 ),
-                const SizedBox(height: 14),
-                _primary(
-                  _authBusy
-                      ? 'Please wait…'
-                      : (verifying ? 'Verify code' : 'Send OTP'),
-                  _busy || widget.preview
-                      ? null
-                      : (verifying ? _verifyCode : _sendCode),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  verifying
-                      ? 'Enter the code sent to +91 ${_phone.text}.'
-                      : 'We’ll send you a verification code by SMS.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: _muted, fontSize: 12),
-                ),
-                if (verifying)
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() {
-                            _verify = null;
-                            _code.clear();
-                            _error = null;
-                          }),
-                    child: const Text('Change number'),
-                  ),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFFB42318)),
-                ),
-              ],
-              if (_receipt != null)
-                TextButton(
-                  onPressed: _busy ? null : () => _track(_receipt!),
-                  child: const Text('Track latest order'),
-                ),
-              if (_customer == null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: TextButton(
-                    onPressed: _busy ? null : () => _finishLogin(null),
-                    child: const Text('Continue as guest'),
-                  ),
-                ),
+              ),
             ],
           ),
         ),
@@ -1326,6 +1500,28 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _myOrders() async {
+    final history = await CustomerStorefrontApiService().orderHistory(
+      _data.restaurant.id,
+    );
+    if (!mounted) return;
+    if (history.isNotEmpty) {
+      _track(history.first);
+      return;
+    }
+    if (_receipt != null) {
+      _track(_receipt!);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No orders yet. Explore the menu to place your first order.',
+        ),
+      ),
     );
   }
 

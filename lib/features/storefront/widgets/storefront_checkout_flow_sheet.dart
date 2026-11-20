@@ -55,7 +55,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   final TextEditingController _phoneController = TextEditingController();
   final List<TextEditingController> _otpControllers = List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _otpFocusNodes = List.generate(6, (_) => FocusNode());
-  int _resendTimerSeconds = 30;
+  int _resendTimerSeconds = 60;
   Timer? _countdownTimer;
 
   // Step 8 & 9 Inputs
@@ -125,7 +125,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
   }
 
   Future<void> _checkExistingCustomer() async {
-    final customer = await _customerService.getCurrentCustomer();
+    final customer = await _customerService.getCurrentCustomer(restaurantId: widget.restaurant.id);
     if (customer != null && mounted) {
       setState(() {
         _currentCustomer = customer;
@@ -236,7 +236,14 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
       _showSnackbar('Please enter a valid 10-digit mobile number');
       return;
     }
-    await _customerService.sendOtp(phone);
+    try {
+      await _customerService.sendOtp(phone, restaurantId: widget.restaurant.id);
+    } catch (_) {
+      if (mounted)
+        _showSnackbar('WhatsApp could not send the code. Please retry later.');
+      return;
+    }
+    if (!mounted) return;
     _startOtpTimer();
     _navigateToStep(6); // Enter OTP
   }
@@ -247,7 +254,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
       _showSnackbar('Please enter the 6-digit verification code');
       return;
     }
-    final customer = await _customerService.verifyOtp(_phoneController.text.trim(), otp);
+    final customer = await _customerService.verifyOtp(_phoneController.text.trim(), otp, restaurantId: widget.restaurant.id);
     if (customer != null && mounted) {
       setState(() {
         _currentCustomer = customer;
@@ -257,7 +264,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
       });
       _navigateToStep(7); // User Profile Created
     } else {
-      _showSnackbar('Invalid code. Please try 123456');
+      _showSnackbar('Code incorrect or expired. Check WhatsApp or request a new code.');
     }
   }
 

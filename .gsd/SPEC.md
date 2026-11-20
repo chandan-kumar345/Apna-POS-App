@@ -1,5 +1,19 @@
 # Chotu AI order automation
 
+## QR customer WhatsApp authentication 2026-11-21
+
+Status: FINALIZED
+
+Redesign phone login with a separate readable OTP/name bottom sheet. Deliver
+authentication-template OTP from phone ID 1284061438133660, WABA
+2525727467906581 using server-only credentials. Persist a CRM customer after
+successful first dispatch; blank name defaults to Valued Customer. Only a
+correct, unexpired, single-use server challenge grants a restaurant-scoped
+customer session and phone-owned database order history. Returning login reuses
+the customer; optional blank name preserves an existing name. Remove client OTP
+bypasses; keep guest checkout and merchant sessions unchanged. Test using an
+isolated database/mock Meta transport, not production messages/database writes.
+
 ## Customer storefront sheet/media follow-up 2026-11-20
 
 Status: FINALIZED

@@ -23,6 +23,7 @@ app.use(
 const allowedCorsHeaders = [
   'Content-Type',
   'Authorization',
+  'x-storefront-session',
   'X-Device-ID',
   'x-device-id',
   'X-Business-ID',

@@ -13,6 +13,8 @@ const customerSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    phoneVerifiedAt: { type: Date, default: null },
+    lastLoginAt: { type: Date, default: null },
     phone: {
       type: String,
       required: [true, 'Customer phone number is required'],

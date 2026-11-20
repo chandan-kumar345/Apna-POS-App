@@ -1,110 +1,103 @@
-import 'dart:async';
-
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
-
+import 'dart:convert';
+import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_exception.dart';
 import '../models/customer_storefront_flow_models.dart';
 
-typedef ConfirmTablePhone = Future<CustomerProfileModel> Function(String code);
+typedef ConfirmTablePhone =
+    Future<CustomerProfileModel> Function(String code, {String? name});
 
 class TablePhoneChallenge {
   final ConfirmTablePhone? confirm;
   final CustomerProfileModel? verified;
-
   const TablePhoneChallenge.code(this.confirm) : verified = null;
   const TablePhoneChallenge.instant(this.verified) : confirm = null;
 }
 
-/// Customer phone sign-in must never replace the merchant's Firebase session.
+/// Dedicated restaurant customer session; never replaces merchant Firebase auth.
 class TableQrPhoneAuth {
-  static Future<FirebaseAuth>? _initializing;
-  static Future<FirebaseAuth> _auth() => _initializing ??= _initialize()
-      .catchError((Object error, StackTrace stack) {
-        _initializing = null;
-        Error.throwWithStackTrace(error, stack);
-      });
+  TableQrPhoneAuth({required this.restaurantId});
+  final String restaurantId;
+  String get _path =>
+      '/storefront/${Uri.encodeComponent(restaurantId)}/customer';
+  String get _key =>
+      'storefront_customer_session_${base64Url.encode(utf8.encode('${ApiEndpoints.baseUrl}|$restaurantId'))}';
+  Future<String?> token() async =>
+      (await SharedPreferences.getInstance()).getString(_key);
+  Future<Options> options() async =>
+      Options(headers: {'x-storefront-session': await token() ?? ''});
+  Map<String, dynamic> _data(dynamic response) =>
+      Map<String, dynamic>.from(response['data'] as Map);
 
-  static Future<FirebaseAuth> _initialize() async {
-    const name = 'table-qr-customer';
-    final matches = Firebase.apps.where((app) => app.name == name);
-    final app = matches.isNotEmpty
-        ? matches.first
-        : await Firebase.initializeApp(
-            name: name,
-            options: Firebase.app().options,
-          );
-    return FirebaseAuth.instanceFor(app: app);
+  Future<CustomerProfileModel?> restore() async {
+    if (await token() == null) return null;
+    try {
+      final response = await ApiClient().get(
+        '$_path/me',
+        options: await options(),
+      );
+      return CustomerProfileModel.fromJson(_data(response));
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        await signOut();
+        return null;
+      }
+      rethrow;
+    }
   }
 
-  static CustomerProfileModel? _profile(User? user) {
-    final phone = user?.phoneNumber;
-    if (user == null || phone == null || phone.isEmpty) return null;
-    return CustomerProfileModel(id: user.uid, phone: phone, name: 'Guest');
+  Future<void> signOut() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+    await prefs.remove('customer_orders_$restaurantId');
   }
-
-  Future<CustomerProfileModel?> restore() async =>
-      _profile((await _auth()).currentUser);
-
-  Future<void> signOut() async => (await _auth()).signOut();
 
   Future<TablePhoneChallenge> send(String phone) async {
-    final auth = await _auth();
-    if (kIsWeb) {
-      final challenge = await auth.signInWithPhoneNumber(phone);
-      return TablePhoneChallenge.code(
-        (code) async => _profile((await challenge.confirm(code)).user)!,
-      );
-    }
-    if (defaultTargetPlatform != TargetPlatform.android &&
-        defaultTargetPlatform != TargetPlatform.iOS) {
-      throw UnsupportedError('SMS sign-in is unavailable on this device.');
-    }
-    final challenge = Completer<TablePhoneChallenge>();
-    final result = challenge.future.timeout(const Duration(seconds: 60));
-    void codeSent(String id) {
-      if (challenge.isCompleted) return;
-      challenge.complete(
-        TablePhoneChallenge.code((code) async {
-          final result = await auth.signInWithCredential(
-            PhoneAuthProvider.credential(verificationId: id, smsCode: code),
-          );
-          return _profile(result.user)!;
-        }),
-      );
-    }
-
-    void failed(Object error, [StackTrace? stack]) {
-      if (!challenge.isCompleted) challenge.completeError(error, stack);
-    }
-
-    unawaited(
-      auth
-          .verifyPhoneNumber(
-            phoneNumber: phone,
-            verificationCompleted: (credential) async {
-              if (challenge.isCompleted) return;
-              try {
-                final credentialResult = await auth.signInWithCredential(
-                  credential,
-                );
-                if (!challenge.isCompleted) {
-                  challenge.complete(
-                    TablePhoneChallenge.instant(
-                      _profile(credentialResult.user)!,
-                    ),
-                  );
-                }
-              } catch (error, stack) {
-                failed(error, stack);
-              }
-            },
-            verificationFailed: failed,
-            codeSent: (id, _) => codeSent(id),
-            codeAutoRetrievalTimeout: codeSent,
-          )
-          .catchError(failed),
+    final response = await ApiClient().post(
+      '$_path/send-otp',
+      data: {'phone': phone},
     );
-    return result;
+    final id = _data(response)['challengeId'];
+    if (id is! String || id.isEmpty) {
+      throw const FormatException('Missing verification challenge');
+    }
+    return TablePhoneChallenge.code((code, {name}) async {
+      final response = await ApiClient().post(
+        '$_path/verify-otp',
+        data: {
+          'phone': phone,
+          'code': code,
+          'challengeId': id,
+          'name': name?.trim() ?? '',
+        },
+      );
+      final result = _data(response);
+      if (result['token'] is! String || result['customer'] is! Map) {
+        throw const FormatException('Missing customer session');
+      }
+      final prefs = await SharedPreferences.getInstance();
+      if (!await prefs.setString(_key, result['token'] as String)) {
+        throw StateError('Session could not be saved');
+      }
+      return CustomerProfileModel.fromJson(
+        Map<String, dynamic>.from(result['customer'] as Map),
+      );
+    });
+  }
+
+  Future<List<CustomerOrderTrackingModel>> orders() async {
+    final response = await ApiClient().get(
+      '$_path/orders',
+      options: await options(),
+    );
+    return (response['data'] as List)
+        .map(
+          (row) => CustomerOrderTrackingModel.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList();
   }
 }

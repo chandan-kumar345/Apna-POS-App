@@ -1018,7 +1018,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  void clearTableCartAndFree(String? tableRef) {
+  void clearTableCartAndFree(String? tableRef, {bool syncToBackend = true}) {
     if (tableRef == null || tableRef.trim().isEmpty) return;
     final tRef = tableRef.trim();
 
@@ -1054,7 +1054,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
           activeItemCount: 0,
           occupiedSince: null,
         );
-        updateTableStatus(t.id, TableStatus.free);
+        if (syncToBackend) updateTableStatus(t.id, TableStatus.free);
       }
     }
     _saveLiveTableCartsToPrefs();
@@ -1076,7 +1076,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
           (o.tableNumber != null && isSameTable('T-${o.tableNumber}', tRef));
 
       if (isMatch && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)) {
-        orders[i] = o.copyWith(status: OrderStatus.cancelled);
+        orders[i] = o.copyWith(status: OrderStatus.cancelled, isSynced: false);
         cancelledOrderIds.add(o.id);
       }
     }
@@ -1102,6 +1102,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _reconcileTablesWithRunningOrders() {
+    _clearTablesForTerminalOrders();
     for (int i = 0; i < tables.length; i++) {
       final tbl = tables[i];
       final activeOrder = orders.where((o) =>
@@ -1720,9 +1721,9 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
           (newOrder.id.isNotEmpty && o.id == newOrder.id) ||
           (newOrder.orderNumber.isNotEmpty && o.orderNumber == newOrder.orderNumber));
       if (idx >= 0) {
-        orders[idx] = newOrder;
+        orders[idx] = newOrder.copyWith(isSynced: true);
       } else {
-        orders.insert(0, newOrder);
+        orders.insert(0, newOrder.copyWith(isSynced: true));
       }
       _reconcileTablesWithRunningOrders();
       notifyListeners();
@@ -1746,6 +1747,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
           status: OrderStatus.completed,
           paymentStatus: 'paid',
           isPaid: true,
+          isSynced: true,
           totalAmount: totalAmount > 0 ? totalAmount : orders[idx].totalAmount,
           paymentMethod: paymentMethod.isNotEmpty ? paymentMethod : orders[idx].paymentMethod,
         );
@@ -1804,6 +1806,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         final isPaid = statusStr == 'completed' || data['paymentStatus'] == 'paid' || data['isPaid'] == true;
         orders[idx] = orders[idx].copyWith(
           status: newStatus,
+          isSynced: true,
           paymentStatus: isPaid ? 'paid' : orders[idx].paymentStatus,
           isPaid: isPaid ? true : orders[idx].isPaid,
         );
@@ -1883,6 +1886,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
     _socketService.onReconnected = () {
       debugPrint('[DatabaseService] Socket reconnected. Synchronizing tables & subscription for live multi-device state...');
+      unawaited(syncOrdersOnly());
       _subscriptionService.getStatus().catchError((e) {
         debugPrint('[DatabaseService] Reconnect subscription sync error: $e');
         return <String, dynamic>{};
@@ -1959,7 +1963,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       final remoteTables = await _tableService.fetchTables();
 
       // 3. Fetch latest active orders from backend (limit to recent active set)
-      final remoteOrders = await _orderService.fetchOrders(limit: 50);
+      final remoteOrders = await _fetchOrdersForSync(limit: 50);
 
       // 3b. Periodically verify live subscription status (e.g. if toggled in MongoDB Compass)
       _subSyncTick++;
@@ -1973,49 +1977,11 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
       // 4. Merge remote orders
       if (remoteOrders.isNotEmpty) {
-        final Map<String, OrderModel> orderMap = {};
-        for (final r in remoteOrders) {
-          final key = r.orderNumber.isNotEmpty ? r.orderNumber : r.id;
-          orderMap[key] = r.copyWith(isSynced: true);
-        }
-        for (final local in orders) {
-          final key = local.orderNumber.isNotEmpty ? local.orderNumber : local.id;
-          final existingRemote = orderMap[key] ?? (local.id.isNotEmpty ? orderMap[local.id] : null);
-          if (existingRemote == null) {
-            orderMap[key] = local;
-          } else {
-            final bool isTableDineIn = local.orderType == OrderType.dineIn ||
-                (local.tableNumber != null && local.tableNumber!.trim().isNotEmpty);
-            if (isTableDineIn && local.status == OrderStatus.pending && existingRemote.status == OrderStatus.completed && !local.isPaid) {
-              orderMap[key] = local.copyWith(isSynced: false);
-            } else if ((local.status == OrderStatus.completed || local.isPaid) &&
-                existingRemote.status != OrderStatus.completed &&
-                !existingRemote.isPaid) {
-              orderMap[key] = local.copyWith(isSynced: false);
-            } else {
-              orderMap[key] = existingRemote.copyWith(
-                items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
-                status: isTableDineIn && !existingRemote.isPaid && (local.status == OrderStatus.pending || local.status == OrderStatus.preparing)
-                    ? local.status
-                    : existingRemote.status,
-                isPaid: isTableDineIn ? (existingRemote.status == OrderStatus.completed && existingRemote.isPaid) : existingRemote.isPaid,
-              );
-            }
-          }
-        }
-        // Only mark non-pending orders as dismissed so background sync never suppresses active pending order popups!
-        for (final r in remoteOrders) {
-          if (r.status != OrderStatus.pending) {
-            markOrderDismissed(r.id, r.orderNumber);
-          }
-        }
-
-        final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
-        mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+        final mergedOrders = _mergeRemoteOrders(remoteOrders);
 
         if (orders.length != mergedOrders.length ||
-            !listEquals(orders.map((o) => '${o.id}_${o.status.name}_${o.paymentStatus}_${o.totalAmount}').toList(),
-                mergedOrders.map((o) => '${o.id}_${o.status.name}_${o.paymentStatus}_${o.totalAmount}').toList())) {
+            !listEquals(orders.map((o) => jsonEncode(o.toJson())).toList(),
+                mergedOrders.map((o) => jsonEncode(o.toJson())).toList())) {
           orders = mergedOrders;
           hasChanged = true;
         }
@@ -2117,6 +2083,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       if (hasChanged) {
+        _reconcileTablesWithRunningOrders();
         await _saveOrdersToPrefs();
         await _saveTablesToPrefs();
         await _saveLiveTableCartsToPrefs();
@@ -2515,39 +2482,9 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         }
 
         // B. Fetch Live Orders from Backend (Pull latest orders for multi-device synchronization)
-        final remoteOrders = await _orderService.fetchOrders(limit: 1000);
+        final remoteOrders = await _fetchOrdersForSync(limit: 1000);
         if (remoteOrders.isNotEmpty) {
-          final Map<String, OrderModel> orderMap = {};
-
-          // Seed with remote authoritative orders from cloud
-          for (final r in remoteOrders) {
-            final key = r.orderNumber.isNotEmpty ? r.orderNumber : r.id;
-            orderMap[key] = r.copyWith(isSynced: true);
-          }
-
-          // Merge local orders (preserve any local-only unsynced orders or newer local payment statuses)
-          for (final local in orders) {
-            final key = local.orderNumber.isNotEmpty ? local.orderNumber : local.id;
-            final existingRemote = orderMap[key] ?? (local.id.isNotEmpty ? orderMap[local.id] : null);
-
-            if (existingRemote == null) {
-              orderMap[key] = local;
-            } else {
-              // If local is paid/completed but remote was pending, prioritize completed local state
-              if ((local.status == OrderStatus.completed || local.isPaid) &&
-                  existingRemote.status != OrderStatus.completed &&
-                  !existingRemote.isPaid) {
-                orderMap[key] = local.copyWith(isSynced: false);
-              } else {
-                orderMap[key] = existingRemote.copyWith(
-                  items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
-                );
-              }
-            }
-          }
-
-          final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
-          mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+          final mergedOrders = _mergeRemoteOrders(remoteOrders);
           orders = mergedOrders;
           await _saveOrdersToPrefs();
 
@@ -5207,7 +5144,8 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> updateOrderStatus(String orderId, OrderStatus newStatus) async {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     if (index >= 0) {
-      orders[index] = orders[index].copyWith(status: newStatus);
+      orders[index] = orders[index].copyWith(status: newStatus, isSynced: false);
+      final pendingOrder = orders[index];
 
       if (newStatus != OrderStatus.pending) {
         markOrderDismissed(orders[index].id, orders[index].orderNumber);
@@ -5232,12 +5170,20 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       try {
         final isAuth = await _authService.isAuthenticated();
         if (isAuth) {
-          final targetId = orders[index].id;
+          final targetId = pendingOrder.id;
           if (targetId.isNotEmpty) {
-            unawaited(_orderService.updateOrderStatus(targetId, newStatus).catchError((e) {
-              debugPrint('[DatabaseService.updateOrderStatus] Remote update notice: $e');
-              return null;
-            }));
+            final remoteOrder = await _orderService.updateOrderStatus(targetId, newStatus);
+            final currentIndex = orders.indexWhere((o) =>
+                o.id == pendingOrder.id || o.orderNumber == pendingOrder.orderNumber);
+            if (remoteOrder != null && currentIndex >= 0 &&
+                identical(orders[currentIndex], pendingOrder)) {
+              orders[currentIndex] = remoteOrder.copyWith(
+                isSynced: true,
+                items: remoteOrder.items.isNotEmpty ? remoteOrder.items : pendingOrder.items,
+              );
+              await _saveOrdersToPrefs();
+              notifyListeners();
+            }
           }
         }
       } catch (e) {
@@ -5250,7 +5196,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   void updateOrderStatusLocally(String orderId, OrderStatus newStatus) {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     if (index >= 0) {
-      orders[index] = orders[index].copyWith(status: newStatus);
+      orders[index] = orders[index].copyWith(status: newStatus, isSynced: false);
       if (newStatus != OrderStatus.pending) {
         markOrderDismissed(orders[index].id, orders[index].orderNumber);
         _prefs?.remove('pending_incoming_order_payload');
@@ -5292,55 +5238,100 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Fast, targeted order sync (<100ms) for OrdersScreen without reloading entire catalogs or assets
+  String _orderNumberKey(String number) => number.replaceFirst(RegExp(r'^#'), '').trim();
+
+  Future<List<OrderModel>> _fetchOrdersForSync({required int limit}) async {
+    final remoteOrders = await _orderService.fetchOrders(limit: limit);
+    final ids = remoteOrders.map((o) => o.id).toSet();
+    final numbers = remoteOrders.map((o) => _orderNumberKey(o.orderNumber)).toSet();
+    // An old cached active order can fall outside the recent page after another
+    // device closes it. Resolve it explicitly instead of retaining it forever.
+    for (final local in List<OrderModel>.of(orders)) {
+      final number = _orderNumberKey(local.orderNumber);
+      if (local.status == OrderStatus.completed || local.status == OrderStatus.cancelled ||
+          ids.contains(local.id) || numbers.contains(number) || number.isEmpty) {
+        continue;
+      }
+      final matches = await _orderService.fetchOrders(search: number, limit: 10);
+      for (final match in matches) {
+        if ((local.id.isNotEmpty && match.id == local.id) ||
+            _orderNumberKey(match.orderNumber) == number) {
+          remoteOrders.add(match);
+          ids.add(match.id);
+          numbers.add(_orderNumberKey(match.orderNumber));
+          break;
+        }
+      }
+    }
+    return remoteOrders;
+  }
+
+  // Server statuses are authoritative for existing orders. Only an unacknowledged
+  // local status change may outlive an active server snapshot; a terminal server
+  // order must never be reopened by an older cache on another device.
+  List<OrderModel> _mergeRemoteOrders(List<OrderModel> remoteOrders) {
+    final merged = remoteOrders.map((o) => o.copyWith(isSynced: true)).toList();
+    final byId = <String, int>{};
+    final byNumber = <String, int>{};
+    for (var i = 0; i < merged.length; i++) {
+      if (merged[i].id.isNotEmpty) byId[merged[i].id] = i;
+      final key = _orderNumberKey(merged[i].orderNumber);
+      if (key.isNotEmpty) byNumber[key] = i;
+    }
+    for (final local in orders) {
+      final index = byId[local.id] ?? byNumber[_orderNumberKey(local.orderNumber)];
+      if (index == null) {
+        merged.add(local);
+        continue;
+      }
+      final remote = merged[index];
+      final remoteIsTerminal = remote.status == OrderStatus.completed ||
+          remote.status == OrderStatus.cancelled;
+      final hasLocalStatusChange = local.status == OrderStatus.completed ||
+          local.status == OrderStatus.cancelled ||
+          (!local.isSynced && local.status.index > remote.status.index);
+      merged[index] = !remoteIsTerminal && hasLocalStatusChange
+          ? local.copyWith(id: remote.id, orderNumber: remote.orderNumber, isSynced: false)
+          : remote.copyWith(items: remote.items.isNotEmpty ? remote.items : local.items);
+    }
+    for (final remote in remoteOrders) {
+      if (remote.status != OrderStatus.pending) {
+        markOrderDismissed(remote.id, remote.orderNumber);
+      }
+    }
+    final result = deduplicateOrdersList(merged);
+    result.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+    return result;
+  }
+
+  /// Clear only the cart bound to a closed order, preserving newer table orders.
+  void _clearTablesForTerminalOrders() {
+    for (final table in List<TableModel>.of(tables)) {
+      if (orders.any((o) => isSameTable(o.tableNumber, table.name) &&
+          o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)) {
+        continue;
+      }
+      final closedOrder = orders.where((o) =>
+          (o.status == OrderStatus.completed || o.status == OrderStatus.cancelled) &&
+          ((table.currentOrderId != null && o.id == table.currentOrderId) ||
+           (table.currentOrderId == null && table.activeOrderNumber != null &&
+            _orderNumberKey(o.orderNumber) == _orderNumberKey(table.activeOrderNumber!))))
+          .firstOrNull;
+      if (closedOrder != null) {
+        clearTableCartAndFree(table.name, syncToBackend: false);
+      }
+    }
+  }
+
+  /// Targeted order sync for OrdersScreen without reloading catalogs or assets.
   Future<void> syncOrdersOnly() async {
     try {
       final isAuth = await _authService.isAuthenticated();
       if (!isAuth) return;
 
-      final remoteOrders = await _orderService.fetchOrders(limit: 100);
+      final remoteOrders = await _fetchOrdersForSync(limit: 100);
       if (remoteOrders.isNotEmpty) {
-        final Map<String, OrderModel> orderMap = {};
-        for (final r in remoteOrders) {
-          final key = r.orderNumber.isNotEmpty ? r.orderNumber : r.id;
-          orderMap[key] = r.copyWith(isSynced: true);
-        }
-
-        for (final local in orders) {
-          final key = local.orderNumber.isNotEmpty ? local.orderNumber : local.id;
-          final existingRemote = orderMap[key] ?? (local.id.isNotEmpty ? orderMap[local.id] : null);
-          if (existingRemote == null) {
-            orderMap[key] = local;
-          } else {
-            final bool isTableDineIn = local.orderType == OrderType.dineIn ||
-                (local.tableNumber != null && local.tableNumber!.trim().isNotEmpty);
-            if (isTableDineIn && local.status == OrderStatus.pending && existingRemote.status == OrderStatus.completed && !local.isPaid) {
-              orderMap[key] = local.copyWith(isSynced: false);
-            } else if ((local.status == OrderStatus.completed || local.isPaid) &&
-                existingRemote.status != OrderStatus.completed &&
-                !existingRemote.isPaid) {
-              orderMap[key] = local.copyWith(isSynced: false);
-            } else {
-              orderMap[key] = existingRemote.copyWith(
-                items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
-                status: isTableDineIn && !existingRemote.isPaid && (local.status == OrderStatus.pending || local.status == OrderStatus.preparing)
-                    ? local.status
-                    : existingRemote.status,
-                isPaid: isTableDineIn ? (existingRemote.status == OrderStatus.completed && existingRemote.isPaid) : existingRemote.isPaid,
-              );
-            }
-          }
-        }
-
-        // Only mark non-pending orders as dismissed so targeted order sync never suppresses active pending order popups!
-        for (final r in remoteOrders) {
-          if (r.status != OrderStatus.pending) {
-            markOrderDismissed(r.id, r.orderNumber);
-          }
-        }
-
-        final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
-        mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+        final mergedOrders = _mergeRemoteOrders(remoteOrders);
         orders = mergedOrders;
         _saveOrdersToPrefs();
         _reconcileTablesWithRunningOrders();
@@ -5966,6 +5957,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         status: OrderStatus.completed,
         paymentStatus: 'paid',
         isPaid: true,
+        isSynced: false,
         paymentMethod: paymentMethod,
         staffId: resolvedStaffId,
         staffName: resolvedStaffName,
