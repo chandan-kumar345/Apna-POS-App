@@ -76,8 +76,9 @@ class CustomerStorefrontApiService {
 
   Future<String> sendOtp(String phone, {required String restaurantId}) async {
     final business = restaurantId;
-    if (business.isEmpty)
+    if (business.isEmpty) {
       throw StateError('Choose a restaurant before signing in.');
+    }
     final challenge = await TableQrPhoneAuth(
       restaurantId: business,
     ).send(phone);
@@ -128,8 +129,9 @@ class CustomerStorefrontApiService {
       final cached = CustomerProfileModel.fromJson(
         jsonDecode(prefs.getString(_prefCustomerKey) ?? '{}'),
       );
-      if (cached.id == customer.id)
+      if (cached.id == customer.id) {
         return customer.copyWith(addresses: cached.addresses);
+      }
     } catch (_) {}
     return customer;
   }
@@ -365,8 +367,9 @@ class CustomerStorefrontApiService {
       if (polling ||
           controller.isClosed ||
           receipt == null ||
-          restaurant == null)
+          restaurant == null) {
         return;
+      }
       polling = true;
       try {
         final response = await ApiClient().get(
@@ -419,8 +422,9 @@ class CustomerStorefrontApiService {
         );
         latest ??= model;
         final json = local.toJson();
-        if (local.items.any((line) => line.kotQuantity > 0))
+        if (local.items.any((line) => line.kotQuantity > 0)) {
           json['kotStatus'] = 'sent';
+        }
         emit(json);
       }
     }

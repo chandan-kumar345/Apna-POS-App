@@ -1282,3 +1282,5 @@ API URL. Compiler input hashes match both final changed source files for web and
 Android (build/order_status_sync_source_verification.json). git diff --check clean.
 All evidence logs start with build/order_status_sync_. No production database
 writes, web deployment, or device installation performed.
+
+2026-11-21 QR customer auth continuation: implementation was already committed in c18393e; completed outstanding verification only. Backend-verified.log: 21 tests / 4 suites pass. Final-regressions.log: 29 Flutter checks pass. Previews.log: OTP/name bottom sheet test passes, login/OTP real-font screenshots visually inspected. Web-build.log: release built in 235.9s. Four analyzer style braces corrected without behavior changes. Final clean analysis is in analysis-verified.log. Read-only Meta check had confirmed requested phone/WABA and approved apna_pos_auth_otp language en. No actual OTP, production database writes or deployment. Earlier approval-review usage-limit block resolved on this resumed turn; no bypass was used.

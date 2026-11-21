@@ -1,5 +1,19 @@
 # Current task state
 
+2026-11-21: QR WhatsApp customer authentication final verification completed.
+Implementation already committed by the user as c18393e. The remaining login/
+OTP screenshots are captured with mock delivery and real fonts and inspected:
+build/qr_customer_auth_validation/previews/whatsapp-login.png and whatsapp-otp.png.
+21 isolated backend checks pass (4 suites); 29 combined Flutter regressions pass;
+web release built successfully in 235.9s. Only analyzer style braces were added
+in this continuation; no feature rework. OTP requests use phone ID
+1284061438133660 and WABA 2525727467906581, approved apna_pos_auth_otp/en template
+(read-only Meta readiness previously verified). First successful dispatch creates
+the CRM lead; correct code grants customer session, optional blank name defaults
+to Valued Customer, repeat login preserves profile/history. No real OTP/customer
+messages, production records, deployment or publishing performed in this
+continuation. Source/log evidence is in build/qr_customer_auth_validation/.
+
 2026-11-20 storefront sheets/media implemented locally: guest form bottom sheet,
 60% product detail with fixed footer/scroll body, ten available popular products,
 rounded search and stable keyboard layout. QR and regular menu media now enable
