@@ -104,46 +104,41 @@ class CampaignShell extends StatelessWidget {
           body: SafeArea(
             bottom: false,
             top: header != null,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 840),
-                child: Column(
-                  children: [
-                    if (header != null) header!,
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: header != null
-                            ? const BorderRadius.vertical(
-                                top: Radius.circular(28),
-                              )
-                            : BorderRadius.zero,
-                        child: DecoratedBox(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Color(0xFFF9FCFF),
-                                sheetBlue,
-                                Color(0xFFE2EFF9),
-                              ],
-                            ),
-                          ),
-                          child: SafeArea(
-                            top: false,
-                            child: Column(
-                              children: [
-                                Expanded(child: body),
-                                ?footer,
-                              ],
-                            ),
-                          ),
+            child: Column(
+              children: [
+                if (header != null) header!,
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: header != null
+                        ? const BorderRadius.vertical(
+                            top: Radius.circular(28),
+                          )
+                        : BorderRadius.zero,
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFF9FCFF),
+                            sheetBlue,
+                            Color(0xFFE2EFF9),
+                          ],
+                        ),
+                      ),
+                      child: SafeArea(
+                        top: false,
+                        child: Column(
+                          children: [
+                            Expanded(child: body),
+                            ?footer,
+                          ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),

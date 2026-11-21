@@ -114,171 +114,61 @@ class CustomerShell extends StatelessWidget {
   );
 }
 
-class ApnaPosTopBar extends StatelessWidget {
-  final String storeName;
-  final VoidCallback? onStoreTap;
-  final VoidCallback? onNotificationTap;
-
-  const ApnaPosTopBar({
-    super.key,
-    this.storeName = 'Pizza 47',
-    this.onStoreTap,
-    this.onNotificationTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // APNA POS Logo Badge (Circular with amber border)
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: const Color(0xFF071422),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFFF59E0B),
-                width: 1.5,
-              ),
-            ),
-            child: const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'APNA',
-                    style: TextStyle(
-                      fontFamily: 'Roboto',
-                      fontSize: 8,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFFF59E0B),
-                      height: 1.0,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  SizedBox(height: 1),
-                  Text(
-                    'POS',
-                    style: TextStyle(
-                      fontFamily: 'Roboto',
-                      fontSize: 8,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      height: 1.0,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Center: Store Selector Pill "Pizza 47 ▼"
-          InkWell(
-            onTap: onStoreTap,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F3E57),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF265D7D)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    storeName,
-                    style: const TextStyle(
-                      fontFamily: 'Roboto',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Icon(
-                    Icons.arrow_drop_down_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Right: Notification Bell Button with Red Dot Badge
-          InkWell(
-            onTap: onNotificationTap,
-            borderRadius: BorderRadius.circular(20),
-            child: Stack(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F3E57),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF265D7D)),
-                  ),
-                  child: const Icon(
-                    Icons.notifications_none_rounded,
-                    color: Colors.white,
-                    size: 19,
-                  ),
-                ),
-                Positioned(
-                  top: 2,
-                  right: 2,
-                  child: Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class CustomerHeader extends StatelessWidget {
   final String title;
   final Widget leading;
   final Widget? trailing;
+  final bool isPill;
   const CustomerHeader({
     super.key,
     required this.title,
     required this.leading,
     this.trailing,
+    this.isPill = false,
   });
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
     child: Row(
       children: [
         leading,
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 18,
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: isPill
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: const Color(0xFF477A90)),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF316E84), Color(0xFF0E4B63)],
+                      ),
+                    ),
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: customerText(
+                        15,
+                        color: Colors.white,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                : Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: customerText(
+                      17,
+                      color: Colors.white,
+                      weight: FontWeight.w800,
+                    ),
+                  ),
           ),
         ),
         if (trailing != null) ...[const SizedBox(width: 8), trailing!],
@@ -298,10 +188,29 @@ class CustomerHeaderButton extends StatelessWidget {
     required this.onTap,
   });
   @override
-  Widget build(BuildContext context) => IconButton(
-    onPressed: onTap,
-    tooltip: tooltip,
-    icon: Icon(icon, color: Colors.white, size: 22),
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.25),
+              width: 1.1,
+            ),
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ),
+    ),
   );
 }
 
@@ -314,7 +223,7 @@ class CustomerIconTile extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.background,
-    this.size = 46,
+    this.size = 36,
   });
   @override
   Widget build(BuildContext context) => Container(
@@ -365,8 +274,8 @@ class CustomerPrimary extends StatelessWidget {
         disabledBackgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         disabledForegroundColor: Colors.white70,
-        minimumSize: const Size(0, 52),
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         shape: const StadiumBorder(),
       ),
       child: FittedBox(
@@ -377,22 +286,22 @@ class CustomerPrimary extends StatelessWidget {
           children: [
             if (busy) ...[
               const SizedBox(
-                width: 20,
-                height: 20,
+                width: 16,
+                height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(width: 9),
+              const SizedBox(width: 7),
             ] else if (icon != null) ...[
-              Icon(icon, size: 26),
-              const SizedBox(width: 10),
+              Icon(icon, size: 18),
+              const SizedBox(width: 7),
             ],
             Text(
               label,
               style: customerText(
-                18,
+                13.5,
                 color: Colors.white,
                 weight: FontWeight.w700,
               ),
@@ -408,13 +317,13 @@ class CustomerPrimary extends StatelessWidget {
 InputDecoration customerInput(String hint, {Widget? prefix, Widget? suffix}) =>
     InputDecoration(
       hintText: hint,
-      hintStyle: customerText(15, color: customerBlue, weight: FontWeight.w400),
+      hintStyle: customerText(13, color: customerBlue, weight: FontWeight.w400),
       filled: true,
       fillColor: Colors.white.withValues(alpha: .8),
       prefixIcon: prefix,
       suffixIcon: suffix,
       isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: Colors.white),
@@ -434,7 +343,7 @@ class CustomerPill extends StatelessWidget {
   const CustomerPill(this.text, {super.key});
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(30),
       color: const Color(0xFFBAF9D4),
@@ -443,7 +352,7 @@ class CustomerPill extends StatelessWidget {
     child: Text(
       text,
       style: customerText(
-        12,
+        11,
         color: const Color(0xFF052B1A),
         weight: FontWeight.w700,
       ),

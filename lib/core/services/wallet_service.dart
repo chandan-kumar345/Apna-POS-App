@@ -154,6 +154,9 @@ class WalletService {
   static const String _kLocalBalanceKey = 'apna_pos_cached_wallet_balance';
   static const String _kLocalTxKey = 'apna_pos_cached_wallet_transactions';
 
+  /// Current cached wallet balance from local database
+  double get balance => DatabaseService().walletBalance;
+
   /// Fetch full wallet balance & metrics
   Future<WalletBalanceData> getWalletDetails() async {
     try {

@@ -1,8 +1,11 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/loyalty_program_model.dart';
 import '../../../core/services/loyalty_service.dart';
+import '../../../core/widgets/pos_screen_top_header.dart';
 import '../../campaign/mobile/campaign_style.dart';
 import '../../campaign/mobile/customer_style.dart';
 import '../../campaign/mobile/mobile_customers_screen.dart';
@@ -119,16 +122,69 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     return 'Pizza 47';
   }
 
+  String get _companyLogo {
+    return _db.companyLogoPath ?? _brandingData?.companyLogo ?? '';
+  }
+
+  Widget _businessLogo(String logo, String business) {
+    if (logo.startsWith('http')) {
+      return Image.network(
+        logo,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _brand(business),
+      );
+    }
+    if (logo.startsWith('assets/')) {
+      return Image.asset(
+        logo,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _brand(business),
+      );
+    }
+    if (!kIsWeb && logo.isNotEmpty) {
+      try {
+        final file = File(logo);
+        if (file.existsSync()) {
+          return Image.file(
+            file,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => _brand(business),
+          );
+        }
+      } catch (_) {}
+    }
+    return _brand(business);
+  }
+
+  Widget _brand(String business) => Container(
+        color: const Color(0xFF13455A),
+        alignment: Alignment.center,
+        child: Text(
+          business.trim().isEmpty
+              ? 'AP'
+              : business
+                  .trim()
+                  .split(RegExp(r'\s+'))
+                  .take(2)
+                  .map((word) => word[0])
+                  .join()
+                  .toUpperCase(),
+          style: customerText(16, color: Colors.white, weight: FontWeight.w800),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    return CampaignShell(
-      header: ApnaPosTopBar(
-        storeName: _currentStoreName,
-        onNotificationTap: _openNotifications,
-      ),
+    return CustomerShell(
+      header: _buildTopHeader(),
       body: _buildBody(),
       footer: _buildBottomNav(),
     );
+  }
+
+  // POS Screen Top Header: Circular Brand Logo + Pizza 47 dropdown badge + Online dot + Khazana wallet + Notification bell
+  Widget _buildTopHeader() {
+    return const PosScreenTopHeader();
   }
 
   Widget _buildBody() {
@@ -139,7 +195,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     if (_errorMessage != null && _brandingData == null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -148,12 +204,12 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
               Text(
                 _errorMessage!,
                 textAlign: TextAlign.center,
-                style: campaignText(13, color: muted),
+                style: customerText(13, color: muted),
               ),
               const SizedBox(height: 14),
               ElevatedButton(
                 onPressed: () => _loadLoyaltyData(forceRefresh: true),
-                child: const Text('Retry', style: TextStyle(fontSize: 13)),
+                child: const Text('Retry'),
               ),
             ],
           ),
@@ -169,27 +225,27 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
       onRefresh: () => _loadLoyaltyData(forceRefresh: true),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title & Subtitle (smaller, compact)
+            // Title & Subtitle with smaller fonts
             Text(
               'Loyalty Program',
-              style: campaignText(20, weight: FontWeight.w800),
+              style: customerText(19, weight: FontWeight.w800),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               'Build customer loyalty with cashback, points & rewards.',
-              style: campaignText(11.5, color: muted),
+              style: customerText(12, color: muted, weight: FontWeight.w500),
             ),
             const SizedBox(height: 12),
 
-            // Hero Card: Trophy + "Cashback Rewards" (compact)
+            // Hero Card: Trophy + "Cashback Rewards" (compact size)
             _buildHeroCard(),
             const SizedBox(height: 12),
 
-            // 3 Stat Cards Row: Members, Total Cashback, Redemptions (compact)
+            // 3 Stat Cards Row: Members, Total Cashback, Redemptions (compact size)
             _buildMetricCardsRow(data),
             const SizedBox(height: 16),
 
@@ -199,7 +255,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
               children: [
                 Text(
                   'Active Programs (${activePrograms.isNotEmpty ? activePrograms.length : allPrograms.length})',
-                  style: campaignText(14, weight: FontWeight.w700),
+                  style: customerText(14, weight: FontWeight.w700),
                 ),
                 InkWell(
                   onTap: _navigateToPerformance,
@@ -207,8 +263,8 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                     children: [
                       Text(
                         'View All',
-                        style: campaignText(
-                          11.5,
+                        style: customerText(
+                          11,
                           weight: FontWeight.w600,
                           color: const Color(0xFF08435E),
                         ),
@@ -216,7 +272,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                       const SizedBox(width: 3),
                       const Icon(
                         Icons.arrow_forward_rounded,
-                        size: 12,
+                        size: 13,
                         color: Color(0xFF08435E),
                       ),
                     ],
@@ -236,21 +292,21 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
 
             const SizedBox(height: 12),
 
-            // "+ Create Loyalty Program" Button (Compact)
+            // "+ Create Loyalty Program" Compact Button
             _buildCreateProgramButton(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
           ],
         ),
       ),
     );
   }
 
-  // Hero Card with Trophy graphic and "Cashback Rewards"
+  // Hero Card with Trophy graphic and "Cashback Rewards" (smaller & compact)
   Widget _buildHeroCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(15),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -267,8 +323,8 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
         children: [
           // Trophy Graphic with sparkles
           Container(
-            width: 44,
-            height: 44,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
@@ -280,10 +336,27 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.emoji_events_rounded,
-              color: Color(0xFFF59E0B),
-              size: 26,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.emoji_events_rounded,
+                  color: Color(0xFFF59E0B),
+                  size: 26,
+                ),
+                Positioned(
+                  top: 5,
+                  right: 5,
+                  child: Container(
+                    width: 5,
+                    height: 5,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF8B5CF6),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 12),
@@ -295,12 +368,12 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
               children: [
                 Text(
                   'Cashback Rewards',
-                  style: campaignText(14.5, weight: FontWeight.w700),
+                  style: customerText(14, weight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Give instant or future cashback on every order.',
-                  style: campaignText(11, color: muted),
+                  style: customerText(11, color: muted, weight: FontWeight.w500),
                 ),
               ],
             ),
@@ -310,7 +383,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
-  // 3 Metric Cards Row: Members, Total Cashback, Redemptions (Compact)
+  // 3 Metric Cards Row: Members, Total Cashback, Redemptions (compact size)
   Widget _buildMetricCardsRow(LoyaltyBrandingModel data) {
     final membersStr = NumberFormat.decimalPattern('en_IN').format(data.members);
     final cashbackStr = _currencyFormat.format(data.totalCashback);
@@ -329,7 +402,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             value: membersStr,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 7),
 
         // Card 2: Total Cashback (Lavender)
         Expanded(
@@ -342,7 +415,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             value: cashbackStr,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 7),
 
         // Card 3: Redemptions (Soft Amber)
         Expanded(
@@ -368,7 +441,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     required String value,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 9),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
@@ -377,27 +450,27 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: iconColor, size: 18),
+          Icon(icon, color: iconColor, size: 17),
           const SizedBox(height: 6),
           Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10.5, color: muted, fontWeight: FontWeight.w500),
+            style: customerText(10, color: muted, weight: FontWeight.w500),
           ),
           const SizedBox(height: 2),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: ink),
+            style: customerText(14, weight: FontWeight.w800, color: customerInk),
           ),
         ],
       ),
     );
   }
 
-  // Active Program Card (Compact & Clean)
+  // Active Program Card (compact size)
   Widget _buildProgramCard(LoyaltyProgramModel program) {
     final isPercent = program.cashbackType == 'percentage' ||
         program.title.contains('%');
@@ -418,7 +491,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
         ),
         child: Row(
           children: [
-            // Icon in circle (38x38)
+            // Icon in circle
             Container(
               width: 38,
               height: 38,
@@ -429,7 +502,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
               child: Icon(
                 Icons.currency_rupee_rounded,
                 color: iconColor,
-                size: 20,
+                size: 19,
               ),
             ),
             const SizedBox(width: 10),
@@ -441,14 +514,14 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                 children: [
                   Text(
                     program.title,
-                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: ink),
+                    style: customerText(13, weight: FontWeight.w700),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     program.description,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: muted),
+                    style: customerText(11, color: muted, weight: FontWeight.w400),
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -461,7 +534,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                       const SizedBox(width: 3),
                       Text(
                         'Started: ${program.startedDate}',
-                        style: TextStyle(fontSize: 10, color: muted, fontWeight: FontWeight.w400),
+                        style: customerText(10, color: muted, weight: FontWeight.w400),
                       ),
                     ],
                   ),
@@ -518,13 +591,13 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             const SizedBox(height: 6),
             Text(
               'No active programs yet',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: ink),
+              style: customerText(13, weight: FontWeight.w600),
             ),
             const SizedBox(height: 3),
             Text(
               'Create your first cashback program to reward customers.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: muted),
+              style: customerText(11, color: muted),
             ),
           ],
         ),
@@ -532,15 +605,15 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
-  // "+ Create Loyalty Program" Button (Compact: height 42)
+  // "+ Create Loyalty Program" Smaller/Sleek Button
   Widget _buildCreateProgramButton() {
     return InkWell(
       onTap: _navigateToCreateProgram,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        height: 42,
+        height: 40,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           gradient: const LinearGradient(
             colors: [Color(0xFF0B4660), Color(0xFF083347)],
           ),
@@ -548,12 +621,12 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.add, color: Colors.white, size: 18),
-            SizedBox(width: 5),
+          children: [
+            const Icon(Icons.add, color: Colors.white, size: 17),
+            const SizedBox(width: 5),
             Text(
               'Create Loyalty Program',
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white),
+              style: customerText(13, weight: FontWeight.w700, color: Colors.white),
             ),
           ],
         ),
@@ -561,10 +634,10 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
-  // Bottom Navigation Bar
+  // Bottom Navigation Bar matching Screen 1 & Customers screen
   Widget _buildBottomNav() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
@@ -601,23 +674,23 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
 
           // 3. Loyalty (Selected active pill)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
               color: const Color(0xFF08435E),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(
+              children: [
+                const Icon(
                   Icons.card_giftcard_rounded,
                   color: Colors.white,
                   size: 16,
                 ),
-                SizedBox(width: 5),
+                const SizedBox(width: 5),
                 Text(
                   'Loyalty',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
+                  style: customerText(11, weight: FontWeight.w700, color: Colors.white),
                 ),
               ],
             ),
@@ -658,23 +731,23 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 19,
+              size: 18,
               color: isSelected ? const Color(0xFF08435E) : muted,
             ),
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              style: customerText(
+                10,
+                weight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected ? const Color(0xFF08435E) : muted,
               ),
             ),

@@ -23,9 +23,8 @@ void main() {
       await tester.pumpWidget(buildTestWidget(const LoyaltyLandingScreen()));
       await tester.pumpAndSettle();
 
-      // Top bar elements
-      expect(find.text('APNA'), findsOneWidget);
-      expect(find.text('POS'), findsOneWidget);
+      // Top bar elements (POS Screen Top Header with P4 avatar and Pizza 47 title)
+      expect(find.text('P4'), findsOneWidget);
       expect(find.text('Pizza 47'), findsWidgets);
 
       // Header title & subtitle

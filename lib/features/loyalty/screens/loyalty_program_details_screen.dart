@@ -194,19 +194,19 @@ class _LoyaltyProgramDetailsScreenState
           children: [
             // Hero Status Card (Matching Screen 3)
             _buildProgramHeroCard(),
-            const SizedBox(height: 11),
+            const SizedBox(height: 12),
 
             // Program Details Card
             _buildProgramDetailsCard(),
-            const SizedBox(height: 11),
+            const SizedBox(height: 12),
 
             // Program Performance Card
             _buildProgramPerformanceCard(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             // 4 Action Buttons Row (Edit, Reports, Customers, Deactivate)
             _buildActionButtonsRow(),
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -216,18 +216,18 @@ class _LoyaltyProgramDetailsScreenState
   // Top Hero Banner with Green rupee/sync icon, title, Active badge, and Switch
   Widget _buildProgramHeroCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFFE6F7F0),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: const Color(0xFFC7EED8)),
       ),
       child: Row(
         children: [
           // Green Rupee / Sync Icon in circle
           Container(
-            width: 38,
-            height: 38,
+            width: 40,
+            height: 40,
             decoration: const BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
@@ -235,10 +235,10 @@ class _LoyaltyProgramDetailsScreenState
             child: const Icon(
               Icons.currency_rupee_rounded,
               color: Color(0xFF10B981),
-              size: 21,
+              size: 20,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
 
           // Title, Subtitle, Active Badge
           Expanded(
@@ -247,7 +247,7 @@ class _LoyaltyProgramDetailsScreenState
               children: [
                 Text(
                   _currentProgram.title,
-                  style: campaignText(14.5, weight: FontWeight.w700),
+                  style: campaignText(14, weight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -256,7 +256,7 @@ class _LoyaltyProgramDetailsScreenState
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
                     color: _isActive
                         ? const Color(0xFFD1FAE5)
@@ -278,14 +278,11 @@ class _LoyaltyProgramDetailsScreenState
             ),
           ),
 
-          // Green Toggle Switch (Compact)
-          Transform.scale(
-            scale: 0.85,
-            child: Switch.adaptive(
-              value: _isActive,
-              onChanged: _isToggling ? null : _handleToggle,
-              activeColor: const Color(0xFF10B981),
-            ),
+          // Green Toggle Switch
+          Switch.adaptive(
+            value: _isActive,
+            onChanged: _isToggling ? null : _handleToggle,
+            activeColor: const Color(0xFF10B981),
           ),
         ],
       ),
@@ -314,7 +311,7 @@ class _LoyaltyProgramDetailsScreenState
         children: [
           Text(
             'Program Details',
-            style: campaignText(13.5, weight: FontWeight.w700),
+            style: campaignText(14, weight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           _buildDetailRow(
@@ -394,7 +391,7 @@ class _LoyaltyProgramDetailsScreenState
         children: [
           Text(
             'Program Performance',
-            style: campaignText(13.5, weight: FontWeight.w700),
+            style: campaignText(14, weight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           Row(
@@ -407,7 +404,7 @@ class _LoyaltyProgramDetailsScreenState
                   value: NumberFormat.decimalPattern('en_IN').format(ordersCount),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 7),
               Expanded(
                 child: _buildMetricTile(
                   icon: Icons.currency_rupee_rounded,
@@ -416,7 +413,7 @@ class _LoyaltyProgramDetailsScreenState
                   value: cashbackGiven,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 7),
               Expanded(
                 child: _buildMetricTile(
                   icon: Icons.trending_up_rounded,
@@ -448,7 +445,7 @@ class _LoyaltyProgramDetailsScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, color: iconColor, size: 17),
+          Icon(icon, color: iconColor, size: 18),
           const SizedBox(height: 4),
           Text(
             label,
@@ -457,13 +454,13 @@ class _LoyaltyProgramDetailsScreenState
             overflow: TextOverflow.ellipsis,
             style: campaignText(10, color: muted),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           Text(
             value,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: campaignText(13.5, weight: FontWeight.w800, color: ink),
+            style: campaignText(13, weight: FontWeight.w800, color: ink),
           ),
         ],
       ),
@@ -570,11 +567,10 @@ class _LoyaltyProgramDetailsScreenState
             Text(
               label,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
+              style: campaignText(
+                10,
+                weight: FontWeight.w600,
                 color: color,
-                height: 1.15,
               ),
             ),
           ],
