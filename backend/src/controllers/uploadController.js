@@ -11,7 +11,9 @@ class UploadController {
 
       const folder = req.query.folder || 'products';
       const allowedFolders = ['products', 'profiles', 'outlets', 'receipts', 'whatsapp', 'chat'];
-      const targetFolder = allowedFolders.includes(folder) ? folder : 'products';
+      if (folder === 'campaigns' && !req.businessId) throw ApiError.unauthorized();
+      const targetFolder = folder === 'campaigns' ? `campaigns/${req.businessId}`
+        : (allowedFolders.includes(folder) ? folder : 'products');
 
       let imageUrl = await storageService.uploadImage(
         req.file.buffer,

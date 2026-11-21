@@ -8,7 +8,7 @@ const recipientSchema = new mongoose.Schema(
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
     status: {
       type: String,
-      enum: ['pending', 'sent', 'delivered', 'read', 'failed'],
+      enum: ['pending', 'sending', 'sent', 'delivered', 'read', 'failed'],
       default: 'pending',
     },
     messageId: { type: String, default: null },
@@ -39,13 +39,13 @@ const campaignSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['marketing', 'utility', 'promotional'],
+      enum: ['marketing', 'utility', 'promotional', 'authentication'],
       default: 'marketing',
       index: true,
     },
     status: {
       type: String,
-      enum: ['draft', 'scheduled', 'processing', 'running', 'paused', 'completed', 'sent', 'failed', 'cancelled'],
+      enum: ['draft', 'in_review', 'approved', 'scheduled', 'processing', 'running', 'paused', 'completed', 'sent', 'failed', 'cancelled'],
       default: 'draft',
       index: true,
     },
@@ -95,6 +95,11 @@ const campaignSchema = new mongoose.Schema(
       buttonText: { type: String, default: 'Offer details' },
       buttonUrl: { type: String, default: '' },
       buttons: [{ type: String }],
+      actions: { type: [new mongoose.Schema({
+        type: { type: String, enum: ['URL', 'PHONE_NUMBER', 'QUICK_REPLY'] },
+        text: String,
+        value: String,
+      }, { _id: false })], default: undefined },
       parameters: [{ type: String }],
     },
     schedule: {
@@ -128,7 +133,7 @@ const campaignSchema = new mongoose.Schema(
     rewardDetails: {
       rewardType: {
         type: String,
-        enum: ['flat_discount', 'flat_cash', 'percent_discount', 'percentage', 'free_gift', 'bogo', 'cashback'],
+        enum: ['flat_discount', 'flat_cash', 'percent_discount', 'percentage', 'free_gift', 'bogo', 'cashback', 'promotional'],
         default: 'flat_discount',
       },
       discountAmount: { type: Number, default: 0 },
@@ -147,6 +152,12 @@ const campaignSchema = new mongoose.Schema(
       freeGiftProductId: { type: String, default: '' },
       freeGiftProductName: { type: String, default: '' },
       freeGiftProductPrice: { type: Number, default: 0 },
+      giftQuantity: Number,
+      buyProductId: String,
+      buyProductName: String,
+      buyQuantity: Number,
+      promotionHeadline: String,
+      offerDetails: String,
       hasMinSpend: { type: Boolean, default: false },
       minSpendAmount: { type: Number, default: 0 },
       maxCashbackCap: { type: Number, default: 0 },
@@ -178,6 +189,17 @@ const campaignSchema = new mongoose.Schema(
       maxRedemptionsPerCustomer: { type: Number, default: 1, min: 1 },
       displayCouponInProfile: { type: Boolean, default: false },
     },
+    mobileStudio: { type: new mongoose.Schema({
+      revision: { type: Number, required: true },
+      groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'AudienceGroup' },
+      consentConfirmedAt: Date,
+      sendAuthorizedAt: Date,
+      reservedCode: String,
+      confirmedBy: mongoose.Schema.Types.ObjectId,
+      nextCheckAt: Date,
+      worker: String,
+      note: String,
+    }, { _id: false }), default: undefined },
     couponId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Coupon',
@@ -220,6 +242,9 @@ const campaignSchema = new mongoose.Schema(
 );
 
 campaignSchema.index({ businessId: 1, status: 1 });
+campaignSchema.index({ status: 1, 'mobileStudio.nextCheckAt': 1 }, { sparse: true });
+campaignSchema.index({ businessId: 1, 'mobileStudio.reservedCode': 1 }, { unique: true,
+  partialFilterExpression: { 'mobileStudio.reservedCode': { $type: 'string' } } });
 campaignSchema.index({ businessId: 1, createdAt: -1 });
 campaignSchema.index({ businessId: 1, type: 1 });
 campaignSchema.index({ status: 1, 'couponSettings.scheduledAt': 1 });

@@ -269,11 +269,14 @@ class CronService {
       const dueCampaigns = await Campaign.find({
         status: 'scheduled',
         $or: [
+          { 'mobileStudio.sendAuthorizedAt': { $type: 'date' }, 'mobileStudio.nextCheckAt': { $lte: now } },
           {
+            mobileStudio: { $exists: false },
             'couponSettings.hasSendSchedule': true,
             'couponSettings.scheduledAt': { $exists: true, $ne: null, $lte: now },
           },
           {
+            mobileStudio: { $exists: false },
             'couponSettings.hasSendSchedule': { $ne: true },
             'schedule.scheduledAt': { $exists: true, $ne: null, $lte: now },
           },
@@ -341,6 +344,11 @@ class CronService {
       });
 
       for (const c of stuck) {
+        if (c.mobileStudio) {
+          await Campaign.updateOne({ _id: c._id, businessId: c.businessId, status: 'processing', updatedAt: c.updatedAt },
+            { $set: { status: 'scheduled', 'mobileStudio.worker': null, 'mobileStudio.nextCheckAt': new Date() } });
+          continue;
+        }
         c.status = 'scheduled';
         c.executionLogs.push({
           timestamp: new Date(),
@@ -371,7 +379,7 @@ class CronService {
       const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 
       // Check and execute scheduled campaigns every minute
-      await this.processScheduledCampaignsJob();
+      await Promise.all([this.processScheduledCampaignsJob(), this.processCampaignReviewsJob()]);
 
       // Run once at 00:00 (12:00 AM midnight)
       if (currentHour === 0 && currentMinute === 0 && lastRunDate !== todayStr) {
@@ -390,10 +398,16 @@ class CronService {
     setTimeout(() => {
       this.recoverStuckCampaignsJob().catch(() => {});
       this.processScheduledCampaignsJob().catch(() => {});
+      this.processCampaignReviewsJob();
       this.checkExpiringSubscriptionsJob().catch(() => {});
     }, 10000);
 
     console.log('[CronService] Schedulers initialized (Campaign Dispatcher, Daily Midnight summary & Hourly 2-day subscription alerts active)');
+  }
+
+  async processCampaignReviewsJob() {
+    try { await require('./mobileCampaignWorker').reviewDue(new Date()); }
+    catch (error) { console.error('[CronService] Campaign template review failed:', error.message); }
   }
 
   stopSchedulers() {

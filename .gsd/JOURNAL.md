@@ -1,5 +1,11 @@
 # Task journal
 
+## 2026-11-21 Android campaigns and Meta review
+
+Implemented the Android dashboard, five reward forms, message and image editing, action previews and separate review and dispatch queues. Each business retains its drafts, approval status, selected audience, schedule and receipts.
+
+Verified provider rejection, resubmission, approval while the merchant is away, withdrawn approval before dispatch, duplicate sends and coupon eligibility with isolated MongoDB and simulated Meta responses. Six backend suites passed 42 tests and four Flutter suites passed 36.
+
 ## 2026-11-13: Chotu product recognition, microphone startup and UI
 
 Fixed polite order rejection, Hindi catalog normalization, table-number parsing,

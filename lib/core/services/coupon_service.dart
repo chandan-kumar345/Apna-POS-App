@@ -359,6 +359,9 @@ class CouponService {
       debugPrint('[CouponService] validateCoupon network error ($e), checking local cache');
       // Offline fallback validation from local cache
       final found = _cachedCoupons.where((c) => c.code.toUpperCase() == code.trim().toUpperCase()).firstOrNull;
+      if (found?.campaignId != null) {
+        return const CouponValidationResult(valid: false, campaignManaged: true, message: 'Reconnect to validate this campaign offer.');
+      }
       if (found != null && found.isActive && !found.isExpired) {
         if (found.minCartAmount > 0 && cartSubtotal < found.minCartAmount) {
           return CouponValidationResult(

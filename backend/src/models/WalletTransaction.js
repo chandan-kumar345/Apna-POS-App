@@ -22,7 +22,7 @@ const walletTransactionSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['EBILL', 'RECHARGE', 'REFUND', 'ADJUSTMENT'],
+      enum: ['EBILL', 'RECHARGE', 'REFUND', 'ADJUSTMENT', 'CAMPAIGN_DISPATCH'],
       default: 'EBILL',
       index: true,
     },
@@ -37,7 +37,7 @@ const walletTransactionSchema = new mongoose.Schema(
     },
     referenceType: {
       type: String,
-      enum: ['EBILL', 'ORDER', 'RECHARGE', 'MANUAL'],
+      enum: ['EBILL', 'ORDER', 'RECHARGE', 'MANUAL', 'CAMPAIGN_DISPATCH'],
       default: 'EBILL',
     },
     referenceId: {

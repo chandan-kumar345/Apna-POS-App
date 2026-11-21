@@ -354,6 +354,8 @@ describe('Campaign Management & Redemption Engine Enhancements (Phases 1-15)', (
 
   describe('PHASE 6: Campaign Scheduling & Background Worker Engine', () => {
     test('Scheduled background worker atomically claims due campaigns and skips future ones', async () => {
+      await require('../src/models/Business').create({ _id: businessAId, ownerId: new mongoose.Types.ObjectId(),
+        isSubscription: true, subscriptionExpiresAt: new Date(Date.now() + 86400000) });
       const now = new Date();
       const pastTime = new Date(now.getTime() - 10 * 60 * 1000); // 10 minutes ago
       const futureTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour in future

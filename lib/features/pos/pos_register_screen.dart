@@ -24,6 +24,7 @@ import 'widgets/pos_product_media_box.dart';
 import 'widgets/chotu_mic_button.dart';
 import '../../core/services/chotu_service.dart';
 import '../../core/services/coupon_service.dart';
+import '../../core/models/coupon_model.dart' show CouponValidationResult;
 import 'widgets/pos_product_detail_dialog.dart';
 
 enum ManualItemPersistenceMode { temporary, permanent }
@@ -1250,6 +1251,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     deliveryCharge: _additionalCharge,
   );
 
+  Future<CouponValidationResult> _validateCartCoupon(String code, double subtotal) {
+    return CouponService().validateCoupon(
+      code: code, cartSubtotal: subtotal, orderType: _selectedOrderType.name,
+      customerId: _customerPhone.isNotEmpty ? _customerPhone : null,
+      cartItems: _cartItems.map((line) => {
+        'productId': line.item.productId.isNotEmpty ? line.item.productId : line.item.id,
+        'price': line.item.effectivePrice, 'quantity': line.quantity, 'category': line.item.category,
+      }).toList(),
+    );
+  }
+
   Future<void> _applyPromoCode(String code, StateSetter setStateCart) async {
     final currency = db.restaurant?.currencySymbol ?? '₹';
     final clean = code.trim();
@@ -1281,19 +1293,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     // 1. Validate against backend coupon service
     try {
-      final valResult = await CouponService().validateCoupon(
-        code: clean,
-        cartSubtotal: currentSubtotal,
-        orderType: _selectedOrderType.name,
-        customerId: _customerPhone.isNotEmpty ? _customerPhone : null,
-        cartItems: _cartItems.map((e) => {
-          'productId': e.item.productId.isNotEmpty ? e.item.productId : e.item.id,
-          'price': e.item.effectivePrice,
-          'quantity': e.quantity,
-          'category': e.item.category,
-        }).toList(),
-      );
+      final valResult = await _validateCartCoupon(clean, currentSubtotal);
 
+      if (!valResult.valid && valResult.campaignManaged) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(valResult.message)));
+        return;
+      }
       if (valResult.valid) {
         final isPerc = valResult.discountType == 'percentage';
         setStateCart(() {
@@ -5364,6 +5369,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     double tempExtraChargeVal = _additionalCharge;
     String tempExtraChargeLabel = _additionalChargeLabel;
     bool isValidatingCoupon = false;
+    String quotedCode = _discountAmount > 0 ? _appliedCoupon : '';
+    double quotedAmount = _discountAmount;
 
     showDialog(
       context: context,
@@ -6235,24 +6242,15 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
                                                   setDialogState(() => isValidatingCoupon = true);
                                                   try {
-                                                    final result = await CouponService().validateCoupon(
-                                                      code: rawCode,
-                                                      cartSubtotal: cartSubtotal,
-                                                      orderType: _selectedOrderType.name,
-                                                      customerId: _customerPhone.isNotEmpty ? _customerPhone : null,
-                                                      cartItems: _cartItems.map((e) => {
-                                                        'productId': e.item.productId.isNotEmpty ? e.item.productId : e.item.id,
-                                                        'price': e.item.effectivePrice,
-                                                        'quantity': e.quantity,
-                                                        'category': e.item.category,
-                                                      }).toList(),
-                                                    );
+                                                    final result = await _validateCartCoupon(rawCode, cartSubtotal);
 
                                                     if (context.mounted) {
                                                       setDialogState(() {
                                                         isValidatingCoupon = false;
                                                         if (result.valid) {
                                                           tempCoupon = result.code;
+                                                          quotedCode = result.campaignManaged ? result.code : '';
+                                                          quotedAmount = result.discountAmount;
                                                           final isPerc = result.discountType == 'percentage';
                                                           tempDiscountMode = isPerc ? 'percent' : 'flat';
                                                           tempDiscountVal = isPerc ? result.discountValue : result.discountAmount;
@@ -6337,8 +6335,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                 return Padding(
                                                   padding: const EdgeInsets.only(right: 6),
                                                   child: InkWell(
-                                                    onTap: () {
+                                                    onTap: () async {
                                                       couponCtrl.text = c.code;
+                                                      if (c.campaignId != null) {
+                                                        final result = await _validateCartCoupon(c.code, cartSubtotal);
+                                                        if (!context.mounted || couponCtrl.text != c.code) return;
+                                                        if (!result.valid) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+                                                          return;
+                                                        }
+                                                        setDialogState(() {
+                                                          tempCoupon = quotedCode = result.code;
+                                                          quotedAmount = tempDiscountVal = result.discountAmount;
+                                                          tempDiscountMode = 'flat';
+                                                          discCtrl.text = quotedAmount.toStringAsFixed(2);
+                                                        });
+                                                        return;
+                                                      }
                                                       setDialogState(() {
                                                         tempCoupon = c.code;
                                                         final isPerc = c.isPercentage;
@@ -6412,7 +6425,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   _tipAmount = tipVal;
                                   _additionalCharge = extraChargeVal;
                                   _additionalChargeLabel = tempExtraChargeLabel;
-                                  _discountAmount = 0.0; // reset manual override so getter calculates
+                                  _discountAmount = quotedCode.isNotEmpty && quotedCode == tempCoupon ? quotedAmount : 0.0;
                                 });
                                 _saveCurrentDraft();
 

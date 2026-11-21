@@ -91,6 +91,10 @@ class CouponController {
     try {
       const businessId = req.businessId || req.user?.businessId;
       const result = await couponService.validateCoupon(businessId, req.body);
+      if (!result.valid && typeof req.body.code === 'string') {
+        result.campaignManaged = !!await require('../models/Campaign').exists({ businessId,
+          mobileStudio: { $exists: true }, 'couponSettings.couponCode': req.body.code.trim().toUpperCase() });
+      }
       return res.status(200).json({
         success: result.valid,
         message: result.message,

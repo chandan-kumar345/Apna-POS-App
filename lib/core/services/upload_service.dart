@@ -46,7 +46,11 @@ class UploadService {
           ? bytes
           : await ImageCompressHelper.compressImageBytes(bytes);
 
-      final cleanFileName = fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')
+      final png = finalBytes.length >= 8 && finalBytes[0] == 0x89 && finalBytes[1] == 0x50 && finalBytes[2] == 0x4e;
+      final jpeg = finalBytes.length >= 3 && finalBytes[0] == 0xff && finalBytes[1] == 0xd8 && finalBytes[2] == 0xff;
+      if (folder == 'campaigns' && !png && !jpeg) return null;
+      final cleanFileName = folder == 'campaigns' ? (png ? 'campaign.png' : 'campaign.jpg')
+          : fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')
           ? fileName
           : '${fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}.jpg';
 
@@ -54,6 +58,7 @@ class UploadService {
         'image': MultipartFile.fromBytes(
           finalBytes,
           filename: cleanFileName,
+          contentType: folder == 'campaigns' ? DioMediaType('image', png ? 'png' : 'jpeg') : null,
         ),
       });
 

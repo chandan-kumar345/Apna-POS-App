@@ -1,5 +1,19 @@
 # Chotu AI order automation
 
+## Android campaign studio, 2026-11-21
+
+Status: FINALIZED
+
+Match the supplied Android dashboard, reward, message, actions and review screens.
+Support all five reward forms, restaurant menu items, selected order types, a coupon
+code, exact IST expiry, campaign image upload, audience groups, drafts and scheduling.
+Store drafts and send decisions per business. The final editor action submits the
+template to Meta for review. An approved campaign waits for an explicit merchant
+send or schedule action before any delivery, wallet debit or coupon activation.
+Show actual Meta approval and delivery
+states. Offer Marketing, Utility and Auth categories and respect the OTP-only use of
+authentication templates. Keep existing web studio, POS and customer login entry points.
+
 ## QR customer WhatsApp authentication 2026-11-21
 
 Status: FINALIZED

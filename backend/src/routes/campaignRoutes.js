@@ -7,6 +7,20 @@ const router = express.Router();
 // Strict multi-tenant isolation guard via authMiddleware
 router.use(authMiddleware);
 
+const mobile = require('../services/mobileCampaignService');
+const ApiResponse = require('../utils/ApiResponse');
+function mobileRoute(handler) {
+  return async (req, res, next) => {
+    try { return ApiResponse.success(res, await handler(req)); }
+    catch (error) { next(error); }
+  };
+}
+router.get('/mobile', mobileRoute(req => mobile.dashboard(req.businessId, req.query)));
+router.get('/mobile/options', mobileRoute(req => mobile.options(req.businessId)));
+router.put('/mobile/:id', mobileRoute(req => mobile.save(req.businessId, req.params.id, req.body)));
+router.post('/mobile/:id/submit', mobileRoute(req => mobile.submit(req.businessId, req.params.id, req.body)));
+router.post('/mobile/:id/launch', mobileRoute(req => mobile.launch(req.businessId, req.params.id, req.body, req.user._id)));
+
 // Meta resources & KPIs
 router.get('/check-coupon-code', (req, res, next) => campaignController.checkCouponCode(req, res, next));
 router.get('/stats', (req, res, next) => campaignController.getDashboardStats(req, res, next));

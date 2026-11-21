@@ -15,6 +15,9 @@ describe('Coupons Management & Validation APIs (/api/v1/coupons)', () => {
       });
 
     token = res.body.data.accessToken;
+    await require('../src/models/Business').updateOne({ ownerId: res.body.data.user.id }, {
+      $set: { isSubscription: true, subscriptionExpiresAt: new Date(Date.now() + 86400000) },
+    });
   });
 
   it('POST /api/v1/coupons - should create a new percentage coupon', async () => {

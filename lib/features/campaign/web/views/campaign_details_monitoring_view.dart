@@ -208,10 +208,11 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
                     children: [
                       _buildStatusBadge(isCompact: true),
                       const SizedBox(width: 6),
-                      Text(
+                      Flexible(child: Text(
                         _currentCampaign.campaignId,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
-                      ),
+                      )),
                     ],
                   ),
                 ],

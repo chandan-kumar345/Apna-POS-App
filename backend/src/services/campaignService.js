@@ -232,7 +232,9 @@ class CampaignService {
       ].filter(Boolean),
     };
 
-    const deleted = await Campaign.findOneAndDelete(query);
+    const deleted = await Campaign.findOneAndDelete({ ...query, $and: [
+      { $or: [{ mobileStudio: { $exists: false } }, { status: 'draft' }] },
+    ] });
     if (!deleted) {
       throw ApiError.notFound('Campaign not found');
     }
@@ -378,6 +380,7 @@ class CampaignService {
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) return null;
     await require('./entitlementService').requireSubscription(campaign.businessId);
+    if (campaign.mobileStudio) return require('./mobileCampaignWorker').run(campaign);
 
     try {
       campaign.status = 'processing';
@@ -685,6 +688,7 @@ class CampaignService {
    */
   async updateCampaign(businessId, campaignId, payload) {
     const campaign = await this.getCampaignById(businessId, campaignId);
+    if (campaign?.mobileStudio) throw ApiError.conflict('Open this campaign in the Android campaign editor.');
     if (!campaign) {
       throw ApiError.notFound('Campaign not found');
     }
@@ -722,6 +726,11 @@ class CampaignService {
    */
   async pauseCampaign(businessId, campaignId) {
     const campaign = await this.getCampaignById(businessId, campaignId);
+    if (campaign.mobileStudio) {
+      const paused = await Campaign.findOneAndUpdate({ businessId, _id: campaign._id, status: 'scheduled' }, { $set: { status: 'paused' } }, { new: true });
+      if (!paused) throw ApiError.conflict('Only a queued campaign can be paused.');
+      return paused;
+    }
     campaign.status = 'paused';
     await campaign.save();
     return campaign;
@@ -732,6 +741,11 @@ class CampaignService {
    */
   async resumeCampaign(businessId, campaignId) {
     const campaign = await this.getCampaignById(businessId, campaignId);
+    if (campaign.mobileStudio) {
+      const resumed = await Campaign.findOneAndUpdate({ businessId, _id: campaign._id, status: 'paused' }, { $set: { status: 'scheduled', 'mobileStudio.nextCheckAt': new Date() } }, { new: true });
+      if (!resumed) throw ApiError.conflict('Only a paused campaign can be resumed.');
+      return resumed;
+    }
     campaign.status = 'running';
     await campaign.save();
     return campaign;
@@ -815,10 +829,10 @@ class CampaignService {
   /**
    * Helper to upload image and obtain a Meta template header_handle via Meta Resumable Upload API
    */
-  async _getMetaHeaderHandle({ accessToken, appSecret, imageUrl }) {
+  async _getMetaHeaderHandle({ accessToken, appSecret, imageUrl, uploadedCampaignImage = false }) {
     if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) return null;
     try {
-      const imgRes = await fetch(imageUrl);
+      const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(20000), redirect: uploadedCampaignImage ? 'error' : 'follow' });
       if (!imgRes.ok) return null;
       const arrayBuffer = await imgRes.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -1786,6 +1800,7 @@ class CampaignService {
         'audience.recipients.messageId': update.messageId,
       });
       if (!campaign) return;
+      if (campaign.mobileStudio) return await require('./mobileCampaignWorker').receipt(campaign, update);
 
       let modified = false;
       const incomingStatus = (update.status || '').toLowerCase();

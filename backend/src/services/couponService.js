@@ -452,6 +452,26 @@ class CouponService {
         ? Math.min(calcDiscount, coupon.maxDiscountAmount)
         : calcDiscount;
       discountAmount = Math.min(discountAmount, eligibleSubtotal);
+    } else if (coupon.giftQuantity && ['free_gift', 'bogo'].includes(discType)) {
+      const lines = cartItems.map(item => {
+        const quantity = Math.max(0, Math.floor(Number(item.quantity) || 0));
+        const unit = quantity && item.totalPrice != null ? Number(item.totalPrice) / quantity : Number(item.price);
+        return { id: String(item.productId || item.item?.productId || item.id || ''), quantity, unit };
+      }).filter(line => line.quantity && Number.isFinite(line.unit) && line.unit >= 0);
+      const gifts = lines.filter(line => line.id === coupon.freeGiftProductId).sort((a, b) => a.unit - b.unit);
+      let freeUnits = coupon.giftQuantity;
+      if (discType === 'bogo') {
+        const bought = lines.filter(line => line.id === coupon.buyProductId).reduce((sum, line) => sum + line.quantity, 0);
+        const bundleSize = coupon.buyQuantity + (coupon.buyProductId === coupon.freeGiftProductId ? coupon.giftQuantity : 0);
+        freeUnits = Math.floor(bought / bundleSize) * coupon.giftQuantity;
+      }
+      if (freeUnits < 1 || !gifts.length) return { valid: false, message: 'Add the qualifying items and gift to use this offer.' };
+      for (const line of gifts) {
+        const units = Math.min(freeUnits, line.quantity);
+        discountAmount += units * line.unit;
+        freeUnits -= units;
+      }
+      discountAmount = Math.min(discountAmount, eligibleSubtotal);
     } else if (discType === 'free_gift') {
       discountAmount = Math.min(Number(coupon.freeGiftProductPrice || coupon.discountValue || 0), eligibleSubtotal);
     } else {
@@ -467,6 +487,7 @@ class CouponService {
       valid: true,
       coupon: {
         id: coupon.id,
+        campaignId: coupon.campaignId || undefined,
         code: coupon.code,
         title: coupon.title,
         description: coupon.description,

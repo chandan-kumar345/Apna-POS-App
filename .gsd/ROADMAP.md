@@ -1,5 +1,13 @@
 # Chotu AI implementation roadmap
 
+## Android campaigns, 2026-11-21
+
+1. Extend the existing MongoDB campaign and coupon documents for mobile drafts,
+   item quantities, messaging actions and an approval-aware send queue.
+2. Build the reference dashboard and reward, message, actions and review routes.
+3. Exercise the authenticated API, coupon math, queue and mobile interaction with
+   isolated fixtures. Capture phone-size layouts and build the Android release.
+
 ## Product detail popup redesign, 2026-11-15
 
 1. Isolate the existing product presentation while preserving its add callback.

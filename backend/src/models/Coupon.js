@@ -54,6 +54,10 @@ const couponSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Present on item-specific mobile offers. Older gift coupons retain their original calculation.
+    giftQuantity: { type: Number, min: 1 },
+    buyProductId: String,
+    buyQuantity: { type: Number, min: 1 },
     discountValue: {
       type: Number,
       required: [true, 'Discount value is required'],

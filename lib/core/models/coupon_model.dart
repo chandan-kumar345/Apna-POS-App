@@ -225,6 +225,7 @@ class CouponModel {
 
 class CouponValidationResult {
   final bool valid;
+  final bool campaignManaged;
   final String code;
   final double discountAmount;
   final String discountType;
@@ -234,6 +235,7 @@ class CouponValidationResult {
 
   const CouponValidationResult({
     required this.valid,
+    this.campaignManaged = false,
     this.code = '',
     this.discountAmount = 0.0,
     this.discountType = 'percentage',
@@ -243,14 +245,17 @@ class CouponValidationResult {
   });
 
   factory CouponValidationResult.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] is Map<String, dynamic> ? json['data'] as Map<String, dynamic> : json;
+    final details = data['coupon'] as Map<String, dynamic>?;
     return CouponValidationResult(
-      valid: json['valid'] == true,
-      code: (json['code'] ?? '').toString(),
-      discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0.0,
-      discountType: (json['discountType'] ?? 'percentage').toString(),
-      discountValue: (json['discountValue'] as num?)?.toDouble() ?? 0.0,
-      message: (json['message'] ?? '').toString(),
-      coupon: json['coupon'] != null ? CouponModel.fromJson(json['coupon'] as Map<String, dynamic>) : null,
+      valid: data['valid'] == true,
+      campaignManaged: data['campaignManaged'] == true || details?['campaignId'] != null,
+      code: (data['code'] ?? details?['code'] ?? '').toString(),
+      discountAmount: (data['discountAmount'] as num?)?.toDouble() ?? 0.0,
+      discountType: (data['discountType'] ?? details?['discountType'] ?? 'percentage').toString(),
+      discountValue: ((data['discountValue'] ?? details?['discountValue']) as num?)?.toDouble() ?? 0.0,
+      message: (data['message'] ?? json['message'] ?? '').toString(),
+      coupon: details == null ? null : CouponModel.fromJson(details),
     );
   }
 }

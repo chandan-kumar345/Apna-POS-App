@@ -1,5 +1,9 @@
 # Current task state
 
+2026-11-21 Android campaigns. The merchant configures a reward and submits the WhatsApp template to Meta. An approved campaign waits for a separate send or schedule action. The worker checks live approval again at dispatch.
+
+42 backend tests and 36 Flutter checks passed. Both targeted analyzer runs reported zero issues. Eleven phone previews and verification logs are in build/campaign_mobile_validation/. Production deployment and live Meta delivery are pending.
+
 2026-11-21: QR WhatsApp customer authentication final verification completed.
 Implementation already committed by the user as c18393e. The remaining login/
 OTP screenshots are captured with mock delivery and real fonts and inspected:
