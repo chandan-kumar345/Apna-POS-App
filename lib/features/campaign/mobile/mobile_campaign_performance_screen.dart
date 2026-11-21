@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../models/campaign_models.dart';
-import '../services/campaign_service.dart';
+import 'campaign_audience_dialog.dart';
+
 import '../web/widgets/whatsapp_phone_preview.dart';
-import 'campaign_editor.dart';
+
 import 'campaign_style.dart';
 import 'mobile_campaign_data.dart';
 
@@ -33,11 +33,12 @@ class MobileCampaignPerformanceScreen extends StatefulWidget {
 class _MobileCampaignPerformanceScreenState
     extends State<MobileCampaignPerformanceScreen> {
   late final MobileCampaignApi _api = widget.api ?? MobileCampaignApi();
-  final CampaignService _campaignService = CampaignService();
+
 
   late int _selectedTab;
   late CampaignJson _c;
-  CampaignModel? _detailedModel;
+  bool _metricsLoaded = false;
+  String? _loadError;
   bool _loading = false;
   String _customerSearch = '';
   String _customerFilter = 'all';
@@ -58,103 +59,24 @@ class _MobileCampaignPerformanceScreenState
     final campaignId = (_c['id'] ?? _c['_id'] ?? '').toString();
     if (campaignId.isEmpty) return;
 
-    setState(() => _loading = true);
+    setState(() { _loading = true; _loadError = null; });
     try {
-      final model = await _campaignService.fetchCampaignById(campaignId);
-      if (mounted && model != null) {
-        setState(() {
-          _detailedModel = model;
-          if (model.audience.recipients.isNotEmpty) {
-            _recipients = model.audience.recipients
-                .map((r) => {
-                      'name': r.name,
-                      'phone': r.phone,
-                      'status': r.status,
-                      'sentAt': r.sentAt?.toIso8601String() ?? '',
-                      'deliveredAt': r.deliveredAt?.toIso8601String() ?? '',
-                    })
-                .toList();
-          }
-        });
-      }
+      final details = await _api.performance(campaignId);
+      if (!mounted) return;
+      setState(() {
+        _c = details;
+        _populateRecipients();
+        _metricsLoaded = true;
+      });
     } catch (_) {
-      // Graceful fallback to initial campaign json data
+      if (mounted) setState(() => _loadError = 'Could not refresh performance. Pull down to retry.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   void _populateRecipients() {
-    // If audience has recipients already
-    final rawRecipients = _c['audience']?['recipients'] as List?;
-    if (rawRecipients != null && rawRecipients.isNotEmpty) {
-      _recipients = List<Map<String, dynamic>>.from(
-        rawRecipients.map((r) => Map<String, dynamic>.from(r as Map)),
-      );
-      return;
-    }
-
-    // Otherwise, generate realistic representative sample recipients matching the actual stats
-    final stats = _getStats();
-    final readCount = stats.read;
-    final deliveredOnlyCount = stats.deliveredNotRead;
-    final failedCount = stats.failed;
-
-    final sampleNames = [
-      'Rahul Sharma',
-      'Pooja Verma',
-      'Amit Patel',
-      'Sneha Kulkarni',
-      'Vikram Singh',
-      'Neha Gupta',
-      'Rohan Mehta',
-      'Ananya Das',
-      'Karan Joshi',
-      'Divya Nair',
-      'Siddharth Roy',
-      'Priya Iyer',
-      'Arjun Reddy',
-      'Tanvi Kapoor',
-      'Manish Tiwari',
-      'Ritu Bansal',
-      'Suresh Rao',
-      'Kavita Deshmukh',
-      'Aditya Malhotra',
-      'Meera Sen',
-      'Gaurav Jain',
-      'Deepa Chawla',
-      'Nikhil Bhat',
-      'Swati Mishra',
-    ];
-
-    final list = <Map<String, dynamic>>[];
-    int phoneSeed = 9876543000;
-
-    void addSamples(int count, String status) {
-      for (int i = 0; i < count; i++) {
-        final name = sampleNames[(list.length) % sampleNames.length];
-        final phone = '+91 ${phoneSeed + list.length}';
-        list.add({
-          'name': name,
-          'phone': phone,
-          'status': status,
-          'sentAt': '20 Nov 2026, 6:00 PM',
-          'deliveredAt': status != 'failed' ? '20 Nov 2026, 6:01 PM' : '',
-        });
-      }
-    }
-
-    // Include enough to browse cleanly
-    addSamples(readCount > 0 ? (readCount > 15 ? 15 : readCount) : 8, 'read');
-    addSamples(
-      deliveredOnlyCount > 0
-          ? (deliveredOnlyCount > 8 ? 8 : deliveredOnlyCount)
-          : 5,
-      'delivered',
-    );
-    addSamples(failedCount > 0 ? (failedCount > 4 ? 4 : failedCount) : 2, 'failed');
-
-    _recipients = list;
+    _recipients = [for (final r in _c['audience']?['recipients'] ?? []) Map<String, dynamic>.from(r)];
   }
 
   _CampaignStatsData _getStats() {
@@ -164,10 +86,10 @@ class _MobileCampaignPerformanceScreenState
     int recipients = rawStats['totalRecipients'] ??
         audience['recipientCount'] ??
         audience['count'] ??
-        1240;
-    int delivered = rawStats['delivered'] ?? 1180;
-    int read = rawStats['read'] ?? 920;
-    int failed = rawStats['failed'] ?? 60;
+        0;
+    int delivered = rawStats['delivered'] ?? 0;
+    int read = rawStats['read'] ?? 0;
+    int failed = rawStats['failed'] ?? 0;
 
     // Safety checks
     if (delivered > recipients) delivered = recipients;
@@ -176,14 +98,10 @@ class _MobileCampaignPerformanceScreenState
     if (deliveredNotRead < 0) deliveredNotRead = 0;
 
     double deliveryRate = (rawStats['deliveryRate'] as num?)?.toDouble() ??
-        (recipients > 0 ? (delivered / recipients) * 100 : 95.2);
+        (recipients > 0 ? (delivered / recipients) * 100 : 0.0);
 
-    int couponOrders = (rawStats['ordersCount'] as num?)?.toInt() ??
-        (rawStats['couponOrders'] as num?)?.toInt() ??
-        86;
-    double couponRevenue = (rawStats['totalRevenue'] as num?)?.toDouble() ??
-        (rawStats['couponRevenue'] as num?)?.toDouble() ??
-        51514.0;
+    final couponOrders = (rawStats['couponOrders'] as num?)?.toInt() ?? 0;
+    final couponRevenue = (rawStats['couponRevenue'] as num?)?.toDouble() ?? 0;
 
     return _CampaignStatsData(
       recipients: recipients,
@@ -208,34 +126,15 @@ class _MobileCampaignPerformanceScreenState
     }
   }
 
-  Future<void> _sendToNewCustomers() async {
-    CampaignOptions currentOptions = widget.options ??
-        await _api.options().catchError((_) => CampaignOptions({}));
-
-    if (!mounted) return;
-
-    final draft = MobileCampaignDraft.fromJson(_c);
-    // Refresh ID so it behaves as a fresh duplicate/launch
-    draft.id = MobileCampaignDraft().id;
-    draft.title = '${_c['name']} (Copy)';
-
-    final result = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => CampaignEditor(
-          api: _api,
-          approved: false,
-          options: currentOptions,
-          draft: draft,
-        ),
-      ),
+  Future<void> _audienceDialog(bool resend) async {
+    final queued = await showDialog<bool>(
+      context: context,
+      builder: (_) => CampaignAudienceDialog(api: _api, campaign: _c, options: widget.options, resend: resend),
     );
-
-    if (result != null && mounted) {
-      widget.onRefreshDashboard?.call();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result)),
-      );
-    }
+    if (!mounted || queued != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Campaign queued for sending')));
+    widget.onRefreshDashboard?.call();
+    await _loadFullCampaign();
   }
 
   void _onPreview() {
@@ -313,161 +212,6 @@ class _MobileCampaignPerformanceScreenState
     );
   }
 
-  Future<void> _onResend() async {
-    final stats = _getStats();
-    final action = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
-          children: [
-            const Icon(Icons.refresh_rounded, color: teal),
-            const SizedBox(width: 8),
-            Text('Resend Campaign', style: campaignText(17, weight: FontWeight.w700)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Choose how you want to resend "${_c['name']}":',
-              style: campaignText(14, color: muted),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626)),
-              title: Text('Retry failed recipients only (${stats.failed})',
-                  style: campaignText(13, weight: FontWeight.w600)),
-              subtitle: Text('Sends only to customers whose messages failed.',
-                  style: campaignText(11, color: muted)),
-              onTap: () => Navigator.pop(ctx, 'failed_only'),
-            ),
-            const Divider(),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.all_inclusive_rounded, color: teal),
-              title: Text('Resend to all recipients (${stats.recipients})',
-                  style: campaignText(13, weight: FontWeight.w600)),
-              subtitle: Text('Dispatches the campaign again to the full audience.',
-                  style: campaignText(11, color: muted)),
-              onTap: () => Navigator.pop(ctx, 'all'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: campaignText(13, color: muted)),
-          ),
-        ],
-      ),
-    );
-
-    if (action != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            action == 'failed_only'
-                ? 'Queued resend to ${stats.failed} failed recipients.'
-                : 'Queued resend to all ${stats.recipients} recipients.',
-          ),
-        ),
-      );
-    }
-  }
-
-  void _showCampaignMenu(BuildContext context) {
-    final coupon = _c['couponSettings']?['couponCode'] ?? '';
-    final status = _c['status'] ?? 'completed';
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFCBD5E1),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (coupon.toString().isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.copy_rounded, color: teal),
-                title: Text('Copy coupon code ($coupon)',
-                    style: campaignText(14, weight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Clipboard.setData(ClipboardData(text: coupon.toString()));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coupon code copied')),
-                  );
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.visibility_outlined, color: teal),
-              title: Text('Preview message',
-                  style: campaignText(14, weight: FontWeight.w600)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _onPreview();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person_add_alt_1_outlined, color: teal),
-              title: Text('Send to new customers',
-                  style: campaignText(14, weight: FontWeight.w600)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _sendToNewCustomers();
-              },
-            ),
-            if (status == 'scheduled' || status == 'running')
-              ListTile(
-                leading: const Icon(Icons.pause_circle_outline, color: Colors.orange),
-                title: Text('Pause campaign',
-                    style: campaignText(14, weight: FontWeight.w600)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    await _api.setPaused(_c['id'], true);
-                    setState(() => _c['status'] = 'paused');
-                    widget.onRefreshDashboard?.call();
-                  } catch (_) {}
-                },
-              ),
-            if (status == 'paused')
-              ListTile(
-                leading: const Icon(Icons.play_circle_outline, color: Colors.green),
-                title: Text('Resume campaign',
-                    style: campaignText(14, weight: FontWeight.w600)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    await _api.setPaused(_c['id'], false);
-                    setState(() => _c['status'] = 'scheduled');
-                    widget.onRefreshDashboard?.call();
-                  } catch (_) {}
-                },
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return CampaignShell(
@@ -492,12 +236,6 @@ class _MobileCampaignPerformanceScreenState
             _headerTitle,
             style: campaignText(20, color: Colors.white, weight: FontWeight.w700),
           ),
-          const Spacer(),
-          IconButton(
-            onPressed: () => _showCampaignMenu(context),
-            icon: const Icon(Icons.more_horiz, color: Colors.white, size: 24),
-            tooltip: 'More options',
-          ),
         ],
       ),
     );
@@ -518,6 +256,7 @@ class _MobileCampaignPerformanceScreenState
           const SizedBox(height: 14),
 
           if (_loading) const LinearProgressIndicator(minHeight: 2),
+          if (_loadError != null) Text(_loadError!, style: campaignText(13, color: muted)),
 
           // Tab content based on selected tab
           if (_selectedTab == 0) ..._buildOverviewTab(),
@@ -821,7 +560,7 @@ class _MobileCampaignPerformanceScreenState
           Expanded(
             child: _smallStatCard(
               label: 'Coupon orders',
-              value: fmt.format(stats.couponOrders),
+              value: _metricsLoaded ? fmt.format(stats.couponOrders) : '—',
               icon: Icons.shopping_cart_outlined,
               bgColor: const Color(0xFFE8FAF0),
               iconColor: const Color(0xFF16A34A),
@@ -831,7 +570,7 @@ class _MobileCampaignPerformanceScreenState
           Expanded(
             child: _smallStatCard(
               label: 'Coupon revenue',
-              value: '₹${fmt.format(stats.couponRevenue.round())}',
+              value: _metricsLoaded ? '₹${NumberFormat('#,##,##0.##', 'en_IN').format(stats.couponRevenue)}' : '—',
               icon: Icons.payments_outlined,
               bgColor: const Color(0xFFF4EDFE),
               iconColor: const Color(0xFF7C3AED),
@@ -1522,7 +1261,7 @@ class _MobileCampaignPerformanceScreenState
             child: CampaignPrimary(
               'Send to new customers',
               icon: Icons.person_add_alt_1_outlined,
-              onTap: _sendToNewCustomers,
+              onTap: () => _audienceDialog(false),
             ),
           ),
           const SizedBox(height: 8),
@@ -1534,7 +1273,7 @@ class _MobileCampaignPerformanceScreenState
                 child: _secondaryButton(
                   'Resend',
                   Icons.refresh_rounded,
-                  _onResend,
+                  () => _audienceDialog(true),
                 ),
               ),
               const SizedBox(width: 10),

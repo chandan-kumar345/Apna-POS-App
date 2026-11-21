@@ -28,64 +28,61 @@ class LoyaltyService {
         ? _db.restaurant!.name.trim()
         : (_db.currentUser?.companyName?.trim().isNotEmpty == true
             ? _db.currentUser!.companyName!.trim()
-            : (_db.currentUser?.name.trim().isNotEmpty == true ? _db.currentUser!.name.trim() : 'MOTI MAHAL'));
+            : (_db.currentUser?.name.trim().isNotEmpty == true ? _db.currentUser!.name.trim() : 'Pizza 47'));
     final companyLogo = _db.companyLogoPath ?? _db.currentUser?.profilePhotoPath ?? '';
 
     return LoyaltyBrandingModel(
       companyName: companyName,
       companyLogo: companyLogo,
+      members: 3420,
+      totalCashback: 124560.0,
+      redemptions: 2860,
       programs: [
         LoyaltyProgramModel(
-          id: 'prog_visit_made',
-          type: LoyaltyType.visitMade,
-          title: companyName,
-          description: 'Get rewarded on every purchase',
-          earningRule: '1 Visit Made = 1000 Chilly',
-          rewardCurrency: 'Chilly',
-          gradientColors: ['#2E0627', '#7C0E4B'],
-          orderIndex: 0,
-          milestones: [
-            RewardMilestoneModel(id: '1', label: '300 Chilly', value: 300, iconName: 'cookie'),
-            RewardMilestoneModel(id: '2', label: '500 Chilly', value: 500, iconName: 'cookie'),
-            RewardMilestoneModel(id: '3', label: '800 Chilly', value: 800, iconName: 'cookie'),
-          ],
-        ),
-        LoyaltyProgramModel(
-          id: 'prog_amount_spent',
-          type: LoyaltyType.amountSpent,
-          title: companyName,
-          description: 'Get rewarded on every purchase',
-          earningRule: '₹75 Amount Spent = 1 Cookie',
-          rewardCurrency: 'Cookie',
-          gradientColors: ['#5C0707', '#BF1313'],
-          orderIndex: 1,
-          milestones: [
-            RewardMilestoneModel(id: '1', label: '300 Cookie', value: 300, iconName: 'cookie'),
-            RewardMilestoneModel(id: '2', label: '500 Cookie', value: 500, iconName: 'cookie'),
-            RewardMilestoneModel(id: '3', label: '800 Cookie', value: 800, iconName: 'cookie'),
-          ],
-        ),
-        LoyaltyProgramModel(
-          id: 'prog_cashback',
+          id: 'prog_cashback_5',
           type: LoyaltyType.cashback,
-          title: companyName,
-          description: 'Get rewarded on every step',
-          earningRule: '10% Cashback on sales',
-          rewardCurrency: '%',
-          gradientColors: ['#0B253A', '#134E63'],
-          orderIndex: 2,
-          cashbackDetails: CashbackDetailsModel(
-            percentage: 10.0,
-            minSpend: 500.0,
-            headline: '10% Cashback on sales',
-            subtext: 'On min. spend of ₹500',
-            termsNote: 'Cashback will be credited when another coupon or offer is already applied.',
-            billRewardText: 'Rs 500+ bill earns 10% cashback',
-            slabTitle: 'STARTER REWARD',
-            goal: 'On min purchase of Rs 500',
-            reward: '🎁 Earn 10% cashback',
-            progressPercent: 65.0,
-          ),
+          title: '5% Cashback Program',
+          description: 'Get 5% cashback on all orders',
+          earningRule: 'Get 5% cashback on all orders',
+          rewardCurrency: '₹',
+          cashbackType: 'percentage',
+          cashbackPercentage: 5.0,
+          cashbackAmount: 50.0,
+          minimumOrder: 499.0,
+          maximumCashback: 150.0,
+          validity: '01 Nov 2026 – 31 Dec 2026',
+          startedDate: '01 Nov 2026',
+          eligibleCustomers: 'All Customers',
+          orderTypes: const ['Dine-In', 'Takeaway', 'Delivery'],
+          ordersCount: 2860,
+          cashbackGiven: 124560.0,
+          redemptionRate: 78.4,
+          membersCount: 3420,
+          isActive: true,
+          orderIndex: 0,
+        ),
+        LoyaltyProgramModel(
+          id: 'prog_cashback_50',
+          type: LoyaltyType.cashback,
+          title: '₹50 Cashback on ₹500',
+          description: 'Get ₹50 cashback on orders above ₹500',
+          earningRule: 'Get ₹50 cashback on orders above ₹500',
+          rewardCurrency: '₹',
+          cashbackType: 'fixed',
+          cashbackPercentage: 10.0,
+          cashbackAmount: 50.0,
+          minimumOrder: 500.0,
+          maximumCashback: 50.0,
+          validity: '10 Nov 2026 – 31 Dec 2026',
+          startedDate: '10 Nov 2026',
+          eligibleCustomers: 'All Customers',
+          orderTypes: const ['Dine-In', 'Takeaway', 'Delivery'],
+          ordersCount: 1420,
+          cashbackGiven: 71000.0,
+          redemptionRate: 64.2,
+          membersCount: 1850,
+          isActive: true,
+          orderIndex: 1,
         ),
       ],
     );
@@ -343,6 +340,9 @@ class LoyaltyService {
         _cachedBranding = LoyaltyBrandingModel(
           companyName: _cachedBranding!.companyName,
           companyLogo: _cachedBranding!.companyLogo,
+          members: _cachedBranding!.members,
+          totalCashback: _cachedBranding!.totalCashback,
+          redemptions: _cachedBranding!.redemptions,
           programs: updatedList,
         );
         await _persistBrandingToPrefs(_cachedBranding!);
@@ -381,6 +381,9 @@ class LoyaltyService {
         _cachedBranding = LoyaltyBrandingModel(
           companyName: _cachedBranding!.companyName,
           companyLogo: _cachedBranding!.companyLogo,
+          members: _cachedBranding!.members,
+          totalCashback: _cachedBranding!.totalCashback,
+          redemptions: _cachedBranding!.redemptions,
           programs: updatedList,
         );
         await _persistBrandingToPrefs(_cachedBranding!);
@@ -389,6 +392,37 @@ class LoyaltyService {
       return true;
     } catch (e) {
       debugPrint('[LoyaltyService.updateLoyaltyProgram] Error: $e');
+      return true;
+    }
+  }
+
+  /// Create a new loyalty program
+  Future<bool> createLoyaltyProgram(LoyaltyProgramModel program) async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        await _apiClient.post(
+          ApiEndpoints.loyaltyPrograms,
+          data: program.toJson(),
+        );
+      }
+      if (_cachedBranding != null) {
+        final updatedList = List<LoyaltyProgramModel>.from(_cachedBranding!.programs);
+        updatedList.removeWhere((p) => p.id == program.id);
+        updatedList.add(program);
+        _cachedBranding = LoyaltyBrandingModel(
+          companyName: _cachedBranding!.companyName,
+          companyLogo: _cachedBranding!.companyLogo,
+          members: _cachedBranding!.members,
+          totalCashback: _cachedBranding!.totalCashback,
+          redemptions: _cachedBranding!.redemptions,
+          programs: updatedList,
+        );
+        await _persistBrandingToPrefs(_cachedBranding!);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[LoyaltyService.createLoyaltyProgram] Error: $e');
       return true;
     }
   }
@@ -413,25 +447,16 @@ class LoyaltyService {
       if (_cachedBranding != null) {
         final updatedPrograms = _cachedBranding!.programs.map((p) {
           if (p.id == programId || (programId == 'prog_visit_made' && p.type == LoyaltyType.visitMade)) {
-            return LoyaltyProgramModel(
-              id: p.id,
-              type: p.type,
-              title: p.title,
-              description: p.description,
-              earningRule: p.earningRule,
-              rewardCurrency: p.rewardCurrency,
-              milestones: p.milestones,
-              cashbackDetails: p.cashbackDetails,
-              gradientColors: p.gradientColors,
-              isActive: isActive,
-              orderIndex: p.orderIndex,
-            );
+            return p.copyWith(isActive: isActive);
           }
           return p;
         }).toList();
         _cachedBranding = LoyaltyBrandingModel(
           companyName: _cachedBranding!.companyName,
           companyLogo: _cachedBranding!.companyLogo,
+          members: _cachedBranding!.members,
+          totalCashback: _cachedBranding!.totalCashback,
+          redemptions: _cachedBranding!.redemptions,
           programs: updatedPrograms,
         );
         await _persistBrandingToPrefs(_cachedBranding!);
@@ -445,7 +470,7 @@ class LoyaltyService {
           'status': status ?? (isActive ? 'active' : 'inactive'),
         };
         await _apiClient.put(
-          '${ApiEndpoints.loyaltyPrograms}/$programId',
+          '${ApiEndpoints.loyaltyPrograms}/$programId/toggle',
           data: payload,
         );
       }

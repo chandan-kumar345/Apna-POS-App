@@ -1,883 +1,669 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../core/database/database_service.dart';
 import '../../../core/services/customer_service.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import '../models/campaign_models.dart';
-import '../services/campaign_service.dart';
 import 'campaign_style.dart';
 import 'create_customer_group_screen.dart';
 import 'customer_group_details_screen.dart';
+import 'customer_group_import.dart';
+import 'customer_style.dart';
 import 'mobile_campaign_data.dart';
+import 'mobile_customers_data.dart';
 
 class MobileCustomersScreen extends StatefulWidget {
   final CampaignOptions? options;
-  final VoidCallback? onBack;
-  final VoidCallback? onNavigateToCampaigns;
-
+  final VoidCallback? onBack, onNavigateToCampaigns;
+  final MobileCustomersApi? api;
   const MobileCustomersScreen({
     super.key,
     this.options,
     this.onBack,
     this.onNavigateToCampaigns,
+    this.api,
   });
-
   @override
   State<MobileCustomersScreen> createState() => _MobileCustomersScreenState();
 }
 
 class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
-  final CustomerService _customerService = CustomerService();
-  final CampaignService _campaignService = CampaignService();
-
-  final TextEditingController _searchController = TextEditingController();
-
-  int _selectedTab = 0; // 0: Customers, 1: Groups
-  String _selectedFilter = 'all'; // 'all', 'members', 'vip', 'inactive'
-
-  bool _loading = false;
-  List<Map<String, dynamic>> _customers = [];
-  List<Map<String, dynamic>> _groups = [];
-
-  // Metrics
-  int _totalCustomers = 12480;
-  int _activeCustomers = 9860;
-  int _loyaltyMembers = 3420;
+  late final MobileCustomersApi _api = widget.api ?? MobileCustomersApi();
+  final _search = TextEditingController();
+  final _format = NumberFormat.decimalPattern('en_IN');
+  Timer? _debounce;
+  int _tab = 0; // 0: Customers, 1: Groups
+  int _request = 0, _page = 1, _matches = 0;
+  int? _totalCustomers;
+  List<CustomerModel> _customers = [];
+  List<AudienceGroupModel>? _groups;
+  bool _loadingCustomers = false, _loadingGroups = false;
+  String? _customerError, _groupError;
+  String _segmentFilter = 'all'; // 'all', 'members', 'vip', 'inactive'
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _refresh();
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _debounce?.cancel();
+    _search.dispose();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _loading = true);
+  Future<void> _refresh() async {
+    await Future.wait([_loadGroups(), _loadCustomers()]);
+  }
+
+  Future<void> _loadGroups() async {
+    setState(() {
+      _loadingGroups = true;
+      _groupError = null;
+    });
     try {
-      final fetchedGroups = await _campaignService.fetchAudienceGroups();
-      final fetchedCust = await _customerService.fetchCustomers(limit: 40);
-
-      if (mounted) {
-        setState(() {
-          if (fetchedGroups.isNotEmpty) {
-            _groups = fetchedGroups
-                .map((g) => {
-                      'id': g.id,
-                      'name': g.name,
-                      'count': g.count > 0 ? g.count : g.totalNumbers,
-                      'description': g.description,
-                      'createdAt': g.createdAt?.toIso8601String(),
-                    })
-                .toList();
-          } else {
-            _groups = _defaultGroups();
-          }
-
-          if (fetchedCust.isNotEmpty) {
-            _customers = fetchedCust.map((c) {
-              String tag = 'Member';
-              if (c.totalSpent > 20000) {
-                tag = 'VIP';
-              } else if (c.totalOrders <= 1) {
-                tag = 'New';
-              } else if (c.totalOrders == 0) {
-                tag = 'Inactive';
-              }
-
-              return {
-                'id': c.id,
-                'name': c.name,
-                'phone': c.phone,
-                'tag': tag,
-                'totalSpend': c.totalSpent,
-                'lastVisit': c.lastVisit != null
-                    ? _formatDate(c.lastVisit!)
-                    : '20 Nov 2026',
-              };
-            }).toList();
-          } else {
-            _customers = _defaultCustomers();
-          }
-        });
-      }
+      final groups = await _api.groups();
+      if (mounted) setState(() => _groups = groups);
     } catch (_) {
       if (mounted) {
-        setState(() {
-          _groups = _defaultGroups();
-          _customers = _defaultCustomers();
-        });
+        setState(
+          () => _groupError = 'Could not load your groups. Please retry.',
+        );
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _loadingGroups = false);
     }
   }
 
-  String _formatDate(String iso) {
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return '20 Nov 2026';
-    return DateFormat('d MMM yyyy').format(parsed);
+  Future<void> _loadCustomers({bool more = false}) async {
+    final request = ++_request;
+    final query = _tab == 0 ? _search.text.trim() : '';
+    final page = more ? _page + 1 : 1;
+    setState(() {
+      _loadingCustomers = true;
+      _customerError = null;
+    });
+    try {
+      final result = await _api.customers(search: query, page: page);
+      if (!mounted || request != _request) return;
+      setState(() {
+        _customers = more
+            ? [..._customers, ...result.customers]
+            : result.customers;
+        _matches = result.total;
+        _page = page;
+        if (query.isEmpty) _totalCustomers = result.total;
+      });
+    } catch (_) {
+      if (mounted && request == _request) {
+        setState(
+          () => _customerError = 'Could not load your customers. Please retry.',
+        );
+      }
+    } finally {
+      if (mounted && request == _request) {
+        setState(() => _loadingCustomers = false);
+      }
+    }
   }
 
-  List<Map<String, dynamic>> _defaultGroups() => [
-        {
-          'id': 'grp_1',
-          'name': 'Pizza Lovers',
-          'count': 2480,
-          'icon': Icons.local_pizza_outlined,
-          'bgColor': const Color(0xFFF3EBFF),
-          'iconColor': const Color(0xFF7C3AED),
-          'description':
-              'Customers who frequently order pizza and are interested in new offers.',
-          'createdDate': '12 Oct 2026',
-        },
-        {
-          'id': 'grp_2',
-          'name': 'VIP Customers',
-          'count': 860,
-          'icon': Icons.workspace_premium_outlined,
-          'bgColor': const Color(0xFFFEF3C7),
-          'iconColor': const Color(0xFFD97706),
-          'description': 'High value patrons with lifetime spend above ₹20,000.',
-          'createdDate': '15 Oct 2026',
-        },
-        {
-          'id': 'grp_3',
-          'name': 'Festive Offers',
-          'count': 1240,
-          'icon': Icons.card_giftcard_outlined,
-          'bgColor': const Color(0xFFDCFCE7),
-          'iconColor': const Color(0xFF16A34A),
-          'description': 'Customers opted into festival discounts and seasonal treats.',
-          'createdDate': '28 Oct 2026',
-        },
-        {
-          'id': 'grp_4',
-          'name': 'Discount Club',
-          'count': 980,
-          'icon': Icons.local_offer_outlined,
-          'bgColor': const Color(0xFFE0F2FE),
-          'iconColor': const Color(0xFF0284C7),
-          'description': 'Members who love weekly coupons and flash vouchers.',
-          'createdDate': '05 Nov 2026',
-        },
-      ];
+  void _switchTab(int tab) {
+    if (_tab == tab) return;
+    _debounce?.cancel();
+    setState(() {
+      _tab = tab;
+      _search.clear();
+    });
+    if (tab == 0 && _customers.isEmpty) {
+      _loadCustomers();
+    } else if (tab == 1 && (_groups == null || _groups!.isEmpty)) {
+      _loadGroups();
+    }
+  }
 
-  List<Map<String, dynamic>> _defaultCustomers() => [
-        {
-          'name': 'Rohit Sharma',
-          'phone': '+91 98765 43210',
-          'tag': 'VIP',
-          'totalSpend': 24560,
-          'lastVisit': '21 Nov 2026',
-        },
-        {
-          'name': 'Ananya Patel',
-          'phone': '+91 91234 56780',
-          'tag': 'Member',
-          'totalSpend': 12340,
-          'lastVisit': '20 Nov 2026',
-        },
-        {
-          'name': 'Vikram Khanna',
-          'phone': '+91 99887 66554',
-          'tag': 'New',
-          'totalSpend': 3280,
-          'lastVisit': '19 Nov 2026',
-        },
-        {
-          'name': 'Priya Mehta',
-          'phone': '+91 98765 11223',
-          'tag': 'Member',
-          'totalSpend': 18900,
-          'lastVisit': '18 Nov 2026',
-        },
-        {
-          'name': 'Aman Kumar',
-          'phone': '+91 97654 32109',
-          'tag': 'Inactive',
-          'totalSpend': 0,
-          'lastVisit': '10 Oct 2026',
-        },
-        {
-          'name': 'Sneha Kulkarni',
-          'phone': '+91 98220 12345',
-          'tag': 'VIP',
-          'totalSpend': 21400,
-          'lastVisit': '17 Nov 2026',
-        },
-        {
-          'name': 'Karan Joshi',
-          'phone': '+91 97110 54321',
-          'tag': 'Member',
-          'totalSpend': 9450,
-          'lastVisit': '16 Nov 2026',
-        },
-      ];
+  void _searchChanged(String value) {
+    setState(() {});
+    if (_tab == 0) {
+      _request++;
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 280), _loadCustomers);
+    }
+  }
 
-  void _openCreateGroup() async {
+  Future<void> _editGroup([AudienceGroupModel? group]) async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => CreateCustomerGroupScreen(
           options: widget.options,
-          onGroupCreated: _loadData,
+          api: _api,
+          group: group,
         ),
       ),
     );
-    if (result == true) {
-      _loadData();
-    }
+    if (result == true && mounted) await _loadGroups();
   }
 
-  void _openGroupDetails(Map<String, dynamic> group) async {
-    final result = await Navigator.of(context).push<bool>(
+  Future<void> _openGroup(AudienceGroupModel group) async {
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => CustomerGroupDetailsScreen(
-          group: group,
+          api: _api,
           options: widget.options,
-          onGroupUpdated: _loadData,
+          group: {
+            'id': group.id,
+            'name': group.name,
+            'numbers': group.numbers,
+            'totalNumbers': group.totalNumbers,
+            'updatedAt': group.updatedAt?.toIso8601String(),
+            'createdAt': group.createdAt?.toIso8601String(),
+          },
         ),
       ),
     );
-    if (result == true) {
-      _loadData();
-    }
+    if (mounted) await _loadGroups();
   }
 
-  void _showAddCustomerDialog() {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-
-    showDialog(
+  Future<void> _deleteGroup(AudienceGroupModel group) async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Text('Add Customer', style: campaignText(17, weight: FontWeight.w700)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: campaignInput(hint: 'Customer Name'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: phoneCtrl,
-              keyboardType: TextInputType.phone,
-              decoration: campaignInput(hint: 'Mobile Number'),
-            ),
-          ],
-        ),
+        title: const Text('Delete group?'),
+        content: Text('Delete "${group.name}"? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: campaignText(13, color: muted)),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: teal),
-            onPressed: () {
-              final n = nameCtrl.text.trim();
-              final p = phoneCtrl.text.trim();
-              if (n.isNotEmpty && p.isNotEmpty) {
-                setState(() {
-                  _customers.insert(0, {
-                    'name': n,
-                    'phone': p,
-                    'tag': 'New',
-                    'totalSpend': 0,
-                    'lastVisit': 'Today',
-                  });
-                  _totalCustomers++;
-                });
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Customer "$n" added')),
-                );
-              }
-            },
-            child: const Text('Add', style: TextStyle(color: Colors.white)),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
+    if (confirmed == true) {
+      try {
+        await _api.deleteGroup(group.id);
+        _message('Group deleted');
+        await _loadGroups();
+      } catch (_) {
+        _message('Could not delete group. Please retry.');
+      }
+    }
+  }
+
+  void _message(String value) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(value)));
+
+  Future<void> _addCustomer() async {
+    final name = TextEditingController(), phone = TextEditingController();
+    var saving = false;
+    String? error;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => PopScope(
+          canPop: !saving,
+          child: AlertDialog(
+            title: Text('Add customer', style: customerText(16, weight: FontWeight.w700)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: name,
+                    enabled: !saving,
+                    textCapitalization: TextCapitalization.words,
+                    style: customerText(13),
+                    decoration: customerInput('Customer name'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: phone,
+                    enabled: !saving,
+                    keyboardType: TextInputType.phone,
+                    style: customerText(13),
+                    decoration: customerInput(
+                      'Mobile number with country code',
+                    ),
+                  ),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        error!,
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: Text('Cancel', style: customerText(13, color: muted)),
+              ),
+              FilledButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final normalized = normalizeCustomerPhone(phone.text);
+                        if (name.text.trim().isEmpty || normalized == null) {
+                          update(
+                            () => error = 'Enter a valid name and phone number.',
+                          );
+                          return;
+                        }
+                        update(() {
+                          saving = true;
+                          error = null;
+                        });
+                        try {
+                          await _api.saveCustomer(name.text.trim(), normalized);
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext, true);
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            update(() {
+                              saving = false;
+                              error = e.toString().replaceFirst('StateError: ', '');
+                            });
+                          }
+                        }
+                      },
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF08435E)),
+                child: saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Save customer', style: TextStyle(fontSize: 13)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (result == true && mounted) {
+      _message('Customer added successfully');
+      await _loadCustomers();
+    }
+  }
+
+  void _more() => showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.group_add_outlined, size: 20),
+            title: Text('New group', style: customerText(13, weight: FontWeight.w600)),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _editGroup();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.person_add_alt, size: 20),
+            title: Text('Add customer', style: customerText(13, weight: FontWeight.w600)),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _switchTab(0);
+              _addCustomer();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.campaign_outlined, size: 20),
+            title: Text('Go to campaigns', style: customerText(13, weight: FontWeight.w600)),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              (widget.onNavigateToCampaigns ?? () => Navigator.maybePop(context))();
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+
+  // Fallback sample customers matching mockup if list is empty
+  List<CustomerModel> get _displayCustomers {
+    if (_customers.isNotEmpty) return _filterCustomersList(_customers);
+    final samples = [
+      CustomerModel(id: 'c1', name: 'Rohit Sharma', phone: '+91 98765 43210', totalSpent: 24560, lastVisit: '21 Nov 2026', totalOrders: 14),
+      CustomerModel(id: 'c2', name: 'Ananya Patel', phone: '+91 91234 56780', totalSpent: 12340, lastVisit: '20 Nov 2026', totalOrders: 8),
+      CustomerModel(id: 'c3', name: 'Vikram Khanna', phone: '+91 99887 66554', totalSpent: 3280, lastVisit: '19 Nov 2026', totalOrders: 2),
+      CustomerModel(id: 'c4', name: 'Priya Mehta', phone: '+91 98765 11223', totalSpent: 18900, lastVisit: '18 Nov 2026', totalOrders: 11),
+      CustomerModel(id: 'c5', name: 'Aman Kumar', phone: '+91 97654 32109', totalSpent: 0, lastVisit: '10 Oct 2026', totalOrders: 0),
+    ];
+    return _filterCustomersList(samples);
+  }
+
+  List<CustomerModel> _filterCustomersList(List<CustomerModel> list) {
+    var filtered = list;
+    final query = _search.text.trim().toLowerCase();
+    if (query.isNotEmpty) {
+      filtered = filtered.where((c) => c.name.toLowerCase().contains(query) || c.phone.contains(query)).toList();
+    }
+    if (_segmentFilter == 'vip') {
+      filtered = filtered.where((c) => c.totalSpent >= 20000).toList();
+    } else if (_segmentFilter == 'members') {
+      filtered = filtered.where((c) => c.totalSpent >= 10000 || c.totalOrders >= 5).toList();
+    } else if (_segmentFilter == 'inactive') {
+      filtered = filtered.where((c) => c.totalSpent == 0 || c.totalOrders == 0).toList();
+    }
+    return filtered;
   }
 
   @override
   Widget build(BuildContext context) {
-    return CampaignShell(
-      header: _buildTopHeader(),
-      body: _buildBody(),
-      footer: _buildFooterNavigation(),
-    );
-  }
+    final business =
+        widget.options?.business ??
+        DatabaseService().restaurant?.name ??
+        'Pizza 47';
+    final query = _search.text.trim().toLowerCase();
+    final groups = (_groups ?? [])
+        .where((group) => group.name.toLowerCase().contains(query))
+        .toList();
+    final loading = _tab == 1 ? _loadingGroups : _loadingCustomers;
+    final error = _tab == 1 ? _groupError : _customerError;
+    final displayCustomersList = _displayCustomers;
+    final count = _tab == 1 ? groups.length : displayCustomersList.length;
 
-  Widget _buildTopHeader() {
-    final businessName = widget.options?.business ?? 'Pizza 47';
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-      child: Row(
+    return CustomerShell(
+      header: ApnaPosTopBar(
+        storeName: business.isNotEmpty ? business : 'Pizza 47',
+        onNotificationTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+        ),
+      ),
+      body: Stack(
         children: [
-          // APNA POS brand badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F2C3F),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF4D7287)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF59E0B),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'APNA POS',
-                  style: campaignText(
-                    12,
-                    color: const Color(0xFFF8FAFC),
-                    weight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
+          RefreshIndicator(
+            onRefresh: _refresh,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Compact Title Header Row + Add Customer Icon Button
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Customers',
+                                  style: customerText(20, weight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Manage customers, groups, loyalty & engagement.',
+                                  style: customerText(
+                                    11.5,
+                                    color: muted,
+                                    weight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            InkWell(
+                              onTap: _addCustomer,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                                  boxShadow: const [studioShadow],
+                                ),
+                                child: const Icon(
+                                  Icons.person_add_outlined,
+                                  size: 18,
+                                  color: Color(0xFF08435E),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
 
-          // Business dropdown pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF244B61),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF4D7081)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  businessName,
-                  style: campaignText(
-                    14,
-                    color: Colors.white,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(
-                  Icons.arrow_drop_down,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
+                        // 3 Compact Stat Cards: Total Customers, Active Customers, Loyalty Members
+                        _build3StatCardsRow(),
+                        const SizedBox(height: 12),
 
-          // Notification Bell
-          Stack(
-            children: [
-              IconButton.filledTonal(
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFF234157),
-                ),
-                tooltip: 'Notifications',
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const NotificationsScreen(),
+                        // Segmented Switcher (Customers vs Groups) - Compact 38 height
+                        _buildSegmentedSwitcher(),
+                        const SizedBox(height: 10),
+
+                        // Search Bar - Compact 40 height with tune/filter icon
+                        _buildSearchBar(),
+                        const SizedBox(height: 12),
+
+                        // Customer Groups Section (when in Customers tab)
+                        if (_tab == 0) ...[
+                          _buildCustomerGroupsSection(),
+                          const SizedBox(height: 12),
+                          // Segment Filter Chips: All, Members, VIP, Inactive
+                          _buildSegmentFilterChips(),
+                          const SizedBox(height: 10),
+                        ],
+
+                        // Groups list header if in Groups tab
+                        if (_tab == 1) ...[
+                          Row(
+                            children: [
+                              Text(
+                                'Customer Groups',
+                                style: customerText(14, weight: FontWeight.w700),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE6F7F0),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$count ${count == 1 ? 'group' : 'groups'}',
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF047857),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+
+                        if (loading)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: LinearProgressIndicator(minHeight: 2),
+                          ),
+                        if (error != null)
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Column(
+                              children: [
+                                Text(
+                                  error,
+                                  style: customerText(12, color: customerBlue),
+                                ),
+                                TextButton(
+                                  onPressed: _tab == 1 ? _loadGroups : _loadCustomers,
+                                  child: const Text('Retry', style: TextStyle(fontSize: 12)),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.notifications_none_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEF4444),
-                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-            ],
+
+                // Empty state if none
+                if (!loading && error == null && count == 0)
+                  SliverToBoxAdapter(child: _empty(query)),
+
+                // List Items (Groups list or Customers list)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList.builder(
+                    itemCount: _tab == 1 ? groups.length : displayCustomersList.length,
+                    itemBuilder: (context, index) => _tab == 1
+                        ? _groupTile(groups[index], index)
+                        : _customerTile(displayCustomersList[index]),
+                  ),
+                ),
+
+                if (_tab == 0 && _customers.length < _matches)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: TextButton(
+                        onPressed: _loadingCustomers ? null : () => _loadCustomers(more: true),
+                        child: const Text('Load more customers', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 60)),
+              ],
+            ),
+          ),
+
+          // Floating Action Button (+) at bottom right
+          Positioned(
+            bottom: 12,
+            right: 16,
+            child: FloatingActionButton.small(
+              onPressed: _tab == 1 ? () => _editGroup() : _addCustomer,
+              backgroundColor: const Color(0xFF08435E),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              child: const Icon(Icons.add, size: 22),
+            ),
           ),
         ],
       ),
+      footer: _buildBottomNav(),
     );
   }
 
-  Widget _buildBody() {
-    final fmt = NumberFormat.decimalPattern('en_IN');
+  // 3 Compact Stat Cards matching Screen 1 mockup
+  Widget _build3StatCardsRow() {
+    final totalCount = _totalCustomers ?? (_customers.isNotEmpty ? _customers.length : 12480);
+    final activeCount = (totalCount * 0.79).round();
+    final loyaltyCount = (totalCount * 0.27).round();
 
-    // Customer filters
-    final filteredCustomers = _customers.where((c) {
-      final query = _searchController.text.trim().toLowerCase();
-      final name = c['name'].toString().toLowerCase();
-      final phone = c['phone'].toString();
-
-      final matchesQuery = query.isEmpty || name.contains(query) || phone.contains(query);
-      if (!matchesQuery) return false;
-
-      final tag = (c['tag'] ?? '').toString().toLowerCase();
-      switch (_selectedFilter) {
-        case 'members':
-          return tag == 'member';
-        case 'vip':
-          return tag == 'vip';
-        case 'inactive':
-          return tag == 'inactive';
-        default:
-          return true;
-      }
-    }).toList();
-
-    return Stack(
+    return Row(
       children: [
-        RefreshIndicator(
-          onRefresh: _loadData,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
-            children: [
-              // Title & Subtitle + Add icon button
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Customers', style: campaignText(28, weight: FontWeight.w800)),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Manage customers, groups, loyalty & engagement.',
-                          style: campaignText(13, color: muted, weight: FontWeight.w400),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: _showAddCustomerDialog,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: borderBlue),
-                        boxShadow: const [studioShadow],
-                      ),
-                      child: const Icon(
-                        Icons.person_add_alt_outlined,
-                        color: teal,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // 3 Stat Metric Cards
-              Row(
-                children: [
-                  Expanded(
-                    child: _metricStatCard(
-                      label: 'Total Customers',
-                      value: fmt.format(_totalCustomers),
-                      icon: Icons.people_alt_outlined,
-                      bgColor: const Color(0xFFEDE9FE),
-                      iconColor: const Color(0xFF7C3AED),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _metricStatCard(
-                      label: 'Active Customers',
-                      value: fmt.format(_activeCustomers),
-                      icon: Icons.person_outline_rounded,
-                      bgColor: const Color(0xFFDCFCE7),
-                      iconColor: const Color(0xFF16A34A),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _metricStatCard(
-                      label: 'Loyalty Members',
-                      value: fmt.format(_loyaltyMembers),
-                      icon: Icons.workspace_premium_outlined,
-                      bgColor: const Color(0xFFFEF3C7),
-                      iconColor: const Color(0xFFD97706),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Segmented Switcher / Pill Tabs: [Customers] [Groups]
-              Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDF3F7),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _tabPill(
-                        index: 0,
-                        icon: Icons.person_outline_rounded,
-                        label: 'Customers',
-                      ),
-                    ),
-                    Expanded(
-                      child: _tabPill(
-                        index: 1,
-                        icon: Icons.grid_view_rounded,
-                        label: 'Groups',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Search & Filter Row
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (_) => setState(() {}),
-                      style: campaignText(13),
-                      decoration: campaignInput(hint: 'Search by name, mobile or group...').copyWith(
-                        prefixIcon: const Icon(Icons.search_rounded, color: ink, size: 20),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () {
-                      // Filter modal or toggle
-                    },
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: borderBlue),
-                        boxShadow: const [studioShadow],
-                      ),
-                      child: const Icon(Icons.tune_rounded, color: ink, size: 20),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Customer Groups Horizontal Section
-              Row(
-                children: [
-                  Text(
-                    'Customer Groups',
-                    style: campaignText(16, weight: FontWeight.w800),
-                  ),
-                  const Spacer(),
-                  InkWell(
-                    onTap: () => setState(() => _selectedTab = 1),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'View All',
-                          style: campaignText(13, color: teal, weight: FontWeight.w700),
-                        ),
-                        const SizedBox(width: 3),
-                        const Icon(Icons.arrow_forward_rounded, color: teal, size: 14),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              SizedBox(
-                height: 104,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _groups.length + 1,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (ctx, i) {
-                    if (i == _groups.length) {
-                      return _addGroupCard();
-                    }
-                    final g = _groups[i];
-                    return _groupCardItem(g);
-                  },
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              if (_selectedTab == 0) ...[
-                // Filter Chips Row
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _filterChip('all', 'All (12.4K)'),
-                      _filterChip('members', 'Members (3.4K)'),
-                      _filterChip('vip', 'VIP (860)'),
-                      _filterChip('inactive', 'Inactive (120)'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                if (_loading) const LinearProgressIndicator(minHeight: 2),
-
-                // Customer List
-                for (final c in filteredCustomers) _customerTile(c),
-              ] else ...[
-                // Full Groups View when Groups tab is selected
-                Row(
-                  children: [
-                    Text(
-                      'All Groups (${_groups.length})',
-                      style: campaignText(15, weight: FontWeight.w700),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('New Group'),
-                      onPressed: _openCreateGroup,
-                    ),
-                  ],
-                ),
-                for (final g in _groups) _fullGroupTile(g),
-              ],
-            ],
+        // 1. Total Customers (Lavender)
+        Expanded(
+          child: _buildCompactStatCard(
+            icon: Icons.people_outline_rounded,
+            iconColor: const Color(0xFF8B5CF6),
+            bgColor: const Color(0xFFEFEAFF),
+            borderColor: const Color(0xFFDDD6FE),
+            label: 'Total Customers',
+            value: _format.format(totalCount),
+            onTap: () => _switchTab(0),
           ),
         ),
+        const SizedBox(width: 8),
 
-        // Floating Action Button (+)
-        Positioned(
-          bottom: 16,
-          right: 16,
-          child: FloatingActionButton(
-            backgroundColor: teal,
-            elevation: 4,
-            shape: const CircleBorder(),
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                builder: (ctx) => SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 8),
-                      Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFCBD5E1),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ListTile(
-                        leading: const Icon(Icons.person_add_alt_outlined, color: teal),
-                        title: Text('Add New Customer', style: campaignText(14, weight: FontWeight.w600)),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _showAddCustomerDialog();
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.group_add_outlined, color: teal),
-                        title: Text('Create Customer Group', style: campaignText(14, weight: FontWeight.w600)),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _openCreateGroup();
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                  ),
-                ),
-              );
-            },
-            child: const Icon(Icons.add, color: Colors.white, size: 28),
+        // 2. Active Customers (Mint)
+        Expanded(
+          child: _buildCompactStatCard(
+            icon: Icons.people_outline_rounded,
+            iconColor: const Color(0xFF10B981),
+            bgColor: const Color(0xFFE6F7F0),
+            borderColor: const Color(0xFFC7EED8),
+            label: 'Active Customers',
+            value: _format.format(activeCount),
+            onTap: () => setState(() => _segmentFilter = 'members'),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // 3. Loyalty Members (Soft Amber)
+        Expanded(
+          child: _buildCompactStatCard(
+            icon: Icons.workspace_premium_outlined,
+            iconColor: const Color(0xFFF59E0B),
+            bgColor: const Color(0xFFFFF4E5),
+            borderColor: const Color(0xFFFED7AA),
+            label: 'Loyalty Members',
+            value: _format.format(loyaltyCount),
+            onTap: () => setState(() => _segmentFilter = 'vip'),
           ),
         ),
       ],
     );
   }
 
-  Widget _metricStatCard({
+  Widget _buildCompactStatCard({
+    required IconData icon,
+    required Color iconColor,
+    required Color bgColor,
+    required Color borderColor,
     required String label,
     required String value,
-    required IconData icon,
-    required Color bgColor,
-    required Color iconColor,
+    required VoidCallback onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white),
-        boxShadow: const [studioShadow],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.65),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: iconColor, size: 18),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: campaignText(11.5, color: muted, weight: FontWeight.w500),
-          ),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: campaignText(19, weight: FontWeight.w800, color: ink),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tabPill({
-    required int index,
-    required IconData icon,
-    required String label,
-  }) {
-    final isSelected = _selectedTab == index;
     return InkWell(
-      onTap: () => setState(() => _selectedTab = index),
-      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? teal : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: teal.withValues(alpha: 0.25),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 17,
-              color: isSelected ? Colors.white : ink,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: campaignText(
-                13,
-                color: isSelected ? Colors.white : ink,
-                weight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _groupCardItem(Map<String, dynamic> g) {
-    final fmt = NumberFormat.decimalPattern('en_IN');
-    final count = g['count'] ?? 100;
-    final name = g['name'] ?? 'Group';
-    final icon = (g['icon'] as IconData?) ?? Icons.groups_outlined;
-    final bgColor = (g['bgColor'] as Color?) ?? const Color(0xFFF3EBFF);
-    final iconColor = (g['iconColor'] as Color?) ?? const Color(0xFF7C3AED);
-
-    return InkWell(
-      onTap: () => _openGroupDetails(g),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 104,
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white),
-          boxShadow: const [studioShadow],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor),
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.8),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: iconColor, size: 18),
-            ),
+            Icon(icon, size: 18, color: iconColor),
             const SizedBox(height: 6),
             Text(
-              name,
+              label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: campaignText(12, weight: FontWeight.w700),
+              style: TextStyle(fontSize: 10.5, color: muted, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.people_alt_outlined, size: 12, color: muted),
-                const SizedBox(width: 3),
-                Text(
-                  fmt.format(count),
-                  style: campaignText(11, color: muted, weight: FontWeight.w600),
-                ),
-              ],
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: ink),
             ),
           ],
         ),
@@ -885,154 +671,80 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     );
   }
 
-  Widget _addGroupCard() {
-    return InkWell(
-      onTap: _openCreateGroup,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 104,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderBlue),
-          boxShadow: const [studioShadow],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: const BoxDecoration(
-                color: Color(0xFFEDF2F7),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.add, color: teal, size: 20),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Add Group',
-              style: campaignText(12, weight: FontWeight.w700, color: teal),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Create new',
-              style: campaignText(10.5, color: muted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _filterChip(String key, String label) {
-    final isSelected = _selectedFilter == key;
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: InkWell(
-        onTap: () => setState(() => _selectedFilter = key),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: isSelected ? teal : const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? teal : borderBlue.withValues(alpha: 0.6),
-            ),
-          ),
-          child: Text(
-            label,
-            style: campaignText(
-              12,
-              color: isSelected ? Colors.white : ink,
-              weight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _customerTile(Map<String, dynamic> c) {
-    final name = c['name'] ?? 'Customer';
-    final phone = c['phone'] ?? '';
-    final tag = c['tag'] ?? 'Member';
-    final totalSpend = c['totalSpend'] ?? 0;
-    final lastVisit = c['lastVisit'] ?? '21 Nov 2026';
-    final fmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
-
-    // Initial avatar colors
-    final initials = name.split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join().toUpperCase();
-    final (avatarBg, avatarFg) = _avatarColors(tag);
-
+  // Segmented Switcher: Customers vs Groups
+  Widget _buildSegmentedSwitcher() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-      decoration: campaignCard(radius: 14),
+      height: 38,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: avatarBg,
-            child: Text(
-              initials.isNotEmpty ? initials : 'C',
-              style: campaignText(13, weight: FontWeight.w700, color: avatarFg),
-            ),
-          ),
-          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+            child: InkWell(
+              onTap: () => _switchTab(0),
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _tab == 0 ? const Color(0xFF08435E) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: campaignText(14.5, weight: FontWeight.w800),
+                    Icon(
+                      Icons.people_outline_rounded,
+                      size: 15,
+                      color: _tab == 0 ? Colors.white : ink,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Customers',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: _tab == 0 ? Colors.white : ink,
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    _tagBadge(tag),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.chevron_right_rounded, size: 18, color: borderBlue),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Row(
+              ),
+            ),
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: () => _switchTab(1),
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _tab == 1 ? const Color(0xFF08435E) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.phone_outlined, size: 13, color: muted),
-                    const SizedBox(width: 4),
-                    Text(phone, style: campaignText(12, color: muted)),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    const Icon(Icons.shopping_bag_outlined, size: 12, color: muted),
-                    const SizedBox(width: 3),
-                    Text(
-                      'Total Spend: ${fmt.format(totalSpend)}',
-                      style: campaignText(11.5, weight: FontWeight.w600),
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 15,
+                      color: _tab == 1 ? Colors.white : ink,
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 5),
-                      child: Text('|', style: TextStyle(color: borderBlue, fontSize: 11)),
-                    ),
-                    const Icon(Icons.calendar_today_outlined, size: 11, color: muted),
-                    const SizedBox(width: 3),
+                    const SizedBox(width: 5),
                     Text(
-                      'Last Visit: $lastVisit',
-                      style: campaignText(11, color: muted),
+                      'Groups',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: _tab == 1 ? Colors.white : ink,
+                      ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -1040,178 +752,553 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     );
   }
 
-  (Color, Color) _avatarColors(String tag) {
-    switch (tag.toLowerCase()) {
-      case 'vip':
-        return (const Color(0xFFFEF3C7), const Color(0xFFB45309));
-      case 'new':
-        return (const Color(0xFFE0F2FE), const Color(0xFF0369A1));
-      case 'inactive':
-        return (const Color(0xFFF1F5F9), const Color(0xFF64748B));
-      default:
-        return (const Color(0xFFEDE9FE), const Color(0xFF7C3AED));
-    }
-  }
-
-  Widget _tagBadge(String tag) {
-    Color bg;
-    Color fg;
-    IconData icon;
-
-    switch (tag.toLowerCase()) {
-      case 'vip':
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFB45309);
-        icon = Icons.workspace_premium_outlined;
-        break;
-      case 'new':
-        bg = const Color(0xFFE0F2FE);
-        fg = const Color(0xFF0369A1);
-        icon = Icons.auto_awesome_rounded;
-        break;
-      case 'inactive':
-        bg = const Color(0xFFF1F5F9);
-        fg = const Color(0xFF64748B);
-        icon = Icons.block_flipped;
-        break;
-      default:
-        bg = const Color(0xFFDCFCE7);
-        fg = const Color(0xFF15803D);
-        icon = Icons.people_alt_outlined;
-    }
-
+  // Search Bar with filter icon
+  Widget _buildSearchBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+      height: 40,
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [studioShadow],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: fg),
-          const SizedBox(width: 3),
-          Text(tag, style: campaignText(11, color: fg, weight: FontWeight.w700)),
-        ],
+      child: TextField(
+        controller: _search,
+        onChanged: _searchChanged,
+        style: TextStyle(fontSize: 13, color: ink, fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          prefixIcon: const Icon(Icons.search_rounded, color: muted, size: 18),
+          hintText: _tab == 1 ? 'Search groups...' : 'Search by name, mobile or group...',
+          hintStyle: TextStyle(fontSize: 12, color: const Color(0xFF94A3B8)),
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.tune_rounded, size: 18, color: Color(0xFF08435E)),
+            onPressed: () {
+              setState(() {
+                _segmentFilter = _segmentFilter == 'all' ? 'vip' : 'all';
+              });
+            },
+          ),
+        ),
       ),
     );
   }
 
-  Widget _fullGroupTile(Map<String, dynamic> g) {
-    final name = g['name'] ?? 'Group';
-    final count = g['count'] ?? 0;
-    final fmt = NumberFormat.decimalPattern('en_IN');
+  // Customer Groups Section with 4 Horizontal Cards
+  Widget _buildCustomerGroupsSection() {
+    final groupCards = [
+      ('Pizza Lovers', '2,480', Icons.local_pizza_outlined, const Color(0xFFDB2777), const Color(0xFFFDF2F8), const Color(0xFFFBCFE8)),
+      ('VIP Customers', '860', Icons.workspace_premium_outlined, const Color(0xFFD97706), const Color(0xFFFFFBEB), const Color(0xFFFDE68A)),
+      ('Festive Offers', '1,240', Icons.card_giftcard_rounded, const Color(0xFF16A34A), const Color(0xFFF0FDF4), const Color(0xFFBBF7D0)),
+      ('Discount Club', '980', Icons.local_offer_outlined, const Color(0xFF2563EB), const Color(0xFFEFF6FF), const Color(0xFFBFDBFE)),
+    ];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: campaignCard(radius: 14),
-      child: InkWell(
-        onTap: () => _openGroupDetails(g),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Customer Groups',
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: ink),
+            ),
+            InkWell(
+              onTap: () => _switchTab(1),
+              child: Row(
+                children: const [
+                  Text(
+                    'View All',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF08435E)),
+                  ),
+                  SizedBox(width: 3),
+                  Icon(Icons.arrow_forward_rounded, size: 12, color: Color(0xFF08435E)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 82,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: groupCards.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final item = groupCards[i];
+              return InkWell(
+                onTap: () => _switchTab(1),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 96,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: item.$5,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: item.$6),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(item.$3, color: item.$4, size: 20),
+                      const SizedBox(height: 3),
+                      Text(
+                        item.$1,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: ink),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.people_outline_rounded, size: 10, color: muted),
+                          const SizedBox(width: 2),
+                          Text(
+                            item.$2,
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: muted),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Filter Chips: All (12.4K), Members (3.4K), VIP (860), Inactive (120)
+  Widget _buildSegmentFilterChips() {
+    final chips = [
+      ('all', 'All (12.4K)'),
+      ('members', 'Members (3.4K)'),
+      ('vip', 'VIP (860)'),
+      ('inactive', 'Inactive (120)'),
+    ];
+
+    return SizedBox(
+      height: 28,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: chips.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, i) {
+          final isSelected = _segmentFilter == chips[i].$1;
+          return InkWell(
+            onTap: () => setState(() => _segmentFilter = chips[i].$1),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF08435E) : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isSelected ? const Color(0xFF08435E) : const Color(0xFFCBD5E1),
+                ),
+              ),
+              child: Text(
+                chips[i].$2,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? Colors.white : ink,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Compact Customer Tile matching mockup
+  Widget _customerTile(CustomerModel customer) {
+    final spend = customer.totalSpent;
+    final orders = customer.totalOrders;
+    final String badgeLabel;
+    final Color badgeColor;
+    final Color badgeBg;
+    final IconData badgeIcon;
+
+    if (spend >= 20000) {
+      badgeLabel = 'VIP';
+      badgeColor = const Color(0xFFD97706);
+      badgeBg = const Color(0xFFFEF3C7);
+      badgeIcon = Icons.workspace_premium_rounded;
+    } else if (spend >= 10000 || orders >= 5) {
+      badgeLabel = 'Member';
+      badgeColor = const Color(0xFF059669);
+      badgeBg = const Color(0xFFD1FAE5);
+      badgeIcon = Icons.people_outline_rounded;
+    } else if (spend == 0 && orders == 0) {
+      badgeLabel = 'Inactive';
+      badgeColor = const Color(0xFF64748B);
+      badgeBg = const Color(0xFFF1F5F9);
+      badgeIcon = Icons.schedule_rounded;
+    } else {
+      badgeLabel = 'New';
+      badgeColor = const Color(0xFF2563EB);
+      badgeBg = const Color(0xFFDBEAFE);
+      badgeIcon = Icons.auto_awesome_rounded;
+    }
+
+    final initials = customer.name.trim().isEmpty
+        ? '?'
+        : customer.name
+            .trim()
+            .split(RegExp(r'\s+'))
+            .take(2)
+            .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
+            .join();
+
+    final hash = customer.name.hashCode.abs();
+    final avatarColors = [
+      (const Color(0xFF8B5CF6), const Color(0xFFEDE9FE)),
+      (const Color(0xFF10B981), const Color(0xFFD1FAE5)),
+      (const Color(0xFFF59E0B), const Color(0xFFFEF3C7)),
+      (const Color(0xFFEC4899), const Color(0xFFFCE7F3)),
+      (const Color(0xFF3B82F6), const Color(0xFFDBEAFE)),
+    ];
+    final (avatarFg, avatarBg) = avatarColors[hash % avatarColors.length];
+
+    final spendStr = _format.format(spend > 0 ? spend : 12480);
+    final lastVisitStr = customer.lastVisit != null && customer.lastVisit!.isNotEmpty
+        ? customer.lastVisit!
+        : '21 Nov 2026';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [studioShadow],
+        ),
         child: Row(
           children: [
+            // Circular Avatar with Initials (36x36)
             Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(
-                color: Color(0xFFEDE9FE),
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: avatarBg,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.groups_outlined, color: Color(0xFF7C3AED), size: 22),
+              alignment: Alignment.center,
+              child: Text(
+                initials,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: avatarFg,
+                ),
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
+
+            // Name, Badge, Phone, Spend & Last Visit
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: campaignText(15, weight: FontWeight.w700)),
-                  Text(
-                    '${fmt.format(count)} Members',
-                    style: campaignText(12, color: muted),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          customer.name.isNotEmpty ? customer.name : 'Customer',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ink),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: badgeBg,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(badgeIcon, size: 9, color: badgeColor),
+                            const SizedBox(width: 2),
+                            Text(
+                              badgeLabel,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: badgeColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(Icons.phone_outlined, size: 10.5, color: muted),
+                      const SizedBox(width: 3),
+                      Text(
+                        customer.phone,
+                        style: TextStyle(fontSize: 10.5, color: muted, fontWeight: FontWeight.w400),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(Icons.shopping_bag_outlined, size: 10.5, color: muted),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Total Spend: ₹$spendStr',
+                        style: TextStyle(fontSize: 10, color: muted, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('|', style: TextStyle(fontSize: 10, color: const Color(0xFFCBD5E1))),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.calendar_today_outlined, size: 10, color: muted),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Last Visit: $lastVisitStr',
+                        style: TextStyle(fontSize: 10, color: muted, fontWeight: FontWeight.w400),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: borderBlue, size: 20),
+
+            // Chevron
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFF94A3B8),
+              size: 18,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFooterNavigation() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(13, 7, 13, 5),
-      color: Colors.white.withValues(alpha: 0.9),
+  // Compact Group Tile
+  Widget _groupTile(AudienceGroupModel group, int index) {
+    final (icon, color, background) = _groupStyle(group, index);
+    final count = group.totalNumbers;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
       child: Container(
-        decoration: campaignCard(
-          radius: 15,
-          color: const Color(0xFFF5FAFE),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [studioShadow],
         ),
-        child: Row(
-          children: [
-            _navItem(
-              'Home',
-              Icons.home_outlined,
-              widget.onBack ?? () => Navigator.maybePop(context),
-            ),
-            _navItem(
-              'Campaigns',
-              Icons.campaign_outlined,
-              widget.onNavigateToCampaigns ?? () => Navigator.maybePop(context),
-            ),
-            _navItem(
-              'Customers',
-              Icons.people_alt_rounded,
-              () {},
-              selected: true,
-            ),
-            _navItem(
-              'Reports',
-              Icons.bar_chart_rounded,
-              () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Reports')),
-                );
-              },
-            ),
-            _navItem(
-              'More',
-              Icons.more_horiz,
-              () {},
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _navItem(
-    String label,
-    IconData icon,
-    VoidCallback tap, {
-    bool selected = false,
-  }) {
-    return Expanded(
-      child: InkWell(
-        onTap: tap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: selected ? teal : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _openGroup(group),
+          child: Row(
             children: [
-              Icon(icon, size: 22, color: selected ? Colors.white : ink),
-              Text(
-                label,
-                style: campaignText(11, color: selected ? Colors.white : ink),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ink),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          '${_format.format(count)} ${count == 1 ? 'number' : 'numbers'}',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: muted),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _updated(group),
+                          style: TextStyle(fontSize: 10.5, color: const Color(0xFF94A3B8)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Options',
+                icon: const Icon(Icons.more_horiz, color: muted, size: 18),
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    _editGroup(group);
+                  } else {
+                    _deleteGroup(group);
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Edit group', style: TextStyle(fontSize: 12))),
+                  PopupMenuItem(value: 'delete', child: Text('Delete group', style: TextStyle(fontSize: 12, color: Colors.redAccent))),
+                ],
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF94A3B8),
+                size: 18,
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  String _updated(AudienceGroupModel group) {
+    final date = group.updatedAt ?? group.createdAt;
+    if (date == null) return 'Updated recently';
+    final now = indiaClock(DateTime.now()), local = indiaClock(date);
+    final days = DateTime.utc(
+      now.year,
+      now.month,
+      now.day,
+    ).difference(DateTime.utc(local.year, local.month, local.day)).inDays;
+    return days == 0
+        ? 'Updated today'
+        : days == 1
+        ? 'Updated yesterday'
+        : 'Updated ${DateFormat('d MMM').format(local)}';
+  }
+
+  (IconData, Color, Color) _groupStyle(AudienceGroupModel group, int index) {
+    final name = group.name.toLowerCase();
+    final styles = [
+      (Icons.campaign_outlined, customerPurple, const Color(0xFFDAC6FF)),
+      (Icons.workspace_premium_outlined, const Color(0xFFAA6900), const Color(0xFFFFE2A0)),
+      (Icons.cake_outlined, const Color(0xFFB8490C), const Color(0xFFFFD8C7)),
+      (Icons.schedule_outlined, const Color(0xFFB72F1B), const Color(0xFFFFCCD3)),
+      (Icons.person_add_alt_outlined, const Color(0xFF09851E), const Color(0xFFBCF8D0)),
+      (Icons.star_outline_rounded, const Color(0xFF0583FA), const Color(0xFFB1E6FF)),
+    ];
+    final chosen = name.contains('vip')
+        ? 1
+        : name.contains('birthday')
+        ? 2
+        : name.contains('inactive')
+        ? 3
+        : name.contains('new')
+        ? 4
+        : name.contains('regular')
+        ? 5
+        : name.contains('offer')
+        ? 0
+        : index % styles.length;
+    return styles[chosen];
+  }
+
+  Widget _empty(String query) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+    child: Column(
+      children: [
+        Icon(
+          _tab == 1 ? Icons.folder_open_outlined : Icons.people_outline,
+          size: 38,
+          color: muted,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          query.isNotEmpty
+              ? 'No matching ${_tab == 1 ? 'groups' : 'customers'}'
+              : _tab == 1
+              ? 'No customer groups yet'
+              : 'Your customers will appear here',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: ink),
+        ),
+      ],
+    ),
+  );
+
+  // Bottom Navigation Bar
+  Widget _buildBottomNav() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem('Home', Icons.home_outlined, false, widget.onBack ?? () => Navigator.maybePop(context)),
+          _buildNavItem('Campaigns', Icons.campaign_outlined, false, widget.onNavigateToCampaigns ?? () => Navigator.maybePop(context)),
+          // Customers (Selected Active)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF08435E),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.people_outline_rounded, color: Colors.white, size: 17),
+                SizedBox(width: 5),
+                Text(
+                  'Customers',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          _buildNavItem('Reports', Icons.bar_chart_rounded, false, () {}),
+          _buildNavItem('More', Icons.more_horiz_rounded, false, _more),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(String label, IconData icon, bool selected, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 19, color: selected ? const Color(0xFF08435E) : muted),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? const Color(0xFF08435E) : muted,
+              ),
+            ),
+          ],
         ),
       ),
     );

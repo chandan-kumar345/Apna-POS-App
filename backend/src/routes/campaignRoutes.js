@@ -17,6 +17,8 @@ function mobileRoute(handler) {
 }
 router.get('/mobile', mobileRoute(req => mobile.dashboard(req.businessId, req.query)));
 router.get('/mobile/options', mobileRoute(req => mobile.options(req.businessId)));
+router.get('/mobile/:id/performance', mobileRoute(req => mobile.performance(req.businessId, req.params.id)));
+router.post('/mobile/:id/audience', mobileRoute(req => mobile.followUp(req.businessId, req.params.id, req.body, req.user._id)));
 router.put('/mobile/:id', mobileRoute(req => mobile.save(req.businessId, req.params.id, req.body)));
 router.post('/mobile/:id/submit', mobileRoute(req => mobile.submit(req.businessId, req.params.id, req.body)));
 router.post('/mobile/:id/launch', mobileRoute(req => mobile.launch(req.businessId, req.params.id, req.body, req.user._id)));

@@ -50,6 +50,43 @@ async function approve() {
 const api = '/api/v1/campaigns/mobile';
 const validate = (payload = {}) => coupons.validateCoupon(businessId, { code: 'WEEKEND20', subtotal: 1000, orderType: 'takeaway', ...payload });
 
+test('performance counts actual POS and storefront orders once and excludes cancellations, refunds and other outlets', async () => {
+  await save(); await approve(); await launch(); await cron.processScheduledCampaignsJob();
+  const Order = require('../src/models/Order');
+  const base = { businessId, couponCode:'WEEKEND20', subtotal:500, totalAmount:400, orderType:'takeaway' };
+  await Order.create([
+    {...base,orderNumber:'POS-1'}, {...base,orderNumber:'OFF',status:'cancelled'},
+    {...base,orderNumber:'REF',paymentStatus:'refunded'}, {...base,orderNumber:'OTHER',businessId:oid()},
+  ]);
+  const payload = {businessId:String(businessId),orderNumber:'WEB-1', idempotencyKey:'web-1',couponCode:'weekend20',
+    discountAmount:100,subtotal:500,totalAmount:400, orderType:'delivery',items:[{name:'Pizza',productId:'pizza',price:500,quantity:1}]};
+  const url = '/api/v1/storefront/'+businessId+'/order';
+  await request(app).post(url).send(payload).expect(201);
+  await request(app).post(url).send(payload).expect(201);
+  const data = await service.performance(businessId,key);
+  expect(data.stats).toMatchObject({couponOrders:2,couponRevenue:800});
+});
+
+test('follow-up quotes deduplicate numbers and groups, queue once, and retain earlier receipts', async () => {
+  await save(); await approve(); await launch(); await cron.processScheduledCampaignsJob();
+  const first = { requestId:String(oid()), mode:'new',groupId:form.groupId,phones:['9898989898','+919898989898'],
+    confirmedOptIn:true,confirmedCount:1 };
+  expect(await service.followUp(businessId,key,{...first,preview:true},owner._id)).toMatchObject({count:1});
+  await service.followUp(businessId,key,first,owner._id);
+  await service.followUp(businessId,key,first,owner._id);
+  expect(transport.send).toHaveBeenCalledTimes(1);
+  transport.send.mockRejectedValueOnce(new Error('unreachable'));
+  await cron.processScheduledCampaignsJob();
+  const retry = {...first,requestId:String(oid()),mode:'failed'};
+  expect(await service.followUp(businessId,key,{...retry,preview:true},owner._id)).toMatchObject({count:1});
+  await service.followUp(businessId,key,retry,owner._id);
+  await cron.processScheduledCampaignsJob();
+  expect(transport.send).toHaveBeenCalledTimes(3);
+  const c = await Campaign.findById(key);
+  expect(c.audience.recipients.map(r => r.status)).toEqual(['sent','failed','sent']);
+  expect(c.cost.spentSoFar).toBeCloseTo(3.18);
+});
+
 test('image upload uses the authenticated restaurant folder and returns its public URL', async () => {
   const bytes = Buffer.from([255,216,255,217]);
   const store = jest.spyOn(storage,'uploadImage').mockResolvedValue('https://images.example.test/campaign.jpg');

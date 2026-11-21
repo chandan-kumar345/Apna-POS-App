@@ -12,6 +12,7 @@ router.get('/programs', (req, res, next) => loyaltyController.getPrograms(req, r
 router.get('/config', (req, res, next) => loyaltyController.getVisitConfig(req, res, next));
 router.post('/config', (req, res, next) => loyaltyController.saveVisitConfig(req, res, next));
 router.post('/programs', (req, res, next) => loyaltyController.updateProgram(req, res, next));
+router.put('/programs/:id/toggle', (req, res, next) => loyaltyController.toggleProgram(req, res, next));
 router.put('/programs/:id', (req, res, next) => loyaltyController.updateProgram(req, res, next));
 router.delete('/programs/:id', (req, res, next) => loyaltyController.deleteProgram(req, res, next));
 router.get('/performance', (req, res, next) => loyaltyController.getPerformance(req, res, next));

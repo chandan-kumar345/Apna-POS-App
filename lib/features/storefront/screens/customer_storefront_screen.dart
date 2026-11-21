@@ -337,6 +337,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StorefrontCheckoutFlowSheet(
+        orderType: _orderType,
         restaurant: _data!.restaurant,
         cartItems: _cartItems,
         allMenuItems: _data!.menuItems,

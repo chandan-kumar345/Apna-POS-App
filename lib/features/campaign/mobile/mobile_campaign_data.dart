@@ -263,6 +263,11 @@ class MobileCampaignDraft {
 class MobileCampaignApi {
   static const path = '/campaigns/mobile';
   final _client = ApiClient();
+  Future<CampaignJson> performance(String id) async =>
+      (await _client.get('$path/$id/performance'))['data'];
+
+  Future<CampaignJson> followUp(String id, CampaignJson payload) async =>
+      (await _client.postOnce('$path/$id/audience', data: payload))['data'];
   Future<void> setPaused(String id, bool pause) async {
     await _client.put('/campaigns/$id/${pause ? 'pause' : 'resume'}');
   }

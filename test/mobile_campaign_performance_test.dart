@@ -1,51 +1,70 @@
 import 'package:flutter/material.dart';
+import 'support/campaign_test_fonts.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:apna_pos/features/campaign/mobile/mobile_campaign_data.dart';
 import 'package:apna_pos/features/campaign/mobile/mobile_campaign_performance_screen.dart';
 
 CampaignJson _sampleWeekendPizzaCampaign() => {
-      'id': 'camp_pizza_1',
-      'name': 'Weekend Pizza Offer',
-      'status': 'completed',
-      'orderTypes': ['takeaway', 'delivery'],
-      'channel': {'channelType': 'business_whatsapp'},
-      'audience': {
-        'groupName': 'Loyal customers',
-        'recipientCount': 1240,
-      },
-      'rewardDetails': {
-        'campaignTitle': 'Weekend Pizza Offer',
-        'rewardType': 'percentage',
-        'discountAmount': 20,
-        'minSpendAmount': 499,
-        'maxCashbackCap': 150,
-        'description': 'Hi {{name}} 🍕\nEnjoy 20% OFF your next order.',
-      },
-      'couponSettings': {
-        'couponCode': 'WEEKEND20',
-        'expiryDate': '2026-11-30T23:59:00.000Z',
-      },
-      'schedule': {
-        'sentAt': '2026-11-20T12:30:00.000Z', // 6:00 PM IST
-      },
-      'template': {
-        'category': 'MARKETING',
-        'body': 'Hi {{name}} 🍕\nEnjoy 20% OFF your next order.',
-      },
-      'stats': {
-        'totalRecipients': 1240,
-        'messagesSent': 1240,
-        'delivered': 1180,
-        'read': 920,
-        'failed': 60,
-        'deliveryRate': 95.2,
-        'ordersCount': 86,
-        'totalRevenue': 51514.0,
-      },
-    };
+  'id': 'camp_pizza_1',
+  'name': 'Weekend Pizza Offer',
+  'status': 'completed',
+  'orderTypes': ['takeaway', 'delivery'],
+  'channel': {'channelType': 'business_whatsapp'},
+  'audience': {'groupName': 'Loyal customers', 'recipientCount': 1240},
+  'rewardDetails': {
+    'campaignTitle': 'Weekend Pizza Offer',
+    'rewardType': 'percentage',
+    'discountAmount': 20,
+    'minSpendAmount': 499,
+    'maxCashbackCap': 150,
+    'description': 'Hi {{name}} 🍕\nEnjoy 20% OFF your next order.',
+  },
+  'couponSettings': {
+    'couponCode': 'WEEKEND20',
+    'expiryDate': '2026-11-30T23:59:00.000Z',
+  },
+  'schedule': {
+    'sentAt': '2026-11-20T12:30:00.000Z', // 6:00 PM IST
+  },
+  'template': {
+    'category': 'MARKETING',
+    'body': 'Hi {{name}} 🍕\nEnjoy 20% OFF your next order.',
+  },
+  'stats': {
+    'totalRecipients': 1240,
+    'messagesSent': 1240,
+    'delivered': 1180,
+    'read': 920,
+    'failed': 60,
+    'deliveryRate': 95.2,
+    'couponOrders': 7,
+    'couponRevenue': 1234.5,
+  },
+};
+
+class _PerformanceApi extends MobileCampaignApi {
+  @override
+  Future<CampaignJson> performance(String id) async =>
+      _sampleWeekendPizzaCampaign();
+  @override
+  Future<CampaignOptions> options() async => CampaignOptions({
+    'groups': [
+      {'id': 'loyal', 'name': 'Loyal customers', 'count': 2},
+    ],
+  });
+  @override
+  Future<CampaignJson> followUp(String id, CampaignJson payload) async => {
+    'count': 2,
+    'totalAmount': 2.12,
+  };
+}
 
 void main() {
-  testWidgets('renders Campaign Performance Overview tab matching UI', (tester) async {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(loadCampaignTestFonts);
+  testWidgets('renders Campaign Performance Overview tab matching UI', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -57,9 +76,8 @@ void main() {
       MaterialApp(
         home: MobileCampaignPerformanceScreen(
           campaign: campaign,
-          options: CampaignOptions({
-            'businessName': 'Pizza 47',
-          }),
+          api: _PerformanceApi(),
+          options: CampaignOptions({'businessName': 'Pizza 47'}),
         ),
       ),
     );
@@ -95,9 +113,11 @@ void main() {
 
     // 5. Coupon stats
     expect(find.text('Coupon orders'), findsOneWidget);
-    expect(find.text('86'), findsOneWidget);
+    expect(find.text('7'), findsOneWidget);
     expect(find.text('Coupon revenue'), findsOneWidget);
-    expect(find.text('₹51,514'), findsOneWidget);
+    expect(find.text('₹1,234.5'), findsOneWidget);
+
+    expect(find.byTooltip('More options'), findsNothing);
 
     // 6. Link card
     expect(find.text('View customer delivery status'), findsOneWidget);
@@ -106,6 +126,22 @@ void main() {
     expect(find.text('Send to new customers'), findsOneWidget);
     expect(find.text('Resend'), findsOneWidget);
     expect(find.text('Preview'), findsOneWidget);
+    await tester.tap(find.text('Send to new customers'));
+    await tester.pumpAndSettle();
+    expect(find.text('Phone numbers'), findsOneWidget);
+    expect(find.text('Customer group'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '9876543210');
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Check audience'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2 recipients'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Resend'));
+    await tester.pumpAndSettle();
+    expect(find.text('Resend campaign'), findsOneWidget);
+    expect(find.text('Failed recipients only'), findsOneWidget);
   });
 
   testWidgets('renders Campaign Details tab matching UI', (tester) async {
@@ -120,6 +156,7 @@ void main() {
       MaterialApp(
         home: MobileCampaignPerformanceScreen(
           campaign: campaign,
+          api: _PerformanceApi(),
           initialTab: 2, // Details tab
         ),
       ),
@@ -159,7 +196,9 @@ void main() {
     expect(find.textContaining('Hi {{name}} 🍕'), findsOneWidget);
   });
 
-  testWidgets('switches to Customers tab when tapping link or pill', (tester) async {
+  testWidgets('switches to Customers tab when tapping link or pill', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -169,12 +208,16 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: MobileCampaignPerformanceScreen(campaign: campaign),
+        home: MobileCampaignPerformanceScreen(
+          campaign: campaign,
+          api: _PerformanceApi(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
 
     // Tap View customer delivery status
+    await tester.ensureVisible(find.text('View customer delivery status'));
     await tester.tap(find.text('View customer delivery status'));
     await tester.pumpAndSettle();
 

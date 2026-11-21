@@ -9,10 +9,11 @@ import '../models/storefront_model.dart';
 import '../services/customer_storefront_api_service.dart';
 import '../screens/customer_my_orders_screen.dart';
 import '../../../core/models/coupon_model.dart';
-import '../../../core/services/coupon_service.dart';
+import '../../../core/network/api_client.dart';
 
 class StorefrontCheckoutFlowSheet extends StatefulWidget {
   final RestaurantModel restaurant;
+  final OrderType orderType;
   final List<StorefrontCartItem> cartItems;
   final List<MenuItemModel> allMenuItems;
   final Function(StorefrontCartItem item, int newQty) onUpdateQuantity;
@@ -27,6 +28,7 @@ class StorefrontCheckoutFlowSheet extends StatefulWidget {
   const StorefrontCheckoutFlowSheet({
     super.key,
     required this.restaurant,
+    this.orderType = OrderType.delivery,
     required this.cartItems,
     required this.allMenuItems,
     required this.onUpdateQuantity,
@@ -65,6 +67,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
 
   // Step 3 Coupon
   String? _appliedCouponCode;
+  bool _verifiedCoupon = false;
   double _couponDiscount = 0.0;
 
   // Stream subscription for Step 10
@@ -798,9 +801,10 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
       tax: _taxesAndCharges,
       grandTotal: _grandTotal,
       discount: _couponDiscount,
+      couponCode: _verifiedCoupon ? _appliedCouponCode : null,
       deliveryInstructions: _deliveryInstructionsController.text.trim(),
       tableNumber: widget.tableCode,
-      orderType: _isTableOrder ? OrderType.dineIn : OrderType.delivery,
+      orderType: _isTableOrder ? OrderType.dineIn : widget.orderType,
     );
 
     final elapsed = stopwatch.elapsedMilliseconds;
@@ -1494,8 +1498,8 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     // 1. Load active coupons from CouponService or fallback list
     List<CouponModel> availableCoupons = [];
     try {
-      final res = await CouponService().getCoupons(status: 'active');
-      availableCoupons = res.coupons.where((c) => c.isActive && !c.isExpired).toList();
+      final res = await ApiClient().get('/storefront/${widget.restaurant.id}/coupons');
+      availableCoupons = [for (final c in res['data']) CouponModel.fromJson(c)];
     } catch (e) {
       debugPrint('[CheckoutSheet] getCoupons error: $e');
     }
@@ -1548,7 +1552,40 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (bottomCtx, setModalState) {
-            void applySpecificCoupon(CouponModel coupon) {
+            Future<void> applyVerified(String code, {VoidCallback? defaultOffer}) async {
+              try {
+                final response = await ApiClient().post('/storefront/${widget.restaurant.id}/coupon-quote', data: {
+                  'code': code, 'subtotal': _itemTotal,
+                  'customerPhone': _currentCustomer?.phone,
+                  'orderType': _isTableOrder ? 'dineIn' : widget.orderType.name,
+                  'cartItems': widget.cartItems.map((line) => {
+                    'productId': line.item.productId, 'price': line.unitPrice,
+                    'name': line.item.name, 'category': line.item.category, 'quantity': line.quantity,
+                  }).toList(),
+                });
+                if (!mounted || !sheetCtx.mounted) return;
+                final quote = response['data'];
+                if (quote['valid'] != true) {
+                  if (quote['allowDefaultOffer'] == true && defaultOffer != null) {
+                    defaultOffer();
+                    return;
+                  }
+                  _showSnackbar(quote['message'] ?? 'Coupon unavailable');
+                  return;
+                }
+                setState(() {
+                  _verifiedCoupon = true;
+                  _appliedCouponCode = quote['code'];
+                  _couponDiscount = (quote['discountAmount'] as num).toDouble();
+                });
+                Navigator.pop(sheetCtx);
+                _showSnackbar('Coupon applied');
+              } catch (e) {
+                if (mounted) _showSnackbar('Could not check this coupon. Please retry.');
+              }
+            }
+
+            void applyDefaultOffer(CouponModel coupon) {
               if (_itemTotal < coupon.minCartAmount) {
                 final diff = (coupon.minCartAmount - _itemTotal).toStringAsFixed(0);
                 Navigator.of(sheetCtx).pop();
@@ -1568,11 +1605,17 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
 
               setState(() {
                 _appliedCouponCode = coupon.code;
+                _verifiedCoupon = false;
                 _couponDiscount = discount;
               });
 
               Navigator.of(sheetCtx).pop();
               _showSnackbar('Coupon ${coupon.code} applied! Saved ₹${discount.toStringAsFixed(0)}');
+            }
+
+            void applySpecificCoupon(CouponModel coupon) {
+              final isDefault = const {'welcome_50','chef_20','festive_100'}.contains(coupon.id);
+              applyVerified(coupon.code, defaultOffer: isDefault ? () => applyDefaultOffer(coupon) : null);
             }
 
             void applyEnteredCode() async {
@@ -1600,30 +1643,7 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
                 return;
               }
 
-              // Validate via CouponService
-              final val = await CouponService().validateCoupon(
-                code: code,
-                cartSubtotal: _itemTotal,
-                orderType: _isTableOrder ? 'dine_in' : 'delivery',
-              );
-
-              if (val.valid) {
-                setState(() {
-                  _appliedCouponCode = val.code ?? code;
-                  _couponDiscount = val.discountAmount;
-                });
-                if (Navigator.of(sheetCtx).canPop()) {
-                  Navigator.of(sheetCtx).pop();
-                }
-                _showSnackbar(val.message ?? 'Coupon applied!');
-              } else {
-                ScaffoldMessenger.of(sheetCtx).showSnackBar(
-                  SnackBar(
-                    content: Text(val.message ?? 'Invalid coupon code'),
-                    backgroundColor: const Color(0xFFEF4444),
-                  ),
-                );
-              }
+              await applyVerified(code);
             }
 
             return Container(

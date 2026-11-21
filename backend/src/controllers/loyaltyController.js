@@ -152,6 +152,22 @@ class LoyaltyController {
     }
   }
 
+  async toggleProgram(req, res, next) {
+    try {
+      const businessId = this._getBusinessId(req);
+      const { id } = req.params;
+      const { isActive } = req.body;
+      const result = await loyaltyService.toggleProgramStatus(businessId, id, isActive);
+      res.json({
+        success: true,
+        message: `Program ${result.isActive ? 'activated' : 'deactivated'} successfully`,
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async deleteProgram(req, res, next) {
     try {
       const businessId = this._getBusinessId(req);

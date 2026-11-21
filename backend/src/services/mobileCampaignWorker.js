@@ -90,13 +90,16 @@ async function run(campaign) {
   const release = (status, note, values = {}) => Campaign.updateOne(lock, { $set: {
     status, 'mobileStudio.note': note, 'mobileStudio.worker': null, ...values,
   } });
-  let dispatchStarted = c.cost.spentSoFar > 0 || c.audience.recipients.some(r => r.status !== 'pending');
+  const batch = c.audience.recipients.slice(c.mobileStudio.batchStart || 0);
+  const priorSpend = c.mobileStudio.batchPriorSpend || 0;
+  const batchKey = c.mobileStudio.batchKey;
+  let dispatchStarted = c.cost.spentSoFar > priorSpend || batch.some(r => r.status !== 'pending');
   try {
     if (c.couponSettings.expiryDate <= new Date()) throw new Error('The offer has expired.');
     const credentials = await transport.account(c);
     const approval = await transport.approval(c, credentials, false);
     if (approval !== 'APPROVED') {
-      return await release(dispatchStarted ? 'failed' : 'draft', 'Meta approval changed. Review the template again.',
+      return await release(dispatchStarted || batchKey ? 'failed' : 'draft', 'Meta approval changed. Review the template again.',
         { 'template.metaStatus': 'REJECTED', 'mobileStudio.sendAuthorizedAt': null });
     }
     if (c.schedule.mode === 'later' && c.schedule.scheduledAt > new Date()) {
@@ -105,13 +108,13 @@ async function run(campaign) {
     const coupon = await reserveCoupon(c);
     await wallet.getOrCreateWallet(c.businessId);
     await wallet.deductWalletAtomic({ businessId: c.businessId, amount: c.cost.totalAmount, category: 'CAMPAIGN_DISPATCH',
-      referenceType: 'CAMPAIGN_DISPATCH', referenceId: c.campaignId, idempotencyKey: 'campaign_hold_' + c._id, description: c.name });
+      referenceType: 'CAMPAIGN_DISPATCH', referenceId: c.campaignId, idempotencyKey: 'campaign_hold_' + c._id + (batchKey ? '_' + batchKey : ''), description: c.name });
     dispatchStarted = true;
-    await Campaign.updateOne(lock, { $set: { 'template.metaStatus': 'APPROVED', 'cost.spentSoFar': c.cost.totalAmount,
+    await Campaign.updateOne(lock, { $set: { 'template.metaStatus': 'APPROVED', 'cost.spentSoFar': priorSpend + c.cost.totalAmount,
       'cost.remaining': 0, 'mobileStudio.note': 'Sending messages', couponId: coupon?._id || null } });
     if (coupon) await Coupon.updateOne({ businessId: c.businessId, _id: coupon._id }, { $set: { isActive: true } });
 
-    for (const recipient of c.audience.recipients) {
+    for (const recipient of batch) {
       if (recipient.status !== 'pending') continue;
       if (c.couponSettings.expiryDate <= new Date()) break;
       // Claim before I/O. After a worker dies, an uncertain send is never repeated.
@@ -142,6 +145,14 @@ async function run(campaign) {
   } catch (err) {
     if (!dispatchStarted && (err.transient || ['TypeError', 'TimeoutError'].includes(err.name))) {
       return await release('scheduled', 'Waiting to reconnect to WhatsApp', { 'mobileStudio.nextCheckAt': new Date(Date.now() + 5 * 60000) });
+    }
+    if (batchKey) {
+      await Campaign.updateOne(lock, { $set: { 'audience.recipients.$[r].status': 'failed',
+        'audience.recipients.$[r].error': err.message } }, { arrayFilters: [{ 'r.status': 'pending' }] });
+      await recount(lock);
+      const previouslySent = c.audience.recipients.slice(0, c.mobileStudio.batchStart)
+        .some(r => ['sent', 'delivered', 'read'].includes(r.status));
+      return await release(previouslySent ? 'completed' : 'failed', err.message);
     }
     if (!dispatchStarted) {
       // A failed wallet check can leave an inactive reservation. A revised draft may use another code.

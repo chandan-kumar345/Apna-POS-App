@@ -36,6 +36,10 @@ class StorefrontOrderService {
       'subtotal': order.subtotal,
       'taxAmount': order.taxAmount,
       'discountAmount': order.discountAmount,
+      if (order.couponCode?.isNotEmpty == true) ...{
+        'couponCode': order.couponCode,
+        'couponDiscount': order.couponDiscount,
+      },
       'deliveryCharge': order.deliveryCharge,
       'totalAmount': order.totalAmount,
       'paymentMethod': order.paymentMethod,

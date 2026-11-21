@@ -40,6 +40,21 @@ const customerLoyaltySchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    cashbackBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    totalCashbackEarned: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    totalCashbackRedeemed: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     totalPointsEarned: {
       type: Number,
       default: 0,

@@ -110,6 +110,7 @@ class AudienceGroupModel {
   final int totalNumbers;
   final List<ContactNumberModel> numbers;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   const AudienceGroupModel({
     required this.id,
@@ -122,6 +123,7 @@ class AudienceGroupModel {
     this.totalNumbers = 0,
     this.numbers = const [],
     this.createdAt,
+    this.updatedAt,
   });
 
   factory AudienceGroupModel.fromJson(Map<String, dynamic> json) {
@@ -138,6 +140,7 @@ class AudienceGroupModel {
       totalNumbers: total,
       numbers: rawNumbers.map((n) => ContactNumberModel.fromJson(Map<String, dynamic>.from(n as Map))).toList(),
       createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt'].toString()) : null,
+      updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt'].toString()) : null,
     );
   }
 

@@ -358,6 +358,18 @@ class StorefrontController {
         };
       });
       if (!items.length) throw ApiError.badRequest('Add at least one product to place an order');
+      let couponFields = {};
+      if (orderPayload.couponCode) {
+        const quote = await require('../services/couponService').validateCoupon(businessId, {
+          code: String(orderPayload.couponCode), orderType, cartItems: items,
+          subtotal: orderPayload.subtotal, customerPhone: orderPayload.customerPhone,
+        });
+        if (!quote.valid) throw ApiError.badRequest(quote.message);
+        if (Math.abs(quote.discountAmount - Number(orderPayload.discountAmount || 0)) > 0.01) {
+          throw ApiError.badRequest('The coupon discount changed. Apply the coupon again.');
+        }
+        couponFields = { couponCode: quote.coupon.code, couponDiscount: quote.discountAmount };
+      }
       const orderNumber = String(orderPayload.orderNumber || '').trim() || `ONL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
       const order = new Order({
         ...(receiptId ? { _id: receiptId } : {}),
@@ -370,6 +382,8 @@ class StorefrontController {
         status: 'pending',
         items,
         subtotal: orderPayload.subtotal || 0,
+        discountAmount: orderPayload.discountAmount || 0,
+        ...couponFields,
         taxAmount: orderPayload.taxAmount || 0,
         deliveryCharge: isDineIn ? 0 : (orderPayload.deliveryCharge || 0),
         totalAmount: orderPayload.totalAmount || 0,

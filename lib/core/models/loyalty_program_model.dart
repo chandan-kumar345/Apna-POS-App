@@ -113,30 +113,116 @@ class LoyaltyProgramModel {
   final bool isActive;
   final int orderIndex;
 
+  // Additional cashback program fields
+  final String cashbackType; // 'percentage' or 'fixed'
+  final double cashbackPercentage;
+  final double cashbackAmount;
+  final double minimumOrder;
+  final double maximumCashback;
+  final String validity;
+  final String startedDate;
+  final String eligibleCustomers;
+  final List<String> orderTypes;
+  final String messageTemplate;
+  final int ordersCount;
+  final double cashbackGiven;
+  final double redemptionRate;
+  final int membersCount;
+
   LoyaltyProgramModel({
     required this.id,
     required this.type,
     required this.title,
     this.description = 'Get rewarded on every purchase',
     required this.earningRule,
-    this.rewardCurrency = 'Cookie',
+    this.rewardCurrency = '₹',
     this.milestones = const [],
     this.cashbackDetails,
-    this.gradientColors = const ['#580B3B', '#8E1449'],
+    this.gradientColors = const ['#08435E', '#166E8D'],
     this.isActive = true,
     this.orderIndex = 0,
+    this.cashbackType = 'percentage',
+    this.cashbackPercentage = 5.0,
+    this.cashbackAmount = 50.0,
+    this.minimumOrder = 499.0,
+    this.maximumCashback = 150.0,
+    this.validity = '01 Nov 2026 – 31 Dec 2026',
+    this.startedDate = '01 Nov 2026',
+    this.eligibleCustomers = 'All Customers',
+    this.orderTypes = const ['Dine-In', 'Takeaway', 'Delivery'],
+    this.messageTemplate = '',
+    this.ordersCount = 2860,
+    this.cashbackGiven = 124560.0,
+    this.redemptionRate = 78.4,
+    this.membersCount = 3420,
   });
+
+  LoyaltyProgramModel copyWith({
+    String? id,
+    LoyaltyType? type,
+    String? title,
+    String? description,
+    String? earningRule,
+    String? rewardCurrency,
+    List<RewardMilestoneModel>? milestones,
+    CashbackDetailsModel? cashbackDetails,
+    List<String>? gradientColors,
+    bool? isActive,
+    int? orderIndex,
+    String? cashbackType,
+    double? cashbackPercentage,
+    double? cashbackAmount,
+    double? minimumOrder,
+    double? maximumCashback,
+    String? validity,
+    String? startedDate,
+    String? eligibleCustomers,
+    List<String>? orderTypes,
+    String? messageTemplate,
+    int? ordersCount,
+    double? cashbackGiven,
+    double? redemptionRate,
+    int? membersCount,
+  }) {
+    return LoyaltyProgramModel(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      earningRule: earningRule ?? this.earningRule,
+      rewardCurrency: rewardCurrency ?? this.rewardCurrency,
+      milestones: milestones ?? this.milestones,
+      cashbackDetails: cashbackDetails ?? this.cashbackDetails,
+      gradientColors: gradientColors ?? this.gradientColors,
+      isActive: isActive ?? this.isActive,
+      orderIndex: orderIndex ?? this.orderIndex,
+      cashbackType: cashbackType ?? this.cashbackType,
+      cashbackPercentage: cashbackPercentage ?? this.cashbackPercentage,
+      cashbackAmount: cashbackAmount ?? this.cashbackAmount,
+      minimumOrder: minimumOrder ?? this.minimumOrder,
+      maximumCashback: maximumCashback ?? this.maximumCashback,
+      validity: validity ?? this.validity,
+      startedDate: startedDate ?? this.startedDate,
+      eligibleCustomers: eligibleCustomers ?? this.eligibleCustomers,
+      orderTypes: orderTypes ?? this.orderTypes,
+      messageTemplate: messageTemplate ?? this.messageTemplate,
+      ordersCount: ordersCount ?? this.ordersCount,
+      cashbackGiven: cashbackGiven ?? this.cashbackGiven,
+      redemptionRate: redemptionRate ?? this.redemptionRate,
+      membersCount: membersCount ?? this.membersCount,
+    );
+  }
 
   List<Color> get parsedGradientColors {
     if (gradientColors.isEmpty) {
-      return [const Color(0xFF580B3B), const Color(0xFF8E1449)];
+      return [const Color(0xFF08435E), const Color(0xFF166E8D)];
     }
     return gradientColors.map((hex) {
       try {
         final clean = hex.replaceAll('#', '');
         return Color(int.parse('FF$clean', radix: 16));
       } catch (_) {
-        return const Color(0xFF580B3B);
+        return const Color(0xFF08435E);
       }
     }).toList();
   }
@@ -159,6 +245,22 @@ class LoyaltyProgramModel {
         'gradientColors': gradientColors,
         'isActive': isActive,
         'orderIndex': orderIndex,
+        'cashbackType': cashbackType,
+        'cashbackPercentage': cashbackPercentage,
+        'cashbackAmount': cashbackAmount,
+        'minimumOrder': minimumOrder,
+        'maximumCashback': maximumCashback,
+        'validity': validity,
+        'startedDate': startedDate,
+        'eligibleCustomers': eligibleCustomers,
+        'orderTypes': orderTypes,
+        'messageTemplate': messageTemplate,
+        'stats': {
+          'ordersCount': ordersCount,
+          'cashbackGiven': cashbackGiven,
+          'redemptionRate': redemptionRate,
+          'membersCount': membersCount,
+        },
       };
 
   factory LoyaltyProgramModel.fromJson(Map<String, dynamic> json) {
@@ -171,7 +273,7 @@ class LoyaltyProgramModel {
     } else if (rawType.contains('cashback')) {
       parsedType = LoyaltyType.cashback;
     } else {
-      parsedType = LoyaltyType.custom;
+      parsedType = LoyaltyType.cashback;
     }
 
     final rawMilestones = json['milestones'] as List?;
@@ -192,24 +294,41 @@ class LoyaltyProgramModel {
     final rawColors = json['gradientColors'] as List?;
     final colorsList = rawColors != null
         ? rawColors.map((c) => c.toString()).toList()
-        : (parsedType == LoyaltyType.visitMade
-            ? ['#3A002A', '#8E1449']
-            : parsedType == LoyaltyType.amountSpent
-                ? ['#6B0505', '#C81A1A']
-                : ['#0A425C', '#1E3A8A']);
+        : ['#08435E', '#166E8D'];
+
+    final rawStats = json['stats'] as Map<String, dynamic>?;
+
+    final rawOrderTypes = json['orderTypes'] as List?;
+    final parsedOrderTypes = rawOrderTypes != null
+        ? rawOrderTypes.map((e) => e.toString()).toList()
+        : const ['Dine-In', 'Takeaway', 'Delivery'];
 
     return LoyaltyProgramModel(
       id: json['id']?.toString() ?? '',
       type: parsedType,
-      title: json['title']?.toString() ?? (parsedType == LoyaltyType.visitMade ? 'Visit Made' : parsedType == LoyaltyType.amountSpent ? 'Amount Spent' : 'Cashback'),
-      description: json['description']?.toString() ?? (parsedType == LoyaltyType.cashback ? 'Get rewarded on every step' : 'Get rewarded on every purchase'),
+      title: json['title']?.toString() ?? (parsedType == LoyaltyType.visitMade ? 'Visit Made' : 'Cashback Program'),
+      description: json['description']?.toString() ?? 'Get rewarded on every purchase',
       earningRule: json['earningRule']?.toString() ?? '',
-      rewardCurrency: json['rewardCurrency']?.toString() ?? 'Cookie',
+      rewardCurrency: json['rewardCurrency']?.toString() ?? '₹',
       milestones: milestonesList,
       cashbackDetails: cbDetails,
       gradientColors: colorsList,
-      isActive: json['isActive'] != false,
+      isActive: json['isActive'] != false && json['status'] != 'inactive',
       orderIndex: (json['orderIndex'] as num?)?.toInt() ?? 0,
+      cashbackType: json['cashbackType']?.toString() ?? 'percentage',
+      cashbackPercentage: (json['cashbackPercentage'] as num?)?.toDouble() ?? 5.0,
+      cashbackAmount: (json['cashbackAmount'] as num?)?.toDouble() ?? 50.0,
+      minimumOrder: (json['minimumOrder'] as num?)?.toDouble() ?? 499.0,
+      maximumCashback: (json['maximumCashback'] as num?)?.toDouble() ?? 150.0,
+      validity: json['validity']?.toString() ?? '01 Nov 2026 – 31 Dec 2026',
+      startedDate: json['startedDate']?.toString() ?? '01 Nov 2026',
+      eligibleCustomers: json['eligibleCustomers']?.toString() ?? 'All Customers',
+      orderTypes: parsedOrderTypes,
+      messageTemplate: json['messageTemplate']?.toString() ?? '',
+      ordersCount: (rawStats?['ordersCount'] as num?)?.toInt() ?? (json['ordersCount'] as num?)?.toInt() ?? 2860,
+      cashbackGiven: (rawStats?['cashbackGiven'] as num?)?.toDouble() ?? (json['cashbackGiven'] as num?)?.toDouble() ?? 124560.0,
+      redemptionRate: (rawStats?['redemptionRate'] as num?)?.toDouble() ?? (json['redemptionRate'] as num?)?.toDouble() ?? 78.4,
+      membersCount: (rawStats?['membersCount'] as num?)?.toInt() ?? (json['membersCount'] as num?)?.toInt() ?? 3420,
     );
   }
 }
@@ -218,11 +337,17 @@ class LoyaltyBrandingModel {
   final String companyName;
   final String companyLogo;
   final List<LoyaltyProgramModel> programs;
+  final int members;
+  final double totalCashback;
+  final int redemptions;
 
   LoyaltyBrandingModel({
     required this.companyName,
     required this.companyLogo,
     required this.programs,
+    this.members = 3420,
+    this.totalCashback = 124560.0,
+    this.redemptions = 2860,
   });
 
   factory LoyaltyBrandingModel.fromJson(Map<String, dynamic> json) {
@@ -234,10 +359,15 @@ class LoyaltyBrandingModel {
             .toList()
         : <LoyaltyProgramModel>[];
 
+    final metrics = json['dashboardMetrics'] as Map<String, dynamic>?;
+
     return LoyaltyBrandingModel(
       companyName: json['companyName']?.toString() ?? '',
       companyLogo: json['companyLogo']?.toString() ?? '',
       programs: programsList,
+      members: (metrics?['members'] as num?)?.toInt() ?? (json['members'] as num?)?.toInt() ?? 3420,
+      totalCashback: (metrics?['totalCashback'] as num?)?.toDouble() ?? (json['totalCashback'] as num?)?.toDouble() ?? 124560.0,
+      redemptions: (metrics?['redemptions'] as num?)?.toInt() ?? (json['redemptions'] as num?)?.toInt() ?? 2860,
     );
   }
 }

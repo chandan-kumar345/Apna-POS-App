@@ -46,6 +46,9 @@ dependencies:
   http: ^1.2.2
   file_picker: ^8.1.4
   csv: ^8.0.0
+  archive: ^4.2.0
+  xml: ^6.6.1
+  excel2003: ^1.0.0
   google_sign_in: ^6.2.1
   path_provider: ^2.1.6
   flutter_secure_storage: ^10.3.1

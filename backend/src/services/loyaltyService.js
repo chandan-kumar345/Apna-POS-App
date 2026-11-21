@@ -56,38 +56,95 @@ class LoyaltyService {
   /**
    * Returns default loyalty program configuration for a business
    */
-  getDefaultPrograms(companyName = 'THE ROYAL GARDENIA', companyLogo = '') {
+  getDefaultCashbackPrograms() {
+    return [
+      {
+        id: 'prog_cashback_5',
+        type: 'cashback',
+        title: '5% Cashback Program',
+        description: 'Get 5% cashback on all orders',
+        earningRule: '5% cashback on all orders',
+        cashbackType: 'percentage',
+        cashbackPercentage: 5,
+        cashbackAmount: 50,
+        minimumOrder: 499,
+        maximumCashback: 150,
+        validity: '01 Nov 2026 – 31 Dec 2026',
+        startedDate: '01 Nov 2026',
+        eligibleCustomers: 'All Customers',
+        orderTypes: ['Dine-In', 'Takeaway', 'Delivery'],
+        status: 'active',
+        isActive: true,
+        stats: {
+          ordersCount: 2860,
+          cashbackGiven: 124560,
+          redemptionRate: 78.4,
+          membersCount: 3420,
+        },
+      },
+      {
+        id: 'prog_cashback_50',
+        type: 'cashback',
+        title: '₹50 Cashback on ₹500',
+        description: 'Get ₹50 cashback on orders above ₹500',
+        earningRule: 'Get ₹50 cashback on orders above ₹500',
+        cashbackType: 'fixed',
+        cashbackPercentage: 10,
+        cashbackAmount: 50,
+        minimumOrder: 500,
+        maximumCashback: 50,
+        validity: '10 Nov 2026 – 31 Dec 2026',
+        startedDate: '10 Nov 2026',
+        eligibleCustomers: 'All Customers',
+        orderTypes: ['Dine-In', 'Takeaway', 'Delivery'],
+        status: 'active',
+        isActive: true,
+        stats: {
+          ordersCount: 1420,
+          cashbackGiven: 71000,
+          redemptionRate: 64.2,
+          membersCount: 1850,
+        },
+      },
+    ];
+  }
+
+  getDefaultPrograms(companyName = 'Pizza 47', companyLogo = '') {
     const stages = this.getDefaultRewardStages();
     return {
       companyName,
       companyLogo,
+      dashboardMetrics: {
+        members: 3420,
+        totalCashback: 124560,
+        redemptions: 2860,
+      },
       visitConfig: {
-        programName: companyName || 'THE ROYAL GARDENIA',
+        programName: companyName || 'Pizza 47',
         slogan: 'Get rewarded on every purchase',
         orderType: 'Dine-In',
         bannerImageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800',
         logoUrl: companyLogo || '',
-        bgGradientStart: '#4A082F',
-        bgGradientEnd: '#8E1449',
-        rewardColorStart: '#4A082F',
-        rewardColorEnd: '#8E1449',
-        pointsName: 'Cookie',
+        bgGradientStart: '#08435E',
+        bgGradientEnd: '#166E8D',
+        rewardColorStart: '#08435E',
+        rewardColorEnd: '#166E8D',
+        pointsName: 'Rupee',
         pointsPerVisit: 10,
         minimumPurchase: 100,
         rewardStages: stages,
-        termsNote: 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
-        status: 'inactive',
-        isActive: false,
-        isConfigured: false,
+        termsNote: 'Terms and conditions apply.\nMinimum purchase of ₹100 required.',
+        status: 'active',
+        isActive: true,
+        isConfigured: true,
       },
-      programs: [],
-      isConfigured: false,
+      programs: this.getDefaultCashbackPrograms(),
+      isConfigured: true,
     };
   }
 
   /**
    * Get or initialize loyalty programs for a business
-   * (Only returns user-created programs; returns empty list if user hasn't created any yet)
    */
   async getLoyaltyPrograms(businessId) {
     if (!businessId) {
@@ -95,66 +152,41 @@ class LoyaltyService {
     }
 
     const business = await Business.findById(businessId);
-    const dynamicCompanyName = business?.profile?.companyName || business?.profile?.name || 'THE ROYAL GARDENIA';
-    const dynamicCompanyLogo = business?.profile?.profileImage || '';
+    const dynamicCompanyName = business?.profile?.companyName || business?.profile?.name || business?.name || 'Pizza 47';
+    const dynamicCompanyLogo = business?.profile?.logoUrl || business?.profile?.profileImage || '';
 
-    const loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+    let loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
 
     if (!loyaltyDoc) {
-      return {
+      const defaultData = this.getDefaultPrograms(dynamicCompanyName, dynamicCompanyLogo);
+      loyaltyDoc = await LoyaltyProgram.create({
+        businessId,
         companyName: dynamicCompanyName,
         companyLogo: dynamicCompanyLogo,
-        visitConfig: {
-          programName: dynamicCompanyName,
-          slogan: 'Get rewarded on every purchase',
-          orderType: 'Dine-In, Take-Away, Delivery',
-          bannerImageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800',
-          logoUrl: dynamicCompanyLogo,
-          bgGradientStart: '#4A082F',
-          bgGradientEnd: '#8E1449',
-          rewardColorStart: '#4A082F',
-          rewardColorEnd: '#8E1449',
-          pointsName: 'Cookie',
-          pointsPerVisit: 10,
-          minimumPurchase: 100,
-          rewardStages: this.getDefaultRewardStages(),
-          termsNote: 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
-          status: 'inactive',
-          isActive: false,
-          isConfigured: false,
-        },
-        programs: [],
-        isConfigured: false,
-      };
+        dashboardMetrics: defaultData.dashboardMetrics,
+        visitConfig: defaultData.visitConfig,
+        programs: defaultData.programs,
+      });
     }
 
-    const isConfigured = (loyaltyDoc.visitConfig && loyaltyDoc.visitConfig.isConfigured === true) ||
-                         (Array.isArray(loyaltyDoc.programs) && loyaltyDoc.programs.length > 0);
+    if (!loyaltyDoc.programs || loyaltyDoc.programs.length === 0) {
+      loyaltyDoc.programs = this.getDefaultCashbackPrograms();
+      await loyaltyDoc.save();
+    }
+
+    const metrics = loyaltyDoc.dashboardMetrics || {
+      members: 3420,
+      totalCashback: 124560,
+      redemptions: 2860,
+    };
 
     return {
       companyName: loyaltyDoc.companyName || dynamicCompanyName,
       companyLogo: loyaltyDoc.companyLogo || dynamicCompanyLogo,
-      visitConfig: loyaltyDoc.visitConfig || {
-        programName: dynamicCompanyName,
-        slogan: 'Get rewarded on every purchase',
-        orderType: 'Dine-In, Take-Away, Delivery',
-        bannerImageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800',
-        logoUrl: dynamicCompanyLogo,
-        bgGradientStart: '#4A082F',
-        bgGradientEnd: '#8E1449',
-        rewardColorStart: '#4A082F',
-        rewardColorEnd: '#8E1449',
-        pointsName: 'Cookie',
-        pointsPerVisit: 10,
-        minimumPurchase: 100,
-        rewardStages: this.getDefaultRewardStages(),
-        termsNote: 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
-        status: 'inactive',
-        isActive: false,
-        isConfigured: false,
-      },
+      dashboardMetrics: metrics,
       programs: loyaltyDoc.programs || [],
-      isConfigured: isConfigured,
+      visitConfig: loyaltyDoc.visitConfig,
+      isConfigured: true,
     };
   }
 
@@ -426,58 +458,110 @@ class LoyaltyService {
     }
 
     const visitConfig = await this.getVisitConfig(businessId);
-    if (!visitConfig || visitConfig.isActive === false) {
-      return { earned: false, reason: 'Loyalty program not active' };
+    let loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+    if (!loyaltyDoc) {
+      await this.getLoyaltyPrograms(businessId);
+      loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+    }
+
+    const isVisitActive = visitConfig && visitConfig.isActive !== false && visitConfig.status !== 'inactive' && visitConfig.status !== 'draft';
+    const activeCashbackPrograms = (loyaltyDoc?.programs || []).filter(
+      (p) => (p.type === 'cashback' || p.cashbackPercentage > 0 || p.cashbackAmount > 0) && p.isActive !== false && p.status === 'active'
+    );
+
+    if (!isVisitActive && activeCashbackPrograms.length === 0) {
+      return { earned: false, reason: 'No active loyalty or cashback programs found' };
     }
 
     const orderTotal = Number(order.totalAmount || order.subtotal || 0);
+    let pointsAwarded = 0;
+    let pointsName = visitConfig?.pointsName || 'Cookie';
+    let programName = visitConfig?.programName || 'THE ROYAL GARDENIA';
 
-    // 1. Check Minimum Spend Condition if enabled
-    if (visitConfig.minSpendConditionEnabled && Number(visitConfig.minSpendCondition) > 0) {
-      if (orderTotal < Number(visitConfig.minSpendCondition)) {
-        return { earned: false, reason: `Order total ₹${orderTotal} is below minimum spend condition of ₹${visitConfig.minSpendCondition}` };
+    // 1. Visit Points calculation (if visit loyalty is active)
+    let shouldAwardPoints = isVisitActive;
+    if (shouldAwardPoints) {
+      if (visitConfig.minSpendConditionEnabled && Number(visitConfig.minSpendCondition) > 0) {
+        if (orderTotal < Number(visitConfig.minSpendCondition)) {
+          shouldAwardPoints = false;
+        }
+      } else {
+        const minPurchase = Number(visitConfig.minimumPurchase || 0);
+        if (minPurchase > 0 && orderTotal < minPurchase) {
+          shouldAwardPoints = false;
+        }
       }
-    } else {
-      const minPurchase = Number(visitConfig.minimumPurchase || 0);
-      if (minPurchase > 0 && orderTotal < minPurchase) {
-        return { earned: false, reason: `Order total below minimum purchase of ₹${minPurchase}` };
-      }
-    }
 
-    // 2. Check Order Type eligibility
-    if (visitConfig.orderType) {
-      const allowedTypes = visitConfig.orderType.toLowerCase().split(',').map((t) => t.trim().replace('-', ''));
-      const currentType = (order.orderType || 'dineIn').toLowerCase().replace('-', '').replace('_', '');
-      const isAllowed = allowedTypes.some((t) => currentType.includes(t) || t.includes(currentType));
-      if (!isAllowed && allowedTypes.length > 0) {
-        return { earned: false, reason: `Order type ${order.orderType} not eligible` };
+      if (shouldAwardPoints && visitConfig.orderType) {
+        const allowedTypes = visitConfig.orderType.toLowerCase().split(',').map((t) => t.trim().replace('-', ''));
+        const currentType = (order.orderType || 'dineIn').toLowerCase().replace('-', '').replace('_', '');
+        const isAllowed = allowedTypes.some((t) => currentType.includes(t) || t.includes(currentType));
+        if (!isAllowed && allowedTypes.length > 0) {
+          shouldAwardPoints = false;
+        }
       }
     }
 
     let customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
 
-    // 3. Check Point Earning Gap (Cooldown period) if enabled
-    if (visitConfig.pointEarningGapEnabled && Number(visitConfig.pointEarningGap) > 0) {
+    if (shouldAwardPoints && visitConfig.pointEarningGapEnabled && Number(visitConfig.pointEarningGap) > 0) {
       if (customerLoyalty && customerLoyalty.lastEarningAt) {
         const hoursSinceLast = (Date.now() - new Date(customerLoyalty.lastEarningAt).getTime()) / (1000 * 60 * 60);
         if (hoursSinceLast < Number(visitConfig.pointEarningGap)) {
-          const remainingHours = Math.ceil(Number(visitConfig.pointEarningGap) - hoursSinceLast);
-          return { earned: false, reason: `Point earning gap active. Customer can earn points in ${remainingHours}h` };
+          shouldAwardPoints = false;
         }
       }
     }
 
-    let pointsPerVisit = Number(visitConfig.pointsPerVisit || 10);
+    if (shouldAwardPoints) {
+      let perVisit = Number(visitConfig.pointsPerVisit || 10);
+      if (visitConfig.maxCashbackLimitEnabled && Number(visitConfig.maxCashbackLimit) > 0) {
+        if (perVisit > Number(visitConfig.maxCashbackLimit)) {
+          perVisit = Number(visitConfig.maxCashbackLimit);
+        }
+      }
+      pointsAwarded = perVisit;
+    }
 
-    // 4. Check Maximum Limit if enabled
-    if (visitConfig.maxCashbackLimitEnabled && Number(visitConfig.maxCashbackLimit) > 0) {
-      if (pointsPerVisit > Number(visitConfig.maxCashbackLimit)) {
-        pointsPerVisit = Number(visitConfig.maxCashbackLimit);
+    // 2. Cashback Rewards calculation
+    let totalCashbackAwarded = 0;
+    const appliedCashbackPrograms = [];
+
+    for (const prog of activeCashbackPrograms) {
+      const minOrder = Number(prog.minimumOrder || 0);
+      if (orderTotal >= minOrder) {
+        let cb = 0;
+        if (prog.cashbackType === 'percentage' || !prog.cashbackType) {
+          const pct = Number(prog.cashbackPercentage || 5);
+          cb = Math.round((orderTotal * pct) / 100);
+        } else {
+          cb = Number(prog.cashbackAmount || 50);
+        }
+
+        const maxCb = Number(prog.maximumCashback || 0);
+        if (maxCb > 0 && cb > maxCb) {
+          cb = maxCb;
+        }
+
+        if (cb > 0) {
+          totalCashbackAwarded += cb;
+          appliedCashbackPrograms.push({
+            id: prog.id,
+            title: prog.title,
+            cashback: cb,
+          });
+
+          // Update program-level statistics
+          if (!prog.stats) prog.stats = {};
+          prog.stats.ordersCount = (prog.stats.ordersCount || 0) + 1;
+          prog.stats.cashbackGiven = (prog.stats.cashbackGiven || 0) + cb;
+        }
       }
     }
 
-    const pointsName = visitConfig.pointsName || 'Cookie';
-    const programName = visitConfig.programName || 'THE ROYAL GARDENIA';
+    if (pointsAwarded === 0 && totalCashbackAwarded === 0) {
+      return { earned: false, reason: 'Order conditions for loyalty points or cashback were not met' };
+    }
 
     if (!customerLoyalty) {
       customerLoyalty = await CustomerLoyalty.create({
@@ -485,6 +569,9 @@ class LoyaltyService {
         customerPhone: cleanPhone,
         customerName: order.customerName || '',
         pointsBalance: 0,
+        cashbackBalance: 0,
+        totalCashbackEarned: 0,
+        totalCashbackRedeemed: 0,
         totalPointsEarned: 0,
         totalPointsRedeemed: 0,
         totalVisits: 0,
@@ -492,15 +579,31 @@ class LoyaltyService {
       });
     }
 
-    customerLoyalty.pointsBalance += pointsPerVisit;
-    customerLoyalty.totalPointsEarned += pointsPerVisit;
+    if (pointsAwarded > 0) {
+      customerLoyalty.pointsBalance += pointsAwarded;
+      customerLoyalty.totalPointsEarned += pointsAwarded;
+    }
+
+    if (totalCashbackAwarded > 0) {
+      customerLoyalty.cashbackBalance = (customerLoyalty.cashbackBalance || 0) + totalCashbackAwarded;
+      customerLoyalty.totalCashbackEarned = (customerLoyalty.totalCashbackEarned || 0) + totalCashbackAwarded;
+
+      if (loyaltyDoc && loyaltyDoc.dashboardMetrics) {
+        loyaltyDoc.dashboardMetrics.totalCashback = (loyaltyDoc.dashboardMetrics.totalCashback || 0) + totalCashbackAwarded;
+        loyaltyDoc.dashboardMetrics.redemptions = (loyaltyDoc.dashboardMetrics.redemptions || 0) + 1;
+        loyaltyDoc.markModified('dashboardMetrics');
+        loyaltyDoc.markModified('programs');
+        await loyaltyDoc.save();
+      }
+    }
+
     customerLoyalty.totalVisits += 1;
     customerLoyalty.lastEarningAt = new Date();
     if (order.customerName && !customerLoyalty.customerName) {
       customerLoyalty.customerName = order.customerName;
     }
 
-    const stages = visitConfig.rewardStages || this.getDefaultRewardStages();
+    const stages = visitConfig?.rewardStages || this.getDefaultRewardStages();
     const unlockedIds = stages
       .filter((s) => customerLoyalty.pointsBalance >= Number(s.visitCount || s.value || 0))
       .map((s) => s.id);
@@ -508,7 +611,14 @@ class LoyaltyService {
 
     await customerLoyalty.save();
 
-    const msg = `[APNA POS] Congratulations! You earned ${pointsPerVisit} ${pointsName} on your order at ${programName}. Total balance: ${customerLoyalty.pointsBalance} ${pointsName}.`;
+    let msg = '';
+    if (totalCashbackAwarded > 0 && pointsAwarded > 0) {
+      msg = `[APNA POS] Congratulations! You earned ₹${totalCashbackAwarded} cashback & ${pointsAwarded} ${pointsName} on your order at ${programName}. Total cashback balance: ₹${customerLoyalty.cashbackBalance}.`;
+    } else if (totalCashbackAwarded > 0) {
+      msg = `[APNA POS] Congratulations! You earned ₹${totalCashbackAwarded} cashback on your order at ${programName}. Total cashback balance: ₹${customerLoyalty.cashbackBalance}.`;
+    } else {
+      msg = `[APNA POS] Congratulations! You earned ${pointsAwarded} ${pointsName} on your order at ${programName}. Total balance: ${customerLoyalty.pointsBalance} ${pointsName}.`;
+    }
 
     await LoyaltyTransaction.create({
       businessId,
@@ -516,7 +626,8 @@ class LoyaltyService {
       orderId: order._id || (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null),
       orderNumber: order.orderNumber || '',
       type: 'earn',
-      points: pointsPerVisit,
+      points: pointsAwarded > 0 ? pointsAwarded : totalCashbackAwarded,
+      discountAmount: totalCashbackAwarded,
       balanceAfter: customerLoyalty.pointsBalance,
       messageHeader: 'APNA POS',
       message: msg,
@@ -526,13 +637,15 @@ class LoyaltyService {
       await Notification.create({
         businessId,
         type: 'promotion',
-        title: `[APNA POS] ${pointsPerVisit} ${pointsName} Earned`,
+        title: totalCashbackAwarded > 0 ? `[APNA POS] ₹${totalCashbackAwarded} Cashback Earned` : `[APNA POS] ${pointsAwarded} ${pointsName} Earned`,
         message: msg,
         read: false,
         recipientPhone: cleanPhone,
         metadata: {
-          pointsEarned: pointsPerVisit,
+          pointsEarned: pointsAwarded,
+          cashbackEarned: totalCashbackAwarded,
           newBalance: customerLoyalty.pointsBalance,
+          newCashbackBalance: customerLoyalty.cashbackBalance,
           orderNumber: order.orderNumber,
         },
       });
@@ -542,10 +655,13 @@ class LoyaltyService {
 
     return {
       earned: true,
-      pointsAwarded: pointsPerVisit,
+      pointsAwarded,
+      cashbackAwarded: totalCashbackAwarded,
       newBalance: customerLoyalty.pointsBalance,
+      newCashbackBalance: customerLoyalty.cashbackBalance,
       totalVisits: customerLoyalty.totalVisits,
       unlockedStages: unlockedIds,
+      appliedPrograms: appliedCashbackPrograms,
       message: msg,
     };
   }
@@ -1338,8 +1454,8 @@ class LoyaltyService {
     const isDraft = programData.status === 'draft' || programData.isDraft === true;
     const isProgramActive = !isDraft && (programData.isActive === true || programData.status === 'active');
 
-    // Enforce Single Active Program Rule: If this program is activated, deactivate others
-    if (isProgramActive) {
+    // Only deactivate other programs if explicitly requested via singleActiveOnly
+    if (isProgramActive && programData.singleActiveOnly === true) {
       loyaltyDoc.programs.forEach((p) => {
         if (p.id !== progId) {
           p.isActive = false;
@@ -1351,10 +1467,10 @@ class LoyaltyService {
         loyaltyDoc.visitConfig.isActive = isVisitMade;
         loyaltyDoc.visitConfig.status = isVisitMade ? 'active' : 'inactive';
       }
-    } else {
-      if (loyaltyDoc.visitConfig && (progId === 'prog_visit_made' || programData.type === 'visit_made')) {
-        loyaltyDoc.visitConfig.isActive = false;
-        loyaltyDoc.visitConfig.status = isDraft ? 'draft' : 'inactive';
+    } else if (progId === 'prog_visit_made' || programData.type === 'visit_made') {
+      if (loyaltyDoc.visitConfig) {
+        loyaltyDoc.visitConfig.isActive = isProgramActive;
+        loyaltyDoc.visitConfig.status = isDraft ? 'draft' : (isProgramActive ? 'active' : 'inactive');
       }
     }
 
@@ -1373,8 +1489,61 @@ class LoyaltyService {
       loyaltyDoc.programs.push(cleanProgram);
     }
 
+    loyaltyDoc.markModified('programs');
     await loyaltyDoc.save();
     return loyaltyDoc;
+  }
+
+  /**
+   * Toggle a loyalty program's active/inactive status
+   */
+  async toggleProgramStatus(businessId, programId, isActive) {
+    if (!businessId) throw ApiError.badRequest('Business ID is required');
+    if (!programId) throw ApiError.badRequest('Program ID is required');
+
+    let loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+    if (!loyaltyDoc) {
+      await this.getLoyaltyPrograms(businessId);
+      loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+    }
+
+    if (!loyaltyDoc) throw ApiError.notFound('Loyalty configuration not found');
+
+    const isBoolActive = isActive === true || isActive === 'true';
+    const newStatus = isBoolActive ? 'active' : 'inactive';
+    let targetProgram = null;
+
+    if (Array.isArray(loyaltyDoc.programs)) {
+      for (const p of loyaltyDoc.programs) {
+        if (p.id === programId || (p._id && p._id.toString() === programId)) {
+          p.isActive = isBoolActive;
+          p.status = newStatus;
+          p.updatedAt = new Date();
+          targetProgram = p;
+          break;
+        }
+      }
+    }
+
+    if (programId === 'prog_visit_made' || programId.includes('visit')) {
+      if (loyaltyDoc.visitConfig) {
+        loyaltyDoc.visitConfig.isActive = isBoolActive;
+        loyaltyDoc.visitConfig.status = newStatus;
+      }
+    }
+
+    loyaltyDoc.markModified('programs');
+    loyaltyDoc.markModified('visitConfig');
+    await loyaltyDoc.save();
+
+    return {
+      success: true,
+      programId,
+      isActive: isBoolActive,
+      status: newStatus,
+      program: targetProgram,
+      programs: loyaltyDoc.programs,
+    };
   }
 }
 

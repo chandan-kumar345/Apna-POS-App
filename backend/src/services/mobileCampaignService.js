@@ -263,4 +263,62 @@ async function launch(businessId, key, input, userId) {
   return publicDoc(result);
 }
 
-module.exports = { options, dashboard, save, submit, launch };
+async function performance(businessId, key) {
+  const campaign = await campaignService.getCampaignById(businessId, key);
+  const data = campaign.toJSON();
+  const code = data.couponSettings?.couponCode || data.couponSettings?.customCouponCode;
+  const [totals] = code ? await require('../models/Order').aggregate([
+    { $match: { businessId: campaign.businessId, couponCode: code, status: { $ne: 'cancelled' },
+      paymentStatus: { $ne: 'refunded' }, 'whatsappDetails.acceptanceStatus': { $ne: 'rejected' } } },
+    { $group: { _id: null, couponOrders: { $sum: 1 }, couponRevenue: { $sum: '$totalAmount' } } },
+  ]) : [];
+  data.stats = { ...data.stats, couponOrders: totals?.couponOrders || 0, couponRevenue: totals?.couponRevenue || 0 };
+  return data;
+}
+
+async function followUp(businessId, key, input, userId) {
+  const c = await campaignService.getCampaignById(businessId, key);
+  const mode = choice(input.mode, ['new', 'failed', 'all']);
+  const batchKey = id(input.requestId);
+  if (c.mobileStudio?.batchKey === batchKey) return publicDoc(c);
+  check(c.mobileStudio?.sendAuthorizedAt && ['completed', 'failed'].includes(c.status) &&
+    c.template.metaStatus === 'APPROVED' && c.template.category !== 'AUTHENTICATION',
+    'Choose a finished campaign with an approved customer message.');
+  check(c.couponSettings.expiryDate > new Date(), 'This campaign has expired.');
+  check(input.confirmedOptIn === true, 'Confirm that these customers opted in.');
+  const history = new Map(c.audience.recipients.map(r => [whatsapp.normalizePhoneNumber(r.phone), r]));
+  let members;
+  if (mode === 'new') {
+    const phones = input.phones || [];
+    check(Array.isArray(phones) && phones.length <= 1000, 'Enter up to 1,000 numbers at a time.');
+    const manual = phones.map(phone => {
+      check(typeof phone === 'string' && /^\+?[\d ()-]{7,32}$/.test(phone) && whatsapp.isValidPhoneNumber(phone), 'Check the phone numbers entered.');
+      return { phone };
+    });
+    const group = input.groupId ? await AudienceGroup.findOne({ _id: id(input.groupId), businessId }).lean() : null;
+    check(!input.groupId || group, 'Choose a group from this business.');
+    members = recipientsFor({ numbers: [...(group?.numbers || []), ...manual] }).filter(r => !history.has(r.phone));
+  } else {
+    members = recipientsFor({ numbers: [...history.values()].filter(r => mode === 'all' || r.status === 'failed') });
+  }
+  check(members.length, 'There are no eligible contacts for this send.');
+  const now = new Date();
+  const cost = estimate(c.template.category, members.length);
+  if (input.preview === true) return { count: members.length, totalAmount: cost.totalAmount };
+  check(input.confirmedCount === members.length, 'Audience changed. Check the audience again.');
+  const start = c.audience.recipients.length;
+  const updated = await Campaign.findOneAndUpdate({ _id: c._id, businessId, status: c.status,
+    'mobileStudio.batchKey': c.mobileStudio.batchKey || null }, {
+    $push: { 'audience.recipients': { $each: members } },
+    $set: { status: 'scheduled', 'mobileStudio.batchKey': batchKey, 'mobileStudio.batchStart': start,
+      'mobileStudio.batchPriorSpend': c.cost.spentSoFar || 0, 'mobileStudio.sendAuthorizedAt': now,
+      'mobileStudio.confirmedBy': userId, 'mobileStudio.consentConfirmedAt': now, 'mobileStudio.nextCheckAt': now,
+      'mobileStudio.note': 'Queued for sending', schedule: { mode: 'now', scheduledAt: now },
+      'stats.totalRecipients': start + members.length, 'audience.recipientCount': start + members.length,
+      cost: { ...cost, spentSoFar: c.cost.spentSoFar || 0 } },
+  }, { new: true });
+  if (!updated) throw ApiError.conflict('Campaign changed. Refresh before sending again.');
+  return publicDoc(updated);
+}
+
+module.exports = { options, dashboard, save, submit, launch, performance, followUp };

@@ -99,6 +99,11 @@ class OrderService {
 
       // If incoming sync is completing an existing order, update it and generate Sale!
       if (incomingIsPaid) {
+        if (rawData.couponCode != null) {
+          existingOrder.couponCode = rawData.couponCode;
+          existingOrder.couponDiscount = Number(rawData.couponDiscount) || 0;
+          if (rawData.discountAmount != null) existingOrder.discountAmount = Number(rawData.discountAmount);
+        }
         const pm = (rawData.paymentMethod || rawData.paymentMode || existingOrder.paymentMethod || 'Cash').toString();
         existingOrder.status = 'completed';
         existingOrder.paymentStatus = 'paid';
@@ -411,6 +416,10 @@ class OrderService {
       }));
       existingConflict.subtotal = subtotal;
       existingConflict.discountAmount = discountAmount;
+      if (rawData.couponCode != null) {
+        existingConflict.couponCode = rawData.couponCode;
+        existingConflict.couponDiscount = Number(rawData.couponDiscount) || 0;
+      }
       existingConflict.taxAmount = taxAmount;
       existingConflict.cgst = cgst;
       existingConflict.sgst = sgst;
@@ -1508,6 +1517,9 @@ class OrderService {
     }));
 
     let order = existingOrder;
+    const couponFields = rawData.couponCode == null ? {} : {
+      couponCode: rawData.couponCode, couponDiscount: Number(rawData.couponDiscount) || 0,
+    };
     let orderNumber = existingOrder ? existingOrder.orderNumber : (lookupOrderNumber || this._generateOrderNumber());
 
     // Generate Dynamic UPI QR
@@ -1515,6 +1527,7 @@ class OrderService {
 
     if (order) {
       // UPDATE EXISTING RUNNING ORDER
+      Object.assign(order, couponFields);
       order.items = formattedItems;
       order.subtotal = subtotal;
       order.discountAmount = discountAmount;
@@ -1547,6 +1560,7 @@ class OrderService {
 
       if (existingConflict) {
         order = existingConflict;
+        Object.assign(order, couponFields);
         order.items = formattedItems;
         order.subtotal = subtotal;
         order.discountAmount = discountAmount;
@@ -1573,6 +1587,7 @@ class OrderService {
         // CREATE NEW RUNNING ORDER
         const invoiceNumber = `INV-${orderNumber}`;
         order = await Order.create({
+          ...couponFields,
           businessId: bId,
           orderNumber,
           orderType,
