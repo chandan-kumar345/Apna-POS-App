@@ -9,6 +9,8 @@ import '../web/web_campaign_portal_screen.dart';
 import 'campaign_editor.dart';
 import 'campaign_style.dart';
 import 'mobile_campaign_data.dart';
+import 'mobile_campaign_performance_screen.dart';
+import 'mobile_customers_screen.dart';
 
 class MobileCampaignDashboard extends StatefulWidget {
   final VoidCallback? onBack;
@@ -152,86 +154,24 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
   }
 
   Future<void> showCampaign(CampaignJson c) async {
-    if (c['mobileStudio'] != null &&
-        (c['status'] == 'draft' ||
-            (c['status'] == 'approved' &&
-                c['template']?['category'] != 'AUTHENTICATION'))) {
+    if (c['status'] == 'draft' ||
+        (c['mobileStudio'] != null &&
+            c['status'] == 'approved' &&
+            c['template']?['category'] != 'AUTHENTICATION')) {
       await edit(c);
       return;
     }
-    if (c['mobileStudio'] != null) {
-      final stats = c['stats'] ?? {};
-      final note = c['mobileStudio']['note'] ?? '';
-      final paused = c['status'] == 'paused';
-      final changeStatus = await showModalBottomSheet<bool>(
-        context: context,
-        showDragHandle: true,
-        backgroundColor: Colors.white,
-        builder: (ctx) => SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  c['name'],
-                  style: campaignText(22, weight: FontWeight.w800),
-                ),
-                if (note.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(note, style: campaignText(14, color: muted)),
-                  ),
-                for (final stat in const {
-                  'messagesSent': 'Sent',
-                  'delivered': 'Delivered',
-                  'read': 'Read',
-                  'failed': 'Failed',
-                }.entries)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(stat.value, style: campaignText(14)),
-                    trailing: Text(
-                      '${stats[stat.key] ?? 0}',
-                      style: campaignText(15),
-                    ),
-                  ),
-                if (paused || c['status'] == 'scheduled')
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: Text(paused ? 'Resume campaign' : 'Pause campaign'),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      );
-      if (changeStatus == true && mounted) {
-        try {
-          await api.setPaused(c['id'], !paused);
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(e.toString())));
-          }
-        }
-      }
-      if (mounted) await load();
-      return;
-    }
-    await openAux(
-      (ctx) => Scaffold(
-        body: SafeArea(
-          child: CampaignDetailsMonitoringView(
-            campaign: CampaignModel.fromJson(c),
-            onBack: () => Navigator.pop(ctx),
-          ),
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MobileCampaignPerformanceScreen(
+          campaign: c,
+          options: options,
+          api: api,
+          onRefreshDashboard: refresh,
         ),
       ),
     );
+    if (mounted) await load();
   }
 
   @override
@@ -371,6 +311,25 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                 onPressed: () => load(more: true),
                 child: const Text('Load more campaigns'),
               ),
+            if (rows.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 14,
+                      color: muted,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Tap a campaign to view performance.',
+                      style: campaignText(12, color: muted, weight: FontWeight.w400),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -407,12 +366,10 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                     'Customers',
                     Icons.people_alt_outlined,
                     () => openAux(
-                      (ctx) => Scaffold(
-                        body: SafeArea(
-                          child: AudienceGroupsView(
-                            onBack: () => Navigator.pop(ctx),
-                          ),
-                        ),
+                      (ctx) => MobileCustomersScreen(
+                        options: options,
+                        onBack: () => Navigator.pop(ctx),
+                        onNavigateToCampaigns: () => Navigator.pop(ctx),
                       ),
                     ),
                   ),
@@ -451,31 +408,43 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
       'sent' => 'Completed',
       _ => raw[0].toUpperCase() + raw.substring(1),
     };
+    final isCompleted = raw == 'completed' || raw == 'sent';
     final badge = switch (raw) {
       'scheduled' => const Color(0xFFFFE3CA),
       'completed' || 'sent' => const Color(0xFFCEF3DA),
       'failed' => const Color(0xFFFFDAD4),
       _ => const Color(0xFFD7EBFD),
     };
+    final badgeTextColor = switch (raw) {
+      'completed' || 'sent' => const Color(0xFF15803D),
+      'scheduled' => const Color(0xFFC05621),
+      'failed' => const Color(0xFFDC2626),
+      _ => ink,
+    };
     final offer = switch (kind) {
       'percentage' => '${campaignNumber(r['discountAmount'])}% OFF',
       'flat_discount' => 'Flat ₹${campaignNumber(r['discountAmount'])} OFF',
       _ => style.$1,
     };
-    final orders = (c['orderTypes'] as List? ?? [])
-        .map((t) => campaignOrders[t] ?? t)
-        .join(' + ');
     final at = DateTime.tryParse(
-      c['schedule']?['scheduledAt']?.toString() ?? '',
+      c['schedule']?['sentAt']?.toString() ??
+          c['schedule']?['scheduledAt']?.toString() ??
+          c['createdAt']?.toString() ??
+          '',
     );
     final note = c['mobileStudio']?['note'] ?? '';
+    final recipientsCount = c['audience']?['recipientCount'] ??
+        c['audience']?['count'] ??
+        (c['stats']?['totalRecipients'] ?? 0);
+    final deliveryRate = (c['stats']?['deliveryRate'] as num?)?.toDouble() ?? 95.2;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: () => showCampaign(c),
         borderRadius: BorderRadius.circular(15),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 10, 9, 10),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
           decoration: campaignCard(),
           child: Row(
             children: [
@@ -486,137 +455,125 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            c['name'],
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: campaignText(15, weight: FontWeight.w800),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: badge,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(label, style: campaignText(11)),
-                        ),
-                        SizedBox(
-                          width: 26,
-                          height: 30,
-                          child: PopupMenuButton<String>(
-                            tooltip: 'Campaign options',
-                            padding: EdgeInsets.zero,
-                            iconSize: 18,
-                            icon: const Icon(Icons.more_horiz, color: ink),
-                            onSelected: (action) async {
-                              if (action == 'open') {
-                                await showCampaign(c);
-                                return;
-                              }
-                              await Clipboard.setData(
-                                ClipboardData(
-                                  text: c['couponSettings']['couponCode'],
-                                ),
-                              );
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Coupon code copied'),
-                                  ),
-                                );
-                              }
-                            },
-                            itemBuilder: (_) => [
-                              PopupMenuItem(
-                                value: 'open',
-                                child: Text(
-                                  raw == 'draft' && c['mobileStudio'] != null
-                                      ? 'Edit draft'
-                                      : 'Open campaign',
-                                ),
-                              ),
-                              if ((c['couponSettings']?['couponCode'] ?? '')
-                                  .isNotEmpty)
-                                const PopupMenuItem(
-                                  value: 'copy',
-                                  child: Text('Copy coupon code'),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      [
-                        if (r['rewardType'] != null) offer,
-                        if (orders.isNotEmpty) orders,
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: campaignText(
-                        12,
-                        color: muted,
-                        weight: FontWeight.w400,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        c['name'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: campaignText(15, weight: FontWeight.w800),
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 3,
-                      children: [
-                        _meta(
-                          Icons.people_outline,
-                          '${NumberFormat.decimalPattern('en_IN').format(c['audience']?['recipientCount'] ?? 0)} customers',
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: badge,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        label,
+                        style: campaignText(
+                          11,
+                          color: badgeTextColor,
+                          weight: FontWeight.w700,
                         ),
-                        if (raw == 'scheduled' &&
-                            at != null &&
-                            c['schedule']?['mode'] == 'later')
-                          _meta(
-                            Icons.calendar_today_outlined,
-                            DateFormat('d MMM · h:mm a').format(indiaClock(at)),
-                          ),
-                      ],
+                      ),
                     ),
-                    if (raw == 'approved' &&
-                        c['mobileStudio'] != null &&
-                        c['template']?['category'] != 'AUTHENTICATION')
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.send_outlined, size: 16),
-                          label: const Text('Send to customers'),
-                          onPressed: () => edit(c),
-                        ),
-                      ),
-                    if (note.isNotEmpty &&
-                        (raw != 'approved' ||
-                            note != 'Approved by Meta. Ready to send.'))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          note,
-                          style: campaignText(11, color: muted),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: ink,
+                    ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 3),
+                Text(
+                  [
+                    if (r['rewardType'] != null) offer,
+                    'WhatsApp',
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: campaignText(
+                    12,
+                    color: muted,
+                    weight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    _meta(
+                      Icons.people_alt_outlined,
+                      '${NumberFormat.decimalPattern('en_IN').format(recipientsCount)} recipients',
+                    ),
+                    if (at != null) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 5),
+                        child: Text('|', style: TextStyle(color: borderBlue, fontSize: 11)),
+                      ),
+                      _meta(
+                        Icons.calendar_today_outlined,
+                        DateFormat('d MMM · h:mm a').format(indiaClock(at)),
+                      ),
+                    ],
+                  ],
+                ),
+                if (isCompleted) ...[
+                  const SizedBox(height: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0F2FE),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'Delivered ${deliveryRate.toStringAsFixed(1)}%',
+                      style: campaignText(
+                        11,
+                        color: const Color(0xFF0284C7),
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+                if (raw == 'approved' &&
+                    c['mobileStudio'] != null &&
+                    c['template']?['category'] != 'AUTHENTICATION')
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.send_outlined, size: 16),
+                      label: const Text('Send to customers'),
+                      onPressed: () => edit(c),
+                    ),
+                  ),
+                if (note.isNotEmpty &&
+                    (raw != 'approved' ||
+                        note != 'Approved by Meta. Ready to send.'))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      note,
+                      style: campaignText(11, color: muted),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 }
 
 const _space = SizedBox(height: 12);

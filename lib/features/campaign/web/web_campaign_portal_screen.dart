@@ -9,8 +9,13 @@ import 'views/use_template_dispatch_view.dart';
 
 class WebCampaignPortalScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final int initialTabIndex;
 
-  const WebCampaignPortalScreen({super.key, this.onBack});
+  const WebCampaignPortalScreen({
+    super.key,
+    this.onBack,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<WebCampaignPortalScreen> createState() =>
@@ -18,11 +23,16 @@ class WebCampaignPortalScreen extends StatefulWidget {
 }
 
 class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
-  String _currentView =
-      'dashboard'; // 'dashboard', 'create', 'create_auto', 'details', 'groups', 'dispatch'
+  late String _currentView; // 'dashboard', 'create', 'create_auto', 'details', 'groups', 'dispatch'
   CampaignModel? _selectedCampaign;
   CampaignTemplateModel? _selectedTemplateForCreate;
   CampaignTemplateModel? _selectedTemplateForDispatch;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentView = widget.initialTabIndex == 1 ? 'groups' : 'dashboard';
+  }
 
   void _navigateToDashboard() {
     setState(() {
