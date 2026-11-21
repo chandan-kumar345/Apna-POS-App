@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../../notifications/screens/notifications_screen.dart';
 import '../models/campaign_models.dart';
 import '../web/views/audience_groups_view.dart';
 import '../web/views/campaign_details_monitoring_view.dart';
@@ -237,79 +236,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final name = options?.business ?? 'My business';
-    final logo = options?.logo ?? '';
     return CampaignShell(
-      header: Padding(
-        padding: const EdgeInsets.fromLTRB(17, 8, 13, 12),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF12364B),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF9FBDCA)),
-              ),
-              child: ClipOval(
-                child: logo.isEmpty
-                    ? const Icon(
-                        Icons.storefront_outlined,
-                        color: Colors.white,
-                        size: 23,
-                      )
-                    : Image.network(
-                        logo,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const Icon(
-                          Icons.storefront_outlined,
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(width: 9),
-            Flexible(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 7,
-                  horizontal: 15,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF244B61),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFF4D7081)),
-                ),
-                child: Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: campaignText(
-                    16,
-                    color: Colors.white,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            const Spacer(),
-            IconButton.filledTonal(
-              style: IconButton.styleFrom(
-                backgroundColor: const Color(0xFF234157),
-              ),
-              tooltip: 'Notifications',
-              onPressed: () => openAux((_) => const NotificationsScreen()),
-              icon: const Icon(
-                Icons.notifications_none_rounded,
-                color: Colors.white,
-                size: 21,
-              ),
-            ),
-          ],
-        ),
-      ),
       body: RefreshIndicator(
         onRefresh: refresh,
         child: ListView(
@@ -326,7 +253,19 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
               ),
             ),
             const SizedBox(height: 10),
-            Text('Campaigns', style: campaignText(29, weight: FontWeight.w800)),
+            Row(
+              children: [
+                if (widget.onBack == null && Navigator.of(context).canPop()) ...[
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_rounded, color: ink),
+                    tooltip: 'Back',
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text('Campaigns', style: campaignText(29, weight: FontWeight.w800)),
+              ],
+            ),
             Text(
               'Turn customers into regulars',
               style: campaignText(15, color: muted, weight: FontWeight.w400),

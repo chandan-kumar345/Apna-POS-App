@@ -68,11 +68,12 @@ TextStyle campaignText(
 );
 
 class CampaignShell extends StatelessWidget {
-  final Widget header, body;
+  final Widget? header;
+  final Widget body;
   final Widget? footer;
   const CampaignShell({
     super.key,
-    required this.header,
+    this.header,
     required this.body,
     this.footer,
   });
@@ -83,7 +84,7 @@ class CampaignShell extends StatelessWidget {
         seedColor: teal,
         brightness: Brightness.light,
       ),
-      scaffoldBackgroundColor: navy,
+      scaffoldBackgroundColor: header != null ? navy : Colors.transparent,
       textTheme: ThemeData.light().textTheme.apply(
         bodyColor: ink,
         displayColor: ink,
@@ -99,17 +100,20 @@ class CampaignShell extends StatelessWidget {
       child: Theme(
         data: theme,
         child: Scaffold(
-          backgroundColor: navy,
+          backgroundColor: header != null ? navy : Colors.transparent,
           body: SafeArea(
             bottom: false,
+            top: header != null,
             child: Column(
               children: [
-                header,
+                if (header != null) header!,
                 Expanded(
                   child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(28),
-                    ),
+                    borderRadius: header != null
+                        ? const BorderRadius.vertical(
+                            top: Radius.circular(28),
+                          )
+                        : BorderRadius.zero,
                     child: DecoratedBox(
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
