@@ -221,7 +221,7 @@ extension _MessageForm on _CampaignEditorState {
                       (s) => change(() => a.value = s),
                       inline: true,
                       hint: a.type == 'URL' ? 'https://…' : '+91…',
-                      limit: a.type == 'URL' ? 1024 : 16,
+                      limit: a.type == 'URL' ? 1024 : 32,
                     ),
                   ],
                 ]),

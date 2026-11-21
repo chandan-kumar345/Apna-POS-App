@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -145,8 +146,13 @@ void main() {
   late _Api api;
   late GlobalKey boundary;
   setUpAll(() async {
-    if (out == null) return;
-    final dir = Platform.environment['CAMPAIGN_TEST_FONTS']!;
+    final config = File('.dart_tool/package_config.json');
+    final packages = jsonDecode(config.readAsStringSync())['packages'] as List;
+    final flutter = packages.firstWhere((p) => p['name'] == 'flutter');
+    final sdk = config.absolute.uri.resolve('${flutter['rootUri']}/');
+    final dir =
+        Platform.environment['CAMPAIGN_TEST_FONTS'] ??
+        sdk.resolve('../../bin/cache/artifacts/material_fonts/').toFilePath();
     final font = FontLoader('Roboto');
     for (final weight in ['regular', 'medium', 'bold', 'black']) {
       font.addFont(
@@ -288,6 +294,29 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+
+  testWidgets('a local call number and quick reply enable Review campaign', (
+    t,
+  ) async {
+    final draft = MobileCampaignDraft.fromJson(api.rows.first)
+      ..actions = [
+        MessageAction(type: 'PHONE_NUMBER', text: 'Call Now'),
+        MessageAction(type: 'QUICK_REPLY', text: 'DONE'),
+      ];
+    await open(t, CampaignEditor(api: api, options: choices, draft: draft));
+    await tap(t, 'Next');
+    await tap(t, 'Next: Actions');
+    await enter(t, 'Phone number', '97095');
+    expect(find.textContaining('10-digit Indian mobile'), findsOneWidget);
+    await enter(t, 'Phone number', '9709593705');
+    expect(find.textContaining('10-digit Indian mobile'), findsNothing);
+    await tap(t, 'Review campaign');
+    expect(find.text('Submit for review'), findsOneWidget);
+    expect(draft.actions.first.toJson()['value'], '+919709593705');
+    draft.actions.first.value = '+44 7700 900123';
+    expect(draft.actions.first.error, isNull);
+    expect(draft.actions.first.toJson()['value'], '+447700900123');
+  });
 
   testWidgets(
     'an approval received while the dashboard is covered appears on return',

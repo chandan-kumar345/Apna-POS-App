@@ -47,10 +47,16 @@ class CampaignOptions {
 class MessageAction {
   String type, text, value;
   MessageAction({this.type = 'URL', this.text = '', this.value = ''});
+  String get _phoneNumber {
+    final compact = value.trim().replaceAll(RegExp(r'[ ()-]'), '');
+    if (RegExp(r'^[6-9]\d{9}$').hasMatch(compact)) return '+91$compact';
+    return compact;
+  }
+
   CampaignJson toJson() => {
     'type': type,
     'text': text.trim(),
-    'value': value.trim(),
+    'value': type == 'PHONE_NUMBER' ? _phoneNumber : value.trim(),
   };
   String? get error {
     if (text.trim().isEmpty) return 'Enter button text for each action.';
@@ -64,8 +70,8 @@ class MessageAction {
       }
     }
     if (type == 'PHONE_NUMBER' &&
-        !RegExp(r'^\+[1-9]\d{6,14}$').hasMatch(value.trim())) {
-      return 'Include the country code in the phone number.';
+        !RegExp(r'^\+[1-9]\d{6,14}$').hasMatch(_phoneNumber)) {
+      return 'Enter a 10-digit Indian mobile number or an international number starting with +.';
     }
     return null;
   }

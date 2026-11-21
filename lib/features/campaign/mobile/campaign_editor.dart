@@ -217,6 +217,7 @@ class _CampaignEditorState extends State<CampaignEditor> {
       2 => d.actionError,
       _ => launchError,
     };
+    final footerError = error ?? (step == 2 ? issue : null);
     final next = [
       'Next',
       'Next: Actions',
@@ -296,11 +297,11 @@ class _CampaignEditorState extends State<CampaignEditor> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (error != null)
+              if (footerError != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 7),
                   child: Text(
-                    error!,
+                    footerError,
                     style: campaignText(13, color: const Color(0xFF9D3229)),
                   ),
                 ),
