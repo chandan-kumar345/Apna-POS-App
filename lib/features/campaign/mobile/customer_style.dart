@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/widgets/pos_screen_top_header.dart';
 import 'campaign_style.dart';
 
 const customerInk = Color(0xFF080D2D);
@@ -42,76 +43,123 @@ class CustomerShell extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: SystemUiOverlayStyle.light.copyWith(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: const Color(0xFFE1F3FF),
+    value: const SystemUiOverlayStyle(
+      statusBarColor: Color(0xFF031024),
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFFE1F3FF),
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
     child: Theme(
       data: ThemeData.light(useMaterial3: true).copyWith(
         colorScheme: ColorScheme.fromSeed(seedColor: teal),
-        scaffoldBackgroundColor: navy,
+        scaffoldBackgroundColor: const Color(0xFF031024),
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xFF001D2D),
-        body: SafeArea(
-          bottom: false,
-          child: Column(
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 840),
-                  child: header,
-                ),
-              ),
-              Expanded(
-                child: Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: const BoxDecoration(
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(30),
-                    ),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFE9F7FF),
-                        Color(0xFFDFF1FD),
-                        Color(0xFFEBF8FF),
-                      ],
-                    ),
+        backgroundColor: const Color(0xFF031024),
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFF031024), // Deep Midnight Navy (matching POS screen)
+                Color(0xFF072146), // Rich Royal Navy
+                Color(0xFF0A2E5C), // Deep Indigo Blue
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 840),
+                    child: header,
                   ),
-                  child: SafeArea(
-                    top: false,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 840),
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 9),
-                            Container(
-                              width: 34,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFB2D2E6),
-                                borderRadius: BorderRadius.circular(8),
+                ),
+                Expanded(
+                  child: Container(
+                    clipBehavior: Clip.antiAlias,
+                    decoration: const BoxDecoration(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(32),
+                      ),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFE9F7FF),
+                          Color(0xFFDFF1FD),
+                          Color(0xFFEBF8FF),
+                        ],
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 840),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 9),
+                              Container(
+                                width: 34,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFB2D2E6),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                               ),
-                            ),
-                            Expanded(child: body),
-                            ?footer,
-                          ],
+                              Expanded(child: body),
+                              ?footer,
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     ),
   );
+}
+
+/// POS Screen Top Header adapted for the Customers experience
+class ApnaPosTopBar extends StatelessWidget {
+  final String? storeName;
+  final VoidCallback? onStoreTap;
+  final VoidCallback? onNotificationTap;
+  final bool showStatusBadge;
+  final bool showWallet;
+  final bool showNotifications;
+
+  const ApnaPosTopBar({
+    super.key,
+    this.storeName,
+    this.onStoreTap,
+    this.onNotificationTap,
+    this.showStatusBadge = true,
+    this.showWallet = true,
+    this.showNotifications = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PosScreenTopHeader(
+      storeTitle: storeName,
+      onStoreTap: onStoreTap,
+      onNotificationTap: onNotificationTap,
+      showStatusBadge: showStatusBadge,
+      showWallet: showWallet,
+      showNotifications: showNotifications,
+    );
+  }
 }
 
 class CustomerHeader extends StatelessWidget {

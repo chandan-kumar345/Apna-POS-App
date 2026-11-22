@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../core/database/database_service.dart';
 import '../../../core/services/customer_service.dart';
 import '../../../core/widgets/pos_screen_top_header.dart';
-import '../../notifications/screens/notifications_screen.dart';
 import '../models/campaign_models.dart';
+import 'campaign_style.dart';
 import 'create_customer_group_screen.dart';
 import 'customer_group_details_screen.dart';
 import 'customer_group_import.dart';
@@ -332,12 +329,6 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final business =
-        widget.options?.business ??
-        DatabaseService().restaurant?.name ??
-        'My business';
-    final logo =
-        widget.options?.logo ?? DatabaseService().companyLogoPath ?? '';
     final query = _search.text.trim().toLowerCase();
     final groups = (_groups ?? [])
         .where((group) => group.name.toLowerCase().contains(query))
@@ -345,168 +336,179 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     final loading = _tab == 1 ? _loadingGroups : _loadingCustomers;
     final error = _tab == 1 ? _groupError : _customerError;
     final count = _tab == 1 ? groups.length : _matches;
+
     return CustomerShell(
       header: const PosScreenTopHeader(),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              sliver: SliverToBoxAdapter(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(15, 8, 15, 6),
+          children: [
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                if (widget.onBack != null || Navigator.of(context).canPop()) ...[
+                  IconButton(
+                    onPressed: widget.onBack ?? () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_rounded, color: ink),
+                    tooltip: 'Back',
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text('Customers', style: campaignText(29, weight: FontWeight.w800)),
+              ],
+            ),
+            Text(
+              'Manage customers and their groups.',
+              style: campaignText(15, color: muted, weight: FontWeight.w400),
+            ),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                _metric(
+                  'Total customers',
+                  _totalCustomers == null ? '—' : _format.format(_totalCustomers),
+                  Icons.people_alt_outlined,
+                  const Color(0xFFE2D8FA),
+                  const Color(0xFF7049AE),
+                  onTap: () => _switchTab(0),
+                ),
+                const SizedBox(width: 10),
+                _metric(
+                  'Groups',
+                  '${_groups?.length ?? 0}',
+                  Icons.folder_outlined,
+                  const Color(0xFFCBF3DE),
+                  const Color(0xFF187348),
+                  onTap: () => _switchTab(1),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _search,
+              onChanged: _searchChanged,
+              style: campaignText(14),
+              decoration: campaignInput(
+                hint: _tab == 1
+                    ? 'Search groups'
+                    : 'Search by name or mobile',
+              ).copyWith(
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  color: ink,
+                  size: 20,
+                ),
+                suffixIcon: _search.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () {
+                          _search.clear();
+                          _searchChanged('');
+                        },
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (final (i, e) in const {
+                  0: 'All customers',
+                  1: 'Groups',
+                }.entries.indexed) ...[
+                  if (i > 0) const SizedBox(width: 7),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => _switchTab(e.key),
+                      child: Container(
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: campaignCard(
+                          color: _tab == e.key
+                              ? teal
+                              : const Color(0xFFF6FAFE),
+                          radius: 20,
+                        ),
+                        child: Text(
+                          e.value,
+                          style: campaignText(
+                            13,
+                            color: _tab == e.key ? Colors.white : ink,
+                            weight: _tab == e.key
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  _tab == 1 ? 'Your groups' : 'Your customers',
+                  style: campaignText(14, weight: FontWeight.w700),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0F2FE),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$count ${_tab == 1 ? (count == 1 ? 'group' : 'groups') : (count == 1 ? 'customer' : 'customers')}',
+                    style: campaignText(
+                      11,
+                      color: const Color(0xFF0284C7),
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Customers',
-                            style: customerText(18, weight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Manage customers and their groups.',
-                            style: customerText(
-                              12,
-                              color: customerBlue,
-                              weight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ),
+                    Text(error, style: campaignText(13, color: muted)),
+                    TextButton(
+                      onPressed: _tab == 1 ? _loadGroups : _loadCustomers,
+                      child: const Text('Retry'),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _stat(
-                            'Total customers',
-                            _totalCustomers,
-                            Icons.people_outline_rounded,
-                            const Color(0xFF0884FF),
-                            const [Color(0xFFD5F0FF), Color(0xFFA9DFFF)],
-                            () => _switchTab(0),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _stat(
-                            'Groups',
-                            _groups?.length,
-                            Icons.folder_outlined,
-                            customerPurple,
-                            const [Color(0xFFEDE0FF), Color(0xFFD1C0FB)],
-                            () => _switchTab(1),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: customerCard(radius: 40),
-                      child: Row(
-                        children: [
-                          _tabButton(0, 'All customers'),
-                          _tabButton(1, 'Groups'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      decoration: customerCard(radius: 30),
-                      child: TextField(
-                        controller: _search,
-                        onChanged: _searchChanged,
-                        style: customerText(13, weight: FontWeight.w500),
-                        decoration:
-                            customerInput(
-                              _tab == 1
-                                  ? 'Search groups'
-                                  : 'Search by name or mobile',
-                              prefix: const Icon(
-                                Icons.search_rounded,
-                                color: customerInk,
-                                size: 19,
-                              ),
-                              suffix: _search.text.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      tooltip: 'Clear search',
-                                      icon: const Icon(Icons.close, size: 18),
-                                      onPressed: () {
-                                        _search.clear();
-                                        _searchChanged('');
-                                      },
-                                    ),
-                            ).copyWith(
-                              fillColor: Colors.transparent,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                            ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Text(
-                          _tab == 1 ? 'Your groups' : 'Your customers',
-                          style: customerText(15, weight: FontWeight.w800),
-                        ),
-                        const Spacer(),
-                        CustomerPill(
-                          '$count ${_tab == 1 ? (count == 1 ? 'group' : 'groups') : (count == 1 ? 'customer' : 'customers')}',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    if (loading)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 10),
-                        child: LinearProgressIndicator(minHeight: 2),
-                      ),
-                    if (error != null)
-                      Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          children: [
-                            Text(
-                              error,
-                              style: customerText(14, color: customerBlue),
-                            ),
-                            TextButton(
-                              onPressed: _tab == 1
-                                  ? _loadGroups
-                                  : _loadCustomers,
-                              child: const Text('Retry'),
-                            ),
-                          ],
-                        ),
-                      ),
                   ],
                 ),
               ),
-            ),
-            if (!loading && error == null && count == 0)
-              SliverToBoxAdapter(child: _empty(query)),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverList.builder(
-                itemCount: _tab == 1 ? groups.length : _customers.length,
-                itemBuilder: (context, index) => _tab == 1
-                    ? _groupTile(groups[index], index)
-                    : _customerTile(_customers[index]),
-              ),
-            ),
+            if (!loading && error == null && count == 0) _empty(query),
+            if (!loading || count > 0)
+              ...(_tab == 1
+                  ? [
+                      for (var i = 0; i < groups.length; i++)
+                        _groupCard(groups[i], i),
+                    ]
+                  : [
+                      for (final customer in _customers)
+                        _customerCard(customer),
+                    ]),
             if (_tab == 0 && _customers.length < _matches)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Center(
                   child: TextButton(
                     onPressed: _loadingCustomers
                         ? null
@@ -515,126 +517,394 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                   ),
                 ),
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+            const SizedBox(height: 8),
           ],
         ),
       ),
-      footer: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
-            child: SizedBox(
+      footer: Padding(
+        padding: const EdgeInsets.fromLTRB(15, 6, 15, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
               width: double.infinity,
-              child: CustomerPrimary(
-                _tab == 1 ? '+ Create group' : 'Add customer',
-                icon: Icons.person_add_alt_1_outlined,
-                onPressed: _tab == 1 ? () => _editGroup() : _addCustomer,
+              child: CampaignPrimary(
+                _tab == 1 ? 'Create group' : 'Add customer',
+                icon: Icons.add_rounded,
+                onTap: _tab == 1 ? () => _editGroup() : _addCustomer,
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-            child: Row(
-              children: [
-                _nav(
-                  'Home',
-                  Icons.home_outlined,
-                  widget.onBack ?? () => Navigator.maybePop(context),
-                ),
-                _nav(
-                  'Campaigns',
-                  Icons.campaign_outlined,
-                  widget.onNavigateToCampaigns ??
-                      () => Navigator.maybePop(context),
-                ),
-                _nav(
-                  'Customers',
-                  Icons.people_outline_rounded,
-                  () {},
-                  selected: true,
-                ),
-                _nav('More', Icons.more_horiz_rounded, _more),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _stat(
-    String label,
-    int? value,
-    IconData icon,
-    Color color,
-    List<Color> colors,
-    VoidCallback tap,
-  ) => Material(
-    color: Colors.transparent,
-    child: InkWell(
-      onTap: tap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: customerCard(colors: colors, radius: 16),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 8),
             Container(
-              width: 1,
-              height: 28,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              color: color.withValues(alpha: .3),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              decoration: campaignCard(
+                radius: 15,
+                color: const Color(0xFFF5FAFE),
+              ),
+              child: Row(
                 children: [
-                  Text(label, style: customerText(10.5, color: customerBlue, weight: FontWeight.w500)),
-                  Text(
-                    value == null ? '—' : _format.format(value),
-                    style: customerText(16, weight: FontWeight.w800),
+                  _nav(
+                    'Home',
+                    Icons.home_outlined,
+                    widget.onBack ?? () => Navigator.maybePop(context),
                   ),
+                  _nav(
+                    'Campaigns',
+                    Icons.campaign_outlined,
+                    widget.onNavigateToCampaigns ??
+                        () => Navigator.maybePop(context),
+                  ),
+                  _nav(
+                    'Customers',
+                    Icons.people_alt_rounded,
+                    () {
+                      _search.clear();
+                      _switchTab(0);
+                    },
+                    selected: true,
+                  ),
+                  _nav('More', Icons.more_horiz_rounded, _more),
                 ],
               ),
             ),
           ],
         ),
       ),
-    ),
-  );
-  Widget _tabButton(int index, String title) => Expanded(
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _switchTab(index),
-        borderRadius: BorderRadius.circular(30),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6.5),
-          alignment: Alignment.center,
-          decoration: _tab == index
-              ? BoxDecoration(
-                  borderRadius: BorderRadius.circular(30),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF216B83), Color(0xFF00394F)],
+    );
+  }
+
+  Widget _metric(
+    String label,
+    String value,
+    IconData icon,
+    Color bg,
+    Color fg, {
+    VoidCallback? onTap,
+  }) =>
+      Expanded(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white),
+              boxShadow: const [studioShadow],
+            ),
+            child: Row(
+              children: [
+                CampaignIconTile(
+                  icon,
+                  Colors.white.withValues(alpha: .45),
+                  fg,
+                  size: 37,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label, style: campaignText(12)),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          value,
+                          style: campaignText(24, weight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
                   ),
-                )
-              : null,
-          child: Text(
-            title,
-            style: customerText(
-              12.5,
-              color: _tab == index ? Colors.white : customerInk,
-              weight: FontWeight.w700,
+                ),
+              ],
             ),
           ),
         ),
+      );
+
+  Widget _meta(IconData icon, String value) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: muted, size: 14),
+          const SizedBox(width: 4),
+          Text(value, style: campaignText(11)),
+        ],
+      );
+
+  Widget _groupCard(AudienceGroupModel group, int index) {
+    final (icon, color, background) = _groupStyle(group, index);
+    final count = group.totalNumbers;
+    final isVip = group.name.toLowerCase().contains('vip');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () => _openGroup(group),
+        borderRadius: BorderRadius.circular(15),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          decoration: campaignCard(),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CampaignIconTile(icon, background, color, size: 44),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            group.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: campaignText(15, weight: FontWeight.w800),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isVip
+                                ? const Color(0xFFFFE3CA)
+                                : const Color(0xFFD7EBFD),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            isVip ? 'VIP' : 'Group',
+                            style: campaignText(
+                              11,
+                              color: isVip ? const Color(0xFFC05621) : ink,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 18,
+                          color: ink,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_format.format(count)} ${count == 1 ? 'number' : 'numbers'} · Audience Group',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: campaignText(
+                        12,
+                        color: muted,
+                        weight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _meta(
+                          Icons.people_alt_outlined,
+                          '${_format.format(count)} numbers',
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 5),
+                          child: Text(
+                            '|',
+                            style: TextStyle(color: borderBlue, fontSize: 11),
+                          ),
+                        ),
+                        _meta(
+                          Icons.calendar_today_outlined,
+                          _updated(group),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'Ready for campaigns',
+                            style: campaignText(
+                              11,
+                              color: const Color(0xFF0284C7),
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        PopupMenuButton<String>(
+                          tooltip: 'Options for ${group.name}',
+                          iconSize: 18,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 10, minHeight: 10),
+                          icon: const Icon(Icons.more_horiz, color: muted, size: 18),
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              _editGroup(group);
+                            } else {
+                              _deleteGroup(group);
+                            }
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 'edit', child: Text('Edit group')),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete group'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _customerCard(CustomerModel customer) {
+    final isVip = customer.totalOrders >= 5;
+    final isMember = customer.totalOrders > 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        decoration: campaignCard(),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CampaignIconTile(
+              Icons.person_rounded,
+              Color(0xFFDCF0FF),
+              Color(0xFF1572C3),
+              size: 44,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          customer.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: campaignText(15, weight: FontWeight.w800),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isVip
+                              ? const Color(0xFFFFE3CA)
+                              : (isMember
+                                  ? const Color(0xFFCEF3DA)
+                                  : const Color(0xFFD7EBFD)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          isVip ? 'VIP' : (isMember ? 'Member' : 'New'),
+                          style: campaignText(
+                            11,
+                            color: isVip
+                                ? const Color(0xFFC05621)
+                                : (isMember ? const Color(0xFF15803D) : ink),
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18,
+                        color: ink,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    customer.phone,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: campaignText(
+                      12,
+                      color: muted,
+                      weight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _meta(
+                        Icons.shopping_bag_outlined,
+                        '${customer.totalOrders} ${customer.totalOrders == 1 ? 'order' : 'orders'}',
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 5),
+                        child: Text(
+                          '|',
+                          style: TextStyle(color: borderBlue, fontSize: 11),
+                        ),
+                      ),
+                      _meta(
+                        Icons.verified_user_outlined,
+                        'Customer Profile',
+                      ),
+                    ],
+                  ),
+                  if (isMember) ...[
+                    const SizedBox(height: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE0F2FE),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        'Active Buyer',
+                        style: campaignText(
+                          11,
+                          color: const Color(0xFF0284C7),
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _updated(AudienceGroupModel group) {
     final date = group.updatedAt ?? group.createdAt;
     if (date == null) return 'Update date unavailable';
@@ -647,14 +917,14 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     return days == 0
         ? 'Updated today'
         : days == 1
-        ? 'Updated yesterday'
-        : 'Updated ${DateFormat('d MMM').format(local)}';
+            ? 'Updated yesterday'
+            : 'Updated ${DateFormat('d MMM').format(local)}';
   }
 
   (IconData, Color, Color) _groupStyle(AudienceGroupModel group, int index) {
     final name = group.name.toLowerCase();
     final styles = [
-      (Icons.campaign_outlined, customerPurple, const Color(0xFFDAC6FF)),
+      (Icons.campaign_outlined, const Color(0xFF7049AE), const Color(0xFFE2D8FA)),
       (
         Icons.workspace_premium_outlined,
         const Color(0xFFAA6900),
@@ -680,247 +950,79 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     final chosen = name.contains('vip')
         ? 1
         : name.contains('birthday')
-        ? 2
-        : name.contains('inactive')
-        ? 3
-        : name.contains('new')
-        ? 4
-        : name.contains('regular')
-        ? 5
-        : name.contains('offer')
-        ? 0
-        : index % styles.length;
+            ? 2
+            : name.contains('inactive')
+                ? 3
+                : name.contains('new')
+                    ? 4
+                    : name.contains('regular')
+                        ? 5
+                        : name.contains('offer')
+                            ? 0
+                            : index % styles.length;
     return styles[chosen];
   }
 
-  Widget _groupTile(AudienceGroupModel group, int index) {
-    final (icon, color, background) = _groupStyle(group, index);
-    final count = group.totalNumbers;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Container(
-        decoration: customerCard(radius: 15),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(15),
-            onTap: () => _openGroup(group),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 5, 2, 5),
-              child: LayoutBuilder(
-                builder: (context, constraints) => Row(
-                  children: [
-                    CustomerIconTile(
-                      icon: icon,
-                      color: color,
-                      background: background,
-                      size: 34,
-                    ),
-                    Container(
-                      width: 1,
-                      height: 28,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      color: const Color(0xFFB2CFE3),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            group.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: customerText(13.5, weight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 2),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 2,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(
-                                '${_format.format(count)} ${count == 1 ? 'number' : 'numbers'}',
-                                style: customerText(
-                                  11.5,
-                                  weight: FontWeight.w600,
-                                ),
-                              ),
-                              if (constraints.maxWidth < 580)
-                                Text(
-                                  _updated(group),
-                                  style: customerText(
-                                    10,
-                                    color: customerBlue,
-                                    weight: FontWeight.w400,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (constraints.maxWidth >= 580) ...[
-                      const Icon(
-                        Icons.calendar_month_outlined,
-                        color: customerBlue,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _updated(group),
-                        style: customerText(11.5, weight: FontWeight.w400),
-                      ),
-                      const SizedBox(width: 10),
-                    ],
-                    PopupMenuButton<String>(
-                      tooltip: 'Options for ${group.name}',
-                      iconSize: 18,
-                      icon: const Icon(Icons.more_horiz, color: customerBlue, size: 18),
-                      onSelected: (value) {
-                        if (value == 'edit') {
-                          _editGroup(group);
-                        } else {
-                          _deleteGroup(group);
-                        }
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('Edit group')),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Text('Delete group'),
-                        ),
-                      ],
-                    ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: customerBlue,
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _customerTile(CustomerModel customer) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Container(
-      decoration: customerCard(radius: 15),
-      child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-        leading: CircleAvatar(
-          radius: 16,
-          backgroundColor: const Color(0xFFD9EBFF),
-          foregroundColor: customerBlue,
-          child: Text(
-            customer.name.isEmpty ? '?' : customer.name[0].toUpperCase(),
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-          ),
-        ),
-        title: Text(
-          customer.name,
-          style: customerText(13.5, weight: FontWeight.w700),
-        ),
-        subtitle: Text(
-          customer.phone,
-          style: customerText(11.5, color: customerBlue, weight: FontWeight.w400),
-        ),
-        trailing: Text(
-          '${customer.totalOrders}\n${customer.totalOrders == 1 ? 'order' : 'orders'}',
-          textAlign: TextAlign.center,
-          style: customerText(11, color: customerBlue),
-        ),
-      ),
-    ),
-  );
   Widget _empty(String query) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 35),
-    child: Column(
-      children: [
-        Icon(
-          _tab == 1 ? Icons.folder_open_outlined : Icons.people_outline,
-          size: 40,
-          color: customerBlue,
+        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 35),
+        child: Column(
+          children: [
+            Icon(
+              _tab == 1 ? Icons.folder_open_outlined : Icons.people_outline,
+              size: 40,
+              color: muted,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              query.isNotEmpty
+                  ? 'No matching ${_tab == 1 ? 'groups' : 'customers'}'
+                  : _tab == 1
+                      ? 'Create your first customer group'
+                      : 'Your customers will appear here',
+              textAlign: TextAlign.center,
+              style: campaignText(15, weight: FontWeight.w700),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              query.isNotEmpty
+                  ? 'Try a different search.'
+                  : _tab == 1
+                      ? 'Add numbers manually or import a spreadsheet.'
+                      : 'Add a customer to get started.',
+              textAlign: TextAlign.center,
+              style: campaignText(12, color: muted, weight: FontWeight.w400),
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
-        Text(
-          query.isNotEmpty
-              ? 'No matching ${_tab == 1 ? 'groups' : 'customers'}'
-              : _tab == 1
-              ? 'Create your first customer group'
-              : 'Your customers will appear here',
-          textAlign: TextAlign.center,
-          style: customerText(15, weight: FontWeight.w700),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          query.isNotEmpty
-              ? 'Try a different search.'
-              : _tab == 1
-              ? 'Add numbers manually or import a spreadsheet.'
-              : 'Add a customer to get started.',
-          textAlign: TextAlign.center,
-          style: customerText(12, color: customerBlue, weight: FontWeight.w400),
-        ),
-      ],
-    ),
-  );
+      );
+
   Widget _nav(
     String label,
     IconData icon,
     VoidCallback tap, {
     bool selected = false,
-  }) => Expanded(
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: tap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          decoration: selected
-              ? BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF236C83), Color(0xFF00384E)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blueGrey.withValues(alpha: .15),
-                      blurRadius: 6,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                )
-              : null,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: selected ? Colors.white : customerBlue,
-                size: 19,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: customerText(
-                  10,
-                  color: selected ? Colors.white : customerBlue,
-                  weight: selected ? FontWeight.w700 : FontWeight.w500,
+  }) =>
+      Expanded(
+        child: InkWell(
+          onTap: tap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: selected ? teal : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 22, color: selected ? Colors.white : ink),
+                Text(
+                  label,
+                  style: campaignText(11, color: selected ? Colors.white : ink),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 }

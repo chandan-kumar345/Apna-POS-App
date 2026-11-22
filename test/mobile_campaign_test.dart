@@ -310,7 +310,7 @@ void main() {
       await t.pumpAndSettle();
       await t.pump(const Duration(seconds: 31));
       await t.pumpAndSettle();
-      expect(find.text('Send to customers'), findsOneWidget);
+      expect(find.text('Send campaign'), findsOneWidget);
       expect(api.sends, 0);
     },
   );
@@ -320,7 +320,7 @@ void main() {
     (t) async {
       api.rows.first['status'] = 'approved';
       await open(t, MobileCampaignDashboard(api: api));
-      await tap(t, 'Send to customers');
+      await tap(t, 'Send campaign');
       expect(
         t
             .widget<FilledButton>(

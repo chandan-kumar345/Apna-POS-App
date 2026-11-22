@@ -48,13 +48,22 @@ async function graph(credentials, path, payload, queryParams) {
   return data;
 }
 
-async function approval(c, credentials, allowSubmission = true) {
+async function approval(c, credentials, allowSubmission = true, onApprovedCategory) {
   const name = c.template.metaTemplateName;
   const category = c.template.category;
   const response = await graph(credentials, credentials.waba + '/message_templates', null,
     { name, fields: 'name,language,status,category', limit: 100 });
   const template = response.data?.find(t => t.name === name && t.language === 'en');
-  if (template) return template.category === category ? template.status : 'REJECTED';
+  function reviewed(status, actual) {
+    if (actual === category) return status;
+    const customerCategories = ['MARKETING', 'UTILITY'];
+    if (allowSubmission && customerCategories.includes(actual) && customerCategories.includes(category)) {
+      if (status === 'APPROVED') onApprovedCategory?.(actual);
+      return status;
+    }
+    return 'REJECTED';
+  }
+  if (template) return reviewed(template.status, template.category);
   if (!allowSubmission) return 'MISSING';
   // An accepted submission can take a moment to appear in Meta's list.
   if (c.template.metaStatus === 'PENDING') return 'PENDING';
@@ -81,7 +90,7 @@ async function approval(c, credentials, allowSubmission = true) {
   ] : components;
   const created = await graph(credentials, credentials.waba + '/message_templates', { name, category, language: 'en', components: submitted });
   if (!created.id) throw new Error('Meta did not accept the template submission.');
-  return created.category && created.category !== category ? 'REJECTED' : (created.status || 'PENDING');
+  return reviewed(created.status || 'PENDING', created.category || category);
 }
 
 async function send(c, credentials, recipient) {

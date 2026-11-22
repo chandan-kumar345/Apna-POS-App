@@ -1545,7 +1545,6 @@ class LoyaltyService {
       programs: loyaltyDoc.programs,
     };
   }
-  }
 }
 
 module.exports = new LoyaltyService();

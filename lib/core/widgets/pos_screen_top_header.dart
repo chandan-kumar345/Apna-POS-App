@@ -154,11 +154,21 @@ class SmoothBrandLogoWidget extends StatelessWidget {
 class PosScreenTopHeader extends StatelessWidget {
   final VoidCallback? onLogoTap;
   final VoidCallback? onStoreTap;
+  final VoidCallback? onNotificationTap;
+  final String? storeTitle;
+  final bool showStatusBadge;
+  final bool showWallet;
+  final bool showNotifications;
 
   const PosScreenTopHeader({
     super.key,
     this.onLogoTap,
     this.onStoreTap,
+    this.onNotificationTap,
+    this.storeTitle,
+    this.showStatusBadge = true,
+    this.showWallet = true,
+    this.showNotifications = true,
   });
 
   @override
@@ -166,11 +176,11 @@ class PosScreenTopHeader extends StatelessWidget {
     final db = DatabaseService();
     final rest = db.restaurant;
     final user = db.currentUser;
-    final companyTitle = rest?.name ?? user?.companyName ?? 'Pizza 47';
+    final companyTitle = storeTitle ?? rest?.name ?? user?.companyName ?? 'Pizza 47';
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
       color: Colors.transparent,
       child: Row(
         children: [
@@ -179,8 +189,8 @@ class PosScreenTopHeader extends StatelessWidget {
             onTap: onLogoTap ?? () => _showStoreInfoSheet(context, companyTitle),
             borderRadius: BorderRadius.circular(22),
             child: Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               padding: const EdgeInsets.all(2.0),
               decoration: const BoxDecoration(
                 color: Colors.white,
@@ -195,14 +205,14 @@ class PosScreenTopHeader extends StatelessWidget {
               ),
               child: ClipOval(
                 child: SmoothBrandLogoWidget(
-                  size: 36,
+                  size: 40,
                   logoPath: db.companyLogoPath,
                   companyName: companyTitle,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 9),
 
           // Glass Company Name Badge ("Pizza 47 ▼")
           Flexible(
@@ -219,15 +229,20 @@ class PosScreenTopHeader extends StatelessWidget {
           const Spacer(),
 
           // ONLINE / OFFLINE STATUS DOT INDICATOR
-          const GlassConnectionStatusBadge(isDarkTheme: true),
-          const SizedBox(width: 6),
+          if (showStatusBadge) ...[
+            const GlassConnectionStatusBadge(isDarkTheme: true),
+            const SizedBox(width: 9),
+          ],
 
           // WALLET KHAZANA BUTTON
-          _buildWalletButton(context),
-          const SizedBox(width: 6),
+          if (showWallet) ...[
+            _buildWalletButton(context),
+            const SizedBox(width: 9),
+          ],
 
           // NOTIFICATION BELL BUTTON
-          _buildNotificationBellButton(context),
+          if (showNotifications)
+            _buildNotificationBellButton(context),
         ],
       ),
     );
@@ -326,13 +341,13 @@ class PosScreenTopHeader extends StatelessWidget {
             ),
             child: Image.asset(
               'assets/images/wallet_icon.png',
-              width: 20,
-              height: 20,
+              width: 22,
+              height: 22,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => const Icon(
                 Icons.account_balance_wallet_outlined,
                 color: Colors.white,
-                size: 19,
+                size: 20,
               ),
             ),
           ),
@@ -370,11 +385,15 @@ class PosScreenTopHeader extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const NotificationsScreen(),
-                  ),
-                );
+                if (onNotificationTap != null) {
+                  onNotificationTap!();
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  );
+                }
               },
               borderRadius: BorderRadius.circular(18),
               child: Container(

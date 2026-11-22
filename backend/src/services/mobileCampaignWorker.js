@@ -59,13 +59,15 @@ async function reviewDue(now) {
     const c = await Campaign.findOneAndUpdate({ ...key, 'mobileStudio.nextCheckAt': { $lte: now } },
       { $set: { 'mobileStudio.worker': worker, 'mobileStudio.nextCheckAt': new Date(Date.now() + 5 * 60000) } }, { new: true });
     if (!c) return;
+    let approvedCategory;
     const finish = (status, metaStatus, note) => Campaign.updateOne({ ...key, 'mobileStudio.worker': worker },
       { $set: { status, 'template.metaStatus': metaStatus, 'mobileStudio.worker': null, 'mobileStudio.note': note,
+        ...(status === 'approved' && approvedCategory && { 'template.category': approvedCategory, type: approvedCategory.toLowerCase() }),
         ...(status !== 'in_review' && { 'mobileStudio.nextCheckAt': null }) }, ...(status === 'draft' && { $unset: { 'mobileStudio.reservedCode': 1 } }) });
     try {
       await require('./entitlementService').requireSubscription(c.businessId);
       if (c.couponSettings.expiryDate <= new Date()) throw new Error('The campaign expired during review.');
-      const result = await transport.approval(c, await transport.account(c));
+      const result = await transport.approval(c, await transport.account(c), true, category => { approvedCategory = category; });
       if (result === 'APPROVED') return await finish('approved', 'APPROVED', c.template.category === 'AUTHENTICATION'
         ? 'Approved by Meta for customer-requested verification codes.' : 'Approved by Meta. Ready to send.');
       if (['PENDING', 'IN_APPEAL'].includes(result)) return await finish('in_review', 'PENDING', 'Awaiting Meta approval');

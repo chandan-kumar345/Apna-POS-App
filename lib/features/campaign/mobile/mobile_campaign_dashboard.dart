@@ -433,6 +433,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
           '',
     );
     final note = c['mobileStudio']?['note'] ?? '';
+    final category = campaignCategories[(c['template']?['category'] ?? c['type'] ?? '').toString().toUpperCase()];
     final recipientsCount = c['audience']?['recipientCount'] ??
         c['audience']?['count'] ??
         (c['stats']?['totalRecipients'] ?? 0);
@@ -496,6 +497,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                   [
                     if (r['rewardType'] != null) offer,
                     'WhatsApp',
+                    if (category != null) category,
                   ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -549,9 +551,23 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
                       icon: const Icon(Icons.send_outlined, size: 16),
-                      label: const Text('Send to customers'),
+                      label: const Text('Send campaign'),
                       onPressed: () => edit(c),
                     ),
+                  ),
+                if (raw == 'draft' && c['template']?['metaStatus'] == 'REJECTED' && c['mobileStudio'] != null)
+                  TextButton.icon(
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Check template approval'),
+                    onPressed: () async {
+                      try {
+                        await api.submit(MobileCampaignDraft.fromJson(c));
+                        if (mounted) await load();
+                      } catch (_) {
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Could not check approval. Refresh and try again.')));
+                      }
+                    },
                   ),
                 if (note.isNotEmpty &&
                     (raw != 'approved' ||
