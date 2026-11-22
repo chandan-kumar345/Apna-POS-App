@@ -16,11 +16,13 @@ import 'loyalty_visit_made_screen.dart';
 class LoyaltyLandingScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final VoidCallback? onOpenDrawer;
+  final bool showHeader;
 
   const LoyaltyLandingScreen({
     super.key,
     this.onBack,
     this.onOpenDrawer,
+    this.showHeader = false,
   });
 
   @override
@@ -271,8 +273,14 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
   @override
   Widget build(BuildContext context) {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return CustomerShell(
-        header: _buildTopHeader(),
+      if (widget.showHeader) {
+        return CustomerShell(
+          header: _buildTopHeader(),
+          body: _buildBody(),
+          footer: _buildCreateProgramFooter(),
+        );
+      }
+      return CampaignShell(
         body: _buildBody(),
         footer: _buildCreateProgramFooter(),
       );
@@ -331,9 +339,21 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Title & Subtitle with smaller fonts
-            Text(
-              'Loyalty Program',
-              style: customerText(19, weight: FontWeight.w800),
+            Row(
+              children: [
+                if (widget.onBack == null && Navigator.of(context).canPop()) ...[
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_rounded, color: ink),
+                    tooltip: 'Back',
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  'Loyalty Program',
+                  style: customerText(19, weight: FontWeight.w800),
+                ),
+              ],
             ),
             const SizedBox(height: 3),
             Text(
