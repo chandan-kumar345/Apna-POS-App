@@ -14,8 +14,14 @@ import 'mobile_customers_screen.dart';
 
 class MobileCampaignDashboard extends StatefulWidget {
   final VoidCallback? onBack;
+  final VoidCallback? onNavigateToCustomers;
   final MobileCampaignApi? api;
-  const MobileCampaignDashboard({super.key, this.onBack, this.api});
+  const MobileCampaignDashboard({
+    super.key,
+    this.onBack,
+    this.onNavigateToCustomers,
+    this.api,
+  });
   @override
   State<MobileCampaignDashboard> createState() =>
       _MobileCampaignDashboardState();
@@ -182,16 +188,6 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(15, 8, 15, 6),
           children: [
-            Center(
-              child: Container(
-                width: 41,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC1D5E2),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -365,13 +361,15 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                   _nav(
                     'Customers',
                     Icons.people_alt_outlined,
-                    () => openAux(
-                      (ctx) => MobileCustomersScreen(
-                        options: options,
-                        onBack: () => Navigator.pop(ctx),
-                        onNavigateToCampaigns: () => Navigator.pop(ctx),
-                      ),
-                    ),
+                    widget.onNavigateToCustomers ??
+                        () => openAux(
+                          (ctx) => MobileCustomersScreen(
+                            options: options,
+                            showHeader: true,
+                            onBack: () => Navigator.pop(ctx),
+                            onNavigateToCampaigns: () => Navigator.pop(ctx),
+                          ),
+                        ),
                   ),
                   _nav(
                     'More',

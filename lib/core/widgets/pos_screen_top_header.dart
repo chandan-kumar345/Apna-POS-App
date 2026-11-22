@@ -215,7 +215,8 @@ class PosScreenTopHeader extends StatelessWidget {
           const SizedBox(width: 9),
 
           // Glass Company Name Badge ("Pizza 47 ▼")
-          Flexible(
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 90, maxWidth: 170),
             child: GlassCompanyNameBadge(
               name: companyTitle,
               hasDropdown: true,
@@ -225,7 +226,7 @@ class PosScreenTopHeader extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(width: 6),
+          const SizedBox(width: 9),
           const Spacer(),
 
           // ONLINE / OFFLINE STATUS DOT INDICATOR

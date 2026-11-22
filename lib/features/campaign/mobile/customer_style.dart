@@ -103,15 +103,6 @@ class CustomerShell extends StatelessWidget {
                           constraints: const BoxConstraints(maxWidth: 840),
                           child: Column(
                             children: [
-                              const SizedBox(height: 9),
-                              Container(
-                                width: 34,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFB2D2E6),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
                               Expanded(child: body),
                               ?footer,
                             ],

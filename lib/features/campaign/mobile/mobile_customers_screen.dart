@@ -16,12 +16,14 @@ class MobileCustomersScreen extends StatefulWidget {
   final CampaignOptions? options;
   final VoidCallback? onBack, onNavigateToCampaigns;
   final MobileCustomersApi? api;
+  final bool showHeader;
   const MobileCustomersScreen({
     super.key,
     this.options,
     this.onBack,
     this.onNavigateToCampaigns,
     this.api,
+    this.showHeader = false,
   });
   @override
   State<MobileCustomersScreen> createState() => _MobileCustomersScreenState();
@@ -337,27 +339,25 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     final error = _tab == 1 ? _groupError : _customerError;
     final count = _tab == 1 ? groups.length : _matches;
 
-    return CustomerShell(
-      header: const PosScreenTopHeader(),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(15, 8, 15, 6),
-          children: [
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                if (widget.onBack != null || Navigator.of(context).canPop()) ...[
-                  IconButton(
-                    onPressed: widget.onBack ?? () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.arrow_back_rounded, color: ink),
-                    tooltip: 'Back',
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                Text('Customers', style: campaignText(29, weight: FontWeight.w800)),
+    final bodyWidget = RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(15, 8, 15, 6),
+        children: [
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              if (widget.onBack != null) ...[
+                IconButton(
+                  onPressed: widget.onBack,
+                  icon: const Icon(Icons.arrow_back_rounded, color: ink),
+                  tooltip: 'Back',
+                ),
+                const SizedBox(width: 4),
               ],
-            ),
+              Text('Customers', style: campaignText(29, weight: FontWeight.w800)),
+            ],
+          ),
             Text(
               'Manage customers and their groups.',
               style: campaignText(15, color: muted, weight: FontWeight.w400),
@@ -520,55 +520,68 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
             const SizedBox(height: 8),
           ],
         ),
-      ),
-      footer: Padding(
-        padding: const EdgeInsets.fromLTRB(15, 6, 15, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: double.infinity,
-              child: CampaignPrimary(
-                _tab == 1 ? 'Create group' : 'Add customer',
-                icon: Icons.add_rounded,
-                onTap: _tab == 1 ? () => _editGroup() : _addCustomer,
-              ),
+      );
+
+    final footerWidget = Padding(
+      padding: const EdgeInsets.fromLTRB(15, 6, 15, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: CampaignPrimary(
+              _tab == 1 ? 'Create group' : 'Add customer',
+              icon: Icons.add_rounded,
+              onTap: _tab == 1 ? () => _editGroup() : _addCustomer,
             ),
-            const SizedBox(height: 8),
-            Container(
-              decoration: campaignCard(
-                radius: 15,
-                color: const Color(0xFFF5FAFE),
-              ),
-              child: Row(
-                children: [
-                  _nav(
-                    'Home',
-                    Icons.home_outlined,
-                    widget.onBack ?? () => Navigator.maybePop(context),
-                  ),
-                  _nav(
-                    'Campaigns',
-                    Icons.campaign_outlined,
-                    widget.onNavigateToCampaigns ??
-                        () => Navigator.maybePop(context),
-                  ),
-                  _nav(
-                    'Customers',
-                    Icons.people_alt_rounded,
-                    () {
-                      _search.clear();
-                      _switchTab(0);
-                    },
-                    selected: true,
-                  ),
-                  _nav('More', Icons.more_horiz_rounded, _more),
-                ],
-              ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            decoration: campaignCard(
+              radius: 15,
+              color: const Color(0xFFF5FAFE),
             ),
-          ],
-        ),
+            child: Row(
+              children: [
+                _nav(
+                  'Home',
+                  Icons.home_outlined,
+                  widget.onBack ?? () => Navigator.maybePop(context),
+                ),
+                _nav(
+                  'Campaigns',
+                  Icons.campaign_outlined,
+                  widget.onNavigateToCampaigns ??
+                      () => Navigator.maybePop(context),
+                ),
+                _nav(
+                  'Customers',
+                  Icons.people_alt_rounded,
+                  () {
+                    _search.clear();
+                    _switchTab(0);
+                  },
+                  selected: true,
+                ),
+                _nav('More', Icons.more_horiz_rounded, _more),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+
+    if (widget.showHeader) {
+      return CustomerShell(
+        header: const PosScreenTopHeader(),
+        body: bodyWidget,
+        footer: footerWidget,
+      );
+    }
+
+    return CampaignShell(
+      body: bodyWidget,
+      footer: footerWidget,
     );
   }
 
