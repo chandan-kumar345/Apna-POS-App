@@ -1050,10 +1050,38 @@ class WhatsAppService {
       appSecret: activeAppSecret,
     });
 
-    // 1. First attempt: Utility template 'loyalty_cashback_earned'
+    // 1. First attempt: Utility template ('loyalty_cashback_earned' or 'order_cashback_update')
     const templateCandidates = [
-      { name: 'loyalty_cashback_earned', lang: 'en_US' },
-      { name: 'loyalty_cashback_earned', lang: 'en' },
+      {
+        name: 'loyalty_cashback_earned',
+        lang: 'en',
+        parameters: [
+          { type: 'text', text: customerName || 'Valued Customer' },
+          { type: 'text', text: String(cashbackEarned) },
+          { type: 'text', text: businessName || 'Apna POS' },
+          { type: 'text', text: String(availableBalance) },
+        ],
+      },
+      {
+        name: 'loyalty_cashback_earned',
+        lang: 'en_US',
+        parameters: [
+          { type: 'text', text: customerName || 'Valued Customer' },
+          { type: 'text', text: String(cashbackEarned) },
+          { type: 'text', text: businessName || 'Apna POS' },
+          { type: 'text', text: String(availableBalance) },
+        ],
+      },
+      {
+        name: 'order_cashback_update',
+        lang: 'en',
+        parameters: [
+          { type: 'text', text: customerName || 'Valued Customer' },
+          { type: 'text', text: businessName || 'Apna POS' },
+          { type: 'text', text: `₹${cashbackEarned}` },
+          { type: 'text', text: `₹${availableBalance}` },
+        ],
+      },
     ];
 
     for (const t of templateCandidates) {
@@ -1069,11 +1097,7 @@ class WhatsAppService {
             components: [
               {
                 type: 'body',
-                parameters: [
-                  { type: 'text', text: String(cashbackEarned) },
-                  { type: 'text', text: businessName || 'Apna POS' },
-                  { type: 'text', text: String(availableBalance) },
-                ],
+                parameters: t.parameters,
               },
             ],
           },
@@ -1090,13 +1114,16 @@ class WhatsAppService {
 
         const data = await res.json().catch(() => ({}));
         if (res.ok && data?.messages?.[0]?.id) {
-          console.log(`[WhatsAppService] ✅ Loyalty cashback notification sent via template '${t.name}' to ${normalizedPhone}`);
+          console.log(`[WhatsAppService] ✅ Loyalty cashback notification sent via template '${t.name}' (${t.lang}) to ${normalizedPhone}`);
           return {
             success: true,
             messageId: data.messages[0].id,
             recipient: normalizedPhone,
             viaTemplate: true,
+            templateName: t.name,
           };
+        } else {
+          console.warn(`[WhatsAppService] Template '${t.name}' (${t.lang}) attempt info:`, data?.error?.message || JSON.stringify(data));
         }
       } catch (err) {
         console.warn(`[WhatsAppService] Loyalty template dispatch notice (${t.name}):`, err.message);

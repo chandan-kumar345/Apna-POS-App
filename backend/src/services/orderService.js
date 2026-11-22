@@ -174,7 +174,7 @@ class OrderService {
 
         // Award Loyalty points if customer phone is present
         if (existingOrder.customerPhone) {
-          loyaltyService.awardPointsForCompletedOrder(businessId, existingOrder).catch(() => {});
+          loyaltyService.awardPointsForCompletedOrder(businessId, existingOrder).catch(err => console.warn('[OrderService] awardPointsForCompletedOrder error:', err.message));
         }
 
         return {
@@ -707,7 +707,7 @@ class OrderService {
 
       // Award Loyalty points if customer phone is present
       if (order.customerPhone) {
-        loyaltyService.awardPointsForCompletedOrder(businessId, order).catch(() => {});
+        loyaltyService.awardPointsForCompletedOrder(businessId, order).catch(err => console.warn('[OrderService] awardPointsForCompletedOrder error:', err.message));
       }
     }
 
@@ -1370,7 +1370,7 @@ class OrderService {
       );
 
       // Award Loyalty points
-      loyaltyService.awardPointsForCompletedOrder(businessId, order).catch(() => {});
+      loyaltyService.awardPointsForCompletedOrder(businessId, order).catch(err => console.warn('[OrderService] awardPointsForCompletedOrder error:', err.message));
     }
 
     return { order, sale };

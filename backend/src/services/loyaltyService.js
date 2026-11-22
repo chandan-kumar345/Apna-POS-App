@@ -519,11 +519,20 @@ class LoyaltyService {
     const cleanPhone = order.customerPhone.trim();
     if (!cleanPhone) return { earned: false, reason: 'Empty phone' };
 
-    const existingEarnTx = await LoyaltyTransaction.findOne({
-      businessId,
-      orderId: order._id || order.id,
-      type: 'earn',
-    });
+    const orderMongoId = mongoose.Types.ObjectId.isValid(order._id)
+      ? order._id
+      : (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null);
+
+    const existingEarnTx = (orderMongoId || order.orderNumber)
+      ? await LoyaltyTransaction.findOne({
+          businessId,
+          type: 'earn',
+          $or: [
+            ...(orderMongoId ? [{ orderId: orderMongoId }] : []),
+            ...(order.orderNumber ? [{ orderNumber: order.orderNumber }] : []),
+          ],
+        })
+      : null;
     if (existingEarnTx) {
       return { earned: false, reason: 'Points already awarded for this order' };
     }
@@ -537,7 +546,7 @@ class LoyaltyService {
 
     const isVisitActive = visitConfig && visitConfig.isActive !== false && visitConfig.status !== 'inactive' && visitConfig.status !== 'draft';
     const activeCashbackPrograms = (loyaltyDoc?.programs || []).filter(
-      (p) => (p.type === 'cashback' || p.cashbackPercentage > 0 || p.cashbackAmount > 0) && p.isActive !== false && p.status === 'active'
+      (p) => (p.type === 'cashback' || p.cashbackPercentage > 0 || p.cashbackAmount > 0) && p.isActive !== false && p.status !== 'inactive' && p.status !== 'draft'
     );
 
     if (!isVisitActive && activeCashbackPrograms.length === 0) {
@@ -599,11 +608,11 @@ class LoyaltyService {
     const appliedCashbackPrograms = [];
 
     for (const prog of activeCashbackPrograms) {
-      const minOrder = Number(prog.minimumOrder || 0);
+      const minOrder = Number(prog.minimumOrder ?? prog.cashbackDetails?.minSpend ?? 0);
       if (orderTotal >= minOrder) {
         let cb = 0;
         if (prog.cashbackType === 'percentage' || !prog.cashbackType) {
-          const pct = Number(prog.cashbackPercentage || 5);
+          const pct = Number(prog.cashbackPercentage ?? prog.cashbackDetails?.percentage ?? 5);
           cb = Math.round((orderTotal * pct) / 100);
         } else {
           cb = Number(prog.cashbackAmount || 50);

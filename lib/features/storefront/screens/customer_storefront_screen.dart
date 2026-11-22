@@ -9,7 +9,9 @@ import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/order_model.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/storefront_model.dart';
+import '../models/customer_storefront_flow_models.dart';
 import '../services/storefront_service.dart';
+import '../services/customer_storefront_api_service.dart';
 import '../widgets/storefront_product_detail_sheet.dart';
 import '../widgets/storefront_menu_view.dart';
 import '../../../core/models/restaurant_model.dart';
@@ -39,6 +41,8 @@ class CustomerStorefrontScreen extends StatefulWidget {
 
 class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   final StorefrontService _service = StorefrontService();
+  final CustomerStorefrontApiService _customerService = CustomerStorefrontApiService();
+  CustomerProfileModel? _currentCustomer;
   final TextEditingController _searchController = TextEditingController();
   final PageController _bannerController = PageController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -72,7 +76,22 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       _orderType = OrderType.dineIn;
     }
     _loadData();
+    _loadCustomerSession();
     _startBannerTimer();
+  }
+
+  void _loadCustomerSession() async {
+    try {
+      final c = await _customerService.getCurrentCustomer();
+      if (c != null && mounted) {
+        setState(() {
+          _currentCustomer = c;
+          if (c.addresses.isNotEmpty && _deliveryAddress.isEmpty) {
+            _deliveryAddress = c.addresses.firstWhere((a) => a.isDefault, orElse: () => c.addresses.first).fullAddress;
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -734,6 +753,92 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       onExitPreview: () => Navigator.maybePop(context),
       avatar: (logo, name, size) =>
           _buildRestaurantAvatar(logo, name, size: size),
+      cartItems: _cartItems,
+      onAddToCart: (item) {
+        setState(() {
+          final existingIdx = _cartItems.indexWhere((c) => c.item.id == item.id);
+          if (existingIdx >= 0) {
+            _cartItems[existingIdx].quantity += 1;
+          } else {
+            _cartItems.add(
+              StorefrontCartItem(
+                uid: 'cart_${DateTime.now().millisecondsSinceEpoch}_${item.id}',
+                item: item,
+                quantity: 1,
+              ),
+            );
+          }
+        });
+      },
+      onUpdateQuantity: (cartItem, newQty) {
+        setState(() {
+          if (newQty <= 0) {
+            _cartItems.removeWhere((i) => i.uid == cartItem.uid);
+          } else {
+            cartItem.quantity = newQty;
+          }
+        });
+      },
+      onClearCart: () {
+        setState(() => _cartItems.clear());
+      },
+      onPlaceOrder: (paymentMethod, address, instructions) async {
+        final subtotal = _totalCartAmount;
+        final tax = (subtotal * 0.05);
+        final deliveryFee = _orderType == OrderType.delivery
+            ? (_data!.restaurant.deliveryBaseCharge > 0 ? _data!.restaurant.deliveryBaseCharge : 40.0)
+            : 0.0;
+        final grandTotal = subtotal + tax + deliveryFee;
+
+        final customer = _currentCustomer ?? CustomerProfileModel(
+          id: 'cust_direct_${DateTime.now().millisecondsSinceEpoch}',
+          name: 'Valued Customer',
+          phone: '+91 98765 43210',
+          addresses: [
+            CustomerAddressModel(
+              id: 'addr_1',
+              label: 'Delivery',
+              fullAddress: address,
+              isDefault: true,
+            ),
+          ],
+        );
+
+        try {
+          await _customerService.placeCustomerOrder(
+            restaurant: _data!.restaurant,
+            customer: customer,
+            selectedAddress: customer.addresses.first,
+            cartItems: List.of(_cartItems),
+            paymentMethod: paymentMethod,
+            subtotal: subtotal,
+            deliveryFee: deliveryFee,
+            tax: tax,
+            grandTotal: grandTotal,
+            deliveryInstructions: instructions,
+          );
+        } catch (_) {}
+
+        try {
+          await _service.submitOrder(
+            restaurant: _data!.restaurant,
+            orderType: _orderType,
+            cartItems: List.of(_cartItems),
+            customerName: customer.name,
+            customerPhone: customer.phone,
+            deliveryAddress: address,
+            subtotal: subtotal,
+            taxAmount: tax,
+            deliveryFee: deliveryFee,
+            totalAmount: grandTotal,
+            paymentMethod: paymentMethod,
+          );
+        } catch (_) {}
+      },
+      customer: _currentCustomer,
+      onUpdateCustomer: (cust) {
+        setState(() => _currentCustomer = cust);
+      },
     );
   }
 }
