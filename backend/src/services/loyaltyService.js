@@ -53,60 +53,8 @@ class LoyaltyService {
   /**
    * Returns default loyalty program configuration for a business
    */
-  /**
-   * Returns default loyalty program configuration for a business
-   */
   getDefaultCashbackPrograms() {
-    return [
-      {
-        id: 'prog_cashback_5',
-        type: 'cashback',
-        title: '5% Cashback Program',
-        description: 'Get 5% cashback on all orders',
-        earningRule: '5% cashback on all orders',
-        cashbackType: 'percentage',
-        cashbackPercentage: 5,
-        cashbackAmount: 50,
-        minimumOrder: 499,
-        maximumCashback: 150,
-        validity: '01 Nov 2026 – 31 Dec 2026',
-        startedDate: '01 Nov 2026',
-        eligibleCustomers: 'All Customers',
-        orderTypes: ['Dine-In', 'Takeaway', 'Delivery'],
-        status: 'active',
-        isActive: true,
-        stats: {
-          ordersCount: 2860,
-          cashbackGiven: 124560,
-          redemptionRate: 78.4,
-          membersCount: 3420,
-        },
-      },
-      {
-        id: 'prog_cashback_50',
-        type: 'cashback',
-        title: '₹50 Cashback on ₹500',
-        description: 'Get ₹50 cashback on orders above ₹500',
-        earningRule: 'Get ₹50 cashback on orders above ₹500',
-        cashbackType: 'fixed',
-        cashbackPercentage: 10,
-        cashbackAmount: 50,
-        minimumOrder: 500,
-        maximumCashback: 50,
-        validity: '10 Nov 2026 – 31 Dec 2026',
-        startedDate: '10 Nov 2026',
-        eligibleCustomers: 'All Customers',
-        orderTypes: ['Dine-In', 'Takeaway', 'Delivery'],
-        status: 'active',
-        isActive: true,
-        stats: {
-          ordersCount: 1420,
-          cashbackGiven: 71000,
-          redemptionRate: 64.2,
-          membersCount: 1850,
-        },
-      },
-    ];
+    return [];
   }
 
   getDefaultPrograms(companyName = 'Pizza 47', companyLogo = '') {
@@ -115,9 +63,9 @@ class LoyaltyService {
       companyName,
       companyLogo,
       dashboardMetrics: {
-        members: 3420,
-        totalCashback: 124560,
-        redemptions: 2860,
+        members: 0,
+        totalCashback: 0,
+        redemptions: 0,
       },
       visitConfig: {
         programName: companyName || 'Pizza 47',
@@ -138,7 +86,7 @@ class LoyaltyService {
         isActive: true,
         isConfigured: true,
       },
-      programs: this.getDefaultCashbackPrograms(),
+      programs: [],
       isConfigured: true,
     };
   }
@@ -165,25 +113,61 @@ class LoyaltyService {
         companyLogo: dynamicCompanyLogo,
         dashboardMetrics: defaultData.dashboardMetrics,
         visitConfig: defaultData.visitConfig,
-        programs: defaultData.programs,
+        programs: [],
       });
     }
 
-    if (!loyaltyDoc.programs || loyaltyDoc.programs.length === 0) {
-      loyaltyDoc.programs = this.getDefaultCashbackPrograms();
-      await loyaltyDoc.save();
+    // Filter out legacy demo/mock programs if saved in the database
+    if (Array.isArray(loyaltyDoc.programs) && loyaltyDoc.programs.length > 0) {
+      const hasMock = loyaltyDoc.programs.some(p => p.id === 'prog_cashback_5' || p.id === 'prog_cashback_50');
+      if (hasMock) {
+        loyaltyDoc.programs = loyaltyDoc.programs.filter(p => p.id !== 'prog_cashback_5' && p.id !== 'prog_cashback_50');
+        loyaltyDoc.markModified('programs');
+        await loyaltyDoc.save();
+      }
     }
 
-    const metrics = loyaltyDoc.dashboardMetrics || {
-      members: 3420,
-      totalCashback: 124560,
-      redemptions: 2860,
+    // Dynamic live metrics
+    const bObjectId = mongoose.isValidObjectId(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
+    const realMembersCount = await CustomerLoyalty.countDocuments({ businessId }).catch(() => 0);
+
+    const [realRedeemAgg, realEarnAgg] = await Promise.all([
+      LoyaltyTransaction.aggregate([
+        { $match: { businessId: bObjectId, type: 'redeem' } },
+        {
+          $group: {
+            _id: null,
+            totalDiscount: { $sum: '$discountAmount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]).catch(() => []),
+      CustomerLoyalty.aggregate([
+        { $match: { businessId: bObjectId } },
+        {
+          $group: {
+            _id: null,
+            totalCashback: { $sum: '$totalCashbackEarned' },
+          },
+        },
+      ]).catch(() => []),
+    ]);
+
+    const redemptionsCount = realRedeemAgg.length > 0 ? (realRedeemAgg[0].count || 0) : 0;
+    const totalCashbackGiven = (realRedeemAgg.length > 0 && realRedeemAgg[0].totalDiscount > 0)
+      ? realRedeemAgg[0].totalDiscount
+      : (realEarnAgg.length > 0 ? (realEarnAgg[0].totalCashback || 0) : 0);
+
+    const dynamicMetrics = {
+      members: realMembersCount,
+      totalCashback: totalCashbackGiven,
+      redemptions: redemptionsCount,
     };
 
     return {
       companyName: loyaltyDoc.companyName || dynamicCompanyName,
       companyLogo: loyaltyDoc.companyLogo || dynamicCompanyLogo,
-      dashboardMetrics: metrics,
+      dashboardMetrics: dynamicMetrics,
       programs: loyaltyDoc.programs || [],
       visitConfig: loyaltyDoc.visitConfig,
       isConfigured: true,
@@ -1446,8 +1430,12 @@ class LoyaltyService {
         companyName: defaultData.companyName,
         companyLogo: defaultData.companyLogo,
         visitConfig: defaultData.visitConfig,
-        programs: defaultData.programs,
+        programs: [],
       });
+    }
+
+    if (Array.isArray(loyaltyDoc.programs) && loyaltyDoc.programs.length > 0) {
+      loyaltyDoc.programs = loyaltyDoc.programs.filter((p) => p.id !== 'prog_cashback_5' && p.id !== 'prog_cashback_50');
     }
 
     const progId = programData.id || `prog_${Date.now()}`;

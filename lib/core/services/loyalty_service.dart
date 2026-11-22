@@ -34,63 +34,16 @@ class LoyaltyService {
     return LoyaltyBrandingModel(
       companyName: companyName,
       companyLogo: companyLogo,
-      members: 3420,
-      totalCashback: 124560.0,
-      redemptions: 2860,
-      programs: [
-        LoyaltyProgramModel(
-          id: 'prog_cashback_5',
-          type: LoyaltyType.cashback,
-          title: '5% Cashback Program',
-          description: 'Get 5% cashback on all orders',
-          earningRule: 'Get 5% cashback on all orders',
-          rewardCurrency: '₹',
-          cashbackType: 'percentage',
-          cashbackPercentage: 5.0,
-          cashbackAmount: 50.0,
-          minimumOrder: 499.0,
-          maximumCashback: 150.0,
-          validity: '01 Nov 2026 – 31 Dec 2026',
-          startedDate: '01 Nov 2026',
-          eligibleCustomers: 'All Customers',
-          orderTypes: const ['Dine-In', 'Takeaway', 'Delivery'],
-          ordersCount: 2860,
-          cashbackGiven: 124560.0,
-          redemptionRate: 78.4,
-          membersCount: 3420,
-          isActive: true,
-          orderIndex: 0,
-        ),
-        LoyaltyProgramModel(
-          id: 'prog_cashback_50',
-          type: LoyaltyType.cashback,
-          title: '₹50 Cashback on ₹500',
-          description: 'Get ₹50 cashback on orders above ₹500',
-          earningRule: 'Get ₹50 cashback on orders above ₹500',
-          rewardCurrency: '₹',
-          cashbackType: 'fixed',
-          cashbackPercentage: 10.0,
-          cashbackAmount: 50.0,
-          minimumOrder: 500.0,
-          maximumCashback: 50.0,
-          validity: '10 Nov 2026 – 31 Dec 2026',
-          startedDate: '10 Nov 2026',
-          eligibleCustomers: 'All Customers',
-          orderTypes: const ['Dine-In', 'Takeaway', 'Delivery'],
-          ordersCount: 1420,
-          cashbackGiven: 71000.0,
-          redemptionRate: 64.2,
-          membersCount: 1850,
-          isActive: true,
-          orderIndex: 1,
-        ),
-      ],
+      members: 0,
+      totalCashback: 0.0,
+      redemptions: 0,
+      programs: const [],
     );
   }
 
   /// Fetch all active loyalty programs with company branding from API (or local cache)
   Future<LoyaltyBrandingModel> fetchLoyaltyPrograms({bool forceRefresh = false}) async {
-    if (!forceRefresh && _cachedBranding != null && _cachedBranding!.programs.isNotEmpty) {
+    if (!forceRefresh && _cachedBranding != null) {
       return _cachedBranding!;
     }
 
@@ -104,11 +57,20 @@ class LoyaltyService {
               : response;
           if (data is Map<String, dynamic>) {
             final parsed = LoyaltyBrandingModel.fromJson(data);
-            if (parsed.programs.isNotEmpty) {
-              _cachedBranding = parsed;
-              await _persistBrandingToPrefs(_cachedBranding!);
-              return _cachedBranding!;
-            }
+            // Filter out any legacy mock demo programs
+            final cleanPrograms = parsed.programs
+                .where((p) => p.id != 'prog_cashback_5' && p.id != 'prog_cashback_50')
+                .toList();
+            _cachedBranding = LoyaltyBrandingModel(
+              companyName: parsed.companyName,
+              companyLogo: parsed.companyLogo,
+              members: parsed.members,
+              totalCashback: parsed.totalCashback,
+              redemptions: parsed.redemptions,
+              programs: cleanPrograms,
+            );
+            await _persistBrandingToPrefs(_cachedBranding!);
+            return _cachedBranding!;
           }
         }
       }
@@ -117,9 +79,19 @@ class LoyaltyService {
     }
 
     final local = await _loadBrandingFromPrefs();
-    if (local != null && local.programs.isNotEmpty) {
-      _cachedBranding = local;
-      return local;
+    if (local != null) {
+      final cleanPrograms = local.programs
+          .where((p) => p.id != 'prog_cashback_5' && p.id != 'prog_cashback_50')
+          .toList();
+      _cachedBranding = LoyaltyBrandingModel(
+        companyName: local.companyName,
+        companyLogo: local.companyLogo,
+        members: local.members,
+        totalCashback: local.totalCashback,
+        redemptions: local.redemptions,
+        programs: cleanPrograms,
+      );
+      return _cachedBranding!;
     }
 
     final defaultData = getDefaultLoyaltyBranding();
@@ -731,6 +703,9 @@ class LoyaltyService {
       final map = {
         'companyName': branding.companyName,
         'companyLogo': branding.companyLogo,
+        'members': branding.members,
+        'totalCashback': branding.totalCashback,
+        'redemptions': branding.redemptions,
         'programs': branding.programs.map((p) => p.toJson()).toList(),
       };
       await prefs.setString('apna_pos_cached_loyalty_branding', jsonEncode(map));

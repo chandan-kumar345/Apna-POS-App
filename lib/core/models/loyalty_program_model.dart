@@ -147,14 +147,14 @@ class LoyaltyProgramModel {
     this.minimumOrder = 499.0,
     this.maximumCashback = 150.0,
     this.validity = '01 Nov 2026 – 31 Dec 2026',
-    this.startedDate = '01 Nov 2026',
+    this.startedDate = '',
     this.eligibleCustomers = 'All Customers',
     this.orderTypes = const ['Dine-In', 'Takeaway', 'Delivery'],
     this.messageTemplate = '',
-    this.ordersCount = 2860,
-    this.cashbackGiven = 124560.0,
-    this.redemptionRate = 78.4,
-    this.membersCount = 3420,
+    this.ordersCount = 0,
+    this.cashbackGiven = 0.0,
+    this.redemptionRate = 0.0,
+    this.membersCount = 0,
   });
 
   LoyaltyProgramModel copyWith({
@@ -320,15 +320,15 @@ class LoyaltyProgramModel {
       cashbackAmount: (json['cashbackAmount'] as num?)?.toDouble() ?? 50.0,
       minimumOrder: (json['minimumOrder'] as num?)?.toDouble() ?? 499.0,
       maximumCashback: (json['maximumCashback'] as num?)?.toDouble() ?? 150.0,
-      validity: json['validity']?.toString() ?? '01 Nov 2026 – 31 Dec 2026',
-      startedDate: json['startedDate']?.toString() ?? '01 Nov 2026',
+      validity: json['validity']?.toString() ?? '',
+      startedDate: json['startedDate']?.toString() ?? '',
       eligibleCustomers: json['eligibleCustomers']?.toString() ?? 'All Customers',
       orderTypes: parsedOrderTypes,
       messageTemplate: json['messageTemplate']?.toString() ?? '',
-      ordersCount: (rawStats?['ordersCount'] as num?)?.toInt() ?? (json['ordersCount'] as num?)?.toInt() ?? 2860,
-      cashbackGiven: (rawStats?['cashbackGiven'] as num?)?.toDouble() ?? (json['cashbackGiven'] as num?)?.toDouble() ?? 124560.0,
-      redemptionRate: (rawStats?['redemptionRate'] as num?)?.toDouble() ?? (json['redemptionRate'] as num?)?.toDouble() ?? 78.4,
-      membersCount: (rawStats?['membersCount'] as num?)?.toInt() ?? (json['membersCount'] as num?)?.toInt() ?? 3420,
+      ordersCount: (rawStats?['ordersCount'] as num?)?.toInt() ?? (json['ordersCount'] as num?)?.toInt() ?? 0,
+      cashbackGiven: (rawStats?['cashbackGiven'] as num?)?.toDouble() ?? (json['cashbackGiven'] as num?)?.toDouble() ?? 0.0,
+      redemptionRate: (rawStats?['redemptionRate'] as num?)?.toDouble() ?? (json['redemptionRate'] as num?)?.toDouble() ?? 0.0,
+      membersCount: (rawStats?['membersCount'] as num?)?.toInt() ?? (json['membersCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -345,9 +345,9 @@ class LoyaltyBrandingModel {
     required this.companyName,
     required this.companyLogo,
     required this.programs,
-    this.members = 3420,
-    this.totalCashback = 124560.0,
-    this.redemptions = 2860,
+    this.members = 0,
+    this.totalCashback = 0.0,
+    this.redemptions = 0,
   });
 
   factory LoyaltyBrandingModel.fromJson(Map<String, dynamic> json) {
@@ -365,9 +365,9 @@ class LoyaltyBrandingModel {
       companyName: json['companyName']?.toString() ?? '',
       companyLogo: json['companyLogo']?.toString() ?? '',
       programs: programsList,
-      members: (metrics?['members'] as num?)?.toInt() ?? (json['members'] as num?)?.toInt() ?? 3420,
-      totalCashback: (metrics?['totalCashback'] as num?)?.toDouble() ?? (json['totalCashback'] as num?)?.toDouble() ?? 124560.0,
-      redemptions: (metrics?['redemptions'] as num?)?.toInt() ?? (json['redemptions'] as num?)?.toInt() ?? 2860,
+      members: (metrics?['members'] as num?)?.toInt() ?? (json['members'] as num?)?.toInt() ?? 0,
+      totalCashback: (metrics?['totalCashback'] as num?)?.toDouble() ?? (json['totalCashback'] as num?)?.toDouble() ?? 0.0,
+      redemptions: (metrics?['redemptions'] as num?)?.toInt() ?? (json['redemptions'] as num?)?.toInt() ?? 0,
     );
   }
 }

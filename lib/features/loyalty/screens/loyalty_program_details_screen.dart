@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../core/models/loyalty_program_model.dart';
 import '../../../core/services/loyalty_service.dart';
 import '../../campaign/mobile/campaign_style.dart';
+import '../../campaign/mobile/customer_style.dart';
 import 'create_loyalty_program_screen.dart';
 import 'loyalty_performance_screen.dart';
 
@@ -173,36 +174,24 @@ class _LoyaltyProgramDetailsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: ink),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Cashback Program',
-          style: campaignText(16, weight: FontWeight.w700),
-        ),
-        centerTitle: false,
-      ),
+    return CustomerShell(
+      header: _buildTopHeader(),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Hero Status Card (Matching Screen 3)
             _buildProgramHeroCard(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             // Program Details Card
             _buildProgramDetailsCard(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             // Program Performance Card
             _buildProgramPerformanceCard(),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
             // 4 Action Buttons Row (Edit, Reports, Customers, Deactivate)
             _buildActionButtonsRow(),
@@ -213,29 +202,71 @@ class _LoyaltyProgramDetailsScreenState
     );
   }
 
-  // Top Hero Banner with Green rupee/sync icon, title, Active badge, and Switch
+  Widget _buildTopHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+            onPressed: () => Navigator.pop(context),
+          ),
+          const SizedBox(width: 4),
+          const Text(
+            'Cashback Program',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Top Hero Banner with Green rupee/exchange icon, title, Active badge, and Switch
   Widget _buildProgramHeroCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFFE6F7F0),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0xFFC7EED8)),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE8F7F0), Color(0xFFDCFCE7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBCECD2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1210B981),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          // Green Rupee / Sync Icon in circle
+          // White Circle with green currency exchange icon
           Container(
-            width: 40,
-            height: 40,
+            width: 44,
+            height: 44,
             decoration: const BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x1010B981),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
             child: const Icon(
-              Icons.currency_rupee_rounded,
+              Icons.currency_exchange_rounded,
               color: Color(0xFF10B981),
-              size: 20,
+              size: 22,
             ),
           ),
           const SizedBox(width: 12),
@@ -247,16 +278,20 @@ class _LoyaltyProgramDetailsScreenState
               children: [
                 Text(
                   _currentProgram.title,
-                  style: campaignText(14, weight: FontWeight.w700),
+                  style: campaignText(15, weight: FontWeight.w700, color: ink),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _currentProgram.description,
-                  style: campaignText(11, color: muted),
+                  _currentProgram.earningRule.isNotEmpty
+                      ? _currentProgram.earningRule
+                      : _currentProgram.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: campaignText(12, color: muted),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 5),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                   decoration: BoxDecoration(
                     color: _isActive
                         ? const Color(0xFFD1FAE5)
@@ -289,7 +324,7 @@ class _LoyaltyProgramDetailsScreenState
     );
   }
 
-  // Program Details Card
+  // Program Details Card with multi-layer realistic shadows
   Widget _buildProgramDetailsCard() {
     final cashbackText = _currentProgram.cashbackType == 'percentage'
         ? '${_currentProgram.cashbackPercentage.toStringAsFixed(0)}% of order value'
@@ -299,51 +334,62 @@ class _LoyaltyProgramDetailsScreenState
     final maxCashbackText = '₹${_currentProgram.maximumCashback.toInt()} per order';
 
     return Container(
-      padding: const EdgeInsets.all(13),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [studioShadow],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2EAF2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C0F2942),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Color(0x04000000),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Program Details',
-            style: campaignText(14, weight: FontWeight.w700),
+            style: campaignText(15, weight: FontWeight.w700, color: ink),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _buildDetailRow(
             Icons.local_offer_outlined,
             'Program Type',
             'Cashback',
           ),
-          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          const Divider(height: 16, color: Color(0xFFF1F5F9)),
           _buildDetailRow(
             Icons.percent_rounded,
             'Cashback',
             cashbackText,
           ),
-          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          const Divider(height: 16, color: Color(0xFFF1F5F9)),
           _buildDetailRow(
             Icons.shopping_cart_outlined,
             'Minimum Order',
             minOrderText,
           ),
-          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          const Divider(height: 16, color: Color(0xFFF1F5F9)),
           _buildDetailRow(
             Icons.account_balance_wallet_outlined,
             'Maximum Cashback',
             maxCashbackText,
           ),
-          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          const Divider(height: 16, color: Color(0xFFF1F5F9)),
           _buildDetailRow(
             Icons.calendar_today_outlined,
             'Validity',
-            _currentProgram.validity,
+            _currentProgram.validity.isNotEmpty ? _currentProgram.validity : 'Continuous',
           ),
-          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          const Divider(height: 16, color: Color(0xFFF1F5F9)),
           _buildDetailRow(
             Icons.people_outline_rounded,
             'Eligible Customers',
@@ -357,15 +403,15 @@ class _LoyaltyProgramDetailsScreenState
   Widget _buildDetailRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: const Color(0xFF08435E)),
-        const SizedBox(width: 8),
-        Text(label, style: campaignText(12, color: muted)),
+        Icon(icon, size: 17, color: const Color(0xFF08435E)),
+        const SizedBox(width: 10),
+        Text(label, style: campaignText(13, color: muted)),
         const Spacer(),
         Flexible(
           child: Text(
             value,
             textAlign: TextAlign.end,
-            style: campaignText(12, weight: FontWeight.w600, color: ink),
+            style: campaignText(13, weight: FontWeight.w600, color: ink),
           ),
         ),
       ],
@@ -379,45 +425,62 @@ class _LoyaltyProgramDetailsScreenState
     final redemptionRate = '${_currentProgram.redemptionRate.toStringAsFixed(1)}%';
 
     return Container(
-      padding: const EdgeInsets.all(13),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [studioShadow],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2EAF2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C0F2942),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Color(0x04000000),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Program Performance',
-            style: campaignText(14, weight: FontWeight.w700),
+            style: campaignText(15, weight: FontWeight.w700, color: ink),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: _buildMetricTile(
                   icon: Icons.people_outline_rounded,
                   iconColor: const Color(0xFF10B981),
+                  bgColor: const Color(0xFFE8F7F0),
+                  borderColor: const Color(0xFFC7EED8),
                   label: 'Orders',
                   value: NumberFormat.decimalPattern('en_IN').format(ordersCount),
                 ),
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: 8),
               Expanded(
                 child: _buildMetricTile(
                   icon: Icons.currency_rupee_rounded,
                   iconColor: const Color(0xFF8B5CF6),
+                  bgColor: const Color(0xFFF1EEFF),
+                  borderColor: const Color(0xFFDDD6FE),
                   label: 'Cashback Given',
                   value: cashbackGiven,
                 ),
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: 8),
               Expanded(
                 child: _buildMetricTile(
                   icon: Icons.trending_up_rounded,
                   iconColor: const Color(0xFF10B981),
+                  bgColor: const Color(0xFFE8F7F0),
+                  borderColor: const Color(0xFFC7EED8),
                   label: 'Redemption Rate',
                   value: redemptionRate,
                 ),
@@ -432,29 +495,38 @@ class _LoyaltyProgramDetailsScreenState
   Widget _buildMetricTile({
     required IconData icon,
     required Color iconColor,
+    required Color bgColor,
+    required Color borderColor,
     required String label,
     required String value,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x060F2942),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, color: iconColor, size: 18),
-          const SizedBox(height: 4),
+          Icon(icon, color: iconColor, size: 20),
+          const SizedBox(height: 5),
           Text(
             label,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: campaignText(10, color: muted),
+            style: campaignText(10, color: muted, weight: FontWeight.w500),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             value,
             textAlign: TextAlign.center,
@@ -494,7 +566,7 @@ class _LoyaltyProgramDetailsScreenState
             },
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
 
         // 2. View Reports
         Expanded(
@@ -512,7 +584,7 @@ class _LoyaltyProgramDetailsScreenState
             },
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
 
         // 3. Eligible Customers
         Expanded(
@@ -523,14 +595,16 @@ class _LoyaltyProgramDetailsScreenState
             onTap: _showEligibleCustomersSheet,
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
 
         // 4. Deactivate
         Expanded(
           child: _buildActionButton(
             icon: Icons.delete_outline_rounded,
             label: 'Deactivate',
-            color: Colors.redAccent,
+            color: const Color(0xFFEF4444),
+            bgColor: const Color(0xFFFEF2F2),
+            borderColor: const Color(0xFFFECACA),
             onTap: _confirmDeactivate,
           ),
         ),
@@ -542,35 +616,43 @@ class _LoyaltyProgramDetailsScreenState
     required IconData icon,
     required String label,
     required Color color,
+    Color? bgColor,
+    Color? borderColor,
     required VoidCallback onTap,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        height: 72,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          color: bgColor ?? Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: color == Colors.redAccent
-                ? const Color(0xFFFECACA)
-                : const Color(0xFFE2E8F0),
+            color: borderColor ?? const Color(0xFFE2EAF2),
           ),
-          boxShadow: const [studioShadow],
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0F2942),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 19),
-            const SizedBox(height: 4),
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 5),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: campaignText(
-                10,
-                weight: FontWeight.w600,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
                 color: color,
+                height: 1.15,
               ),
             ),
           ],

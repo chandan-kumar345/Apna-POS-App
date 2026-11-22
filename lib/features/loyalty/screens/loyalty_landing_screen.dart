@@ -8,8 +8,6 @@ import '../../../core/services/loyalty_service.dart';
 import '../../../core/widgets/pos_screen_top_header.dart';
 import '../../campaign/mobile/campaign_style.dart';
 import '../../campaign/mobile/customer_style.dart';
-import '../../campaign/mobile/mobile_customers_screen.dart';
-import '../../campaign/screens/campaign_screen.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import 'create_loyalty_program_screen.dart';
 import 'loyalty_performance_screen.dart';
@@ -17,10 +15,12 @@ import 'loyalty_program_details_screen.dart';
 
 class LoyaltyLandingScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final VoidCallback? onOpenDrawer;
 
   const LoyaltyLandingScreen({
     super.key,
     this.onBack,
+    this.onOpenDrawer,
   });
 
   @override
@@ -43,7 +43,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
   @override
   void initState() {
     super.initState();
-    _brandingData = _loyaltyService.cachedBranding ?? _loyaltyService.getDefaultLoyaltyBranding();
+    _brandingData = _loyaltyService.cachedBranding;
     _loadLoyaltyData();
   }
 
@@ -178,13 +178,16 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     return CustomerShell(
       header: _buildTopHeader(),
       body: _buildBody(),
-      footer: _buildBottomNav(),
+      footer: _buildCreateProgramFooter(),
     );
   }
 
-  // POS Screen Top Header: Circular Brand Logo + Pizza 47 dropdown badge + Online dot + Khazana wallet + Notification bell
+  // POS Screen Top Header: Circular Brand Logo + Store badge (opens Sidebar on tap)
   Widget _buildTopHeader() {
-    return const PosScreenTopHeader();
+    return PosScreenTopHeader(
+      onLogoTap: widget.onOpenDrawer,
+      onStoreTap: widget.onOpenDrawer,
+    );
   }
 
   Widget _buildBody() {
@@ -290,11 +293,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             else
               _buildEmptyProgramsCard(),
 
-            const SizedBox(height: 12),
-
-            // "+ Create Loyalty Program" Compact Button
-            _buildCreateProgramButton(),
-            const SizedBox(height: 6),
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -605,155 +604,47 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
-  // "+ Create Loyalty Program" Smaller/Sleek Button
-  Widget _buildCreateProgramButton() {
-    return InkWell(
-      onTap: _navigateToCreateProgram,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        height: 40,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0B4660), Color(0xFF083347)],
-          ),
-          boxShadow: const [studioShadow],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.add, color: Colors.white, size: 17),
-            const SizedBox(width: 5),
-            Text(
-              'Create Loyalty Program',
-              style: customerText(13, weight: FontWeight.w700, color: Colors.white),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Bottom Navigation Bar matching Screen 1 & Customers screen
-  Widget _buildBottomNav() {
+  // "+ Create Loyalty Program" Docked Bottom Action Button
+  Widget _buildCreateProgramFooter() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+        color: Colors.transparent,
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          // 1. Home
-          _buildNavItem(
-            icon: Icons.home_outlined,
-            label: 'Home',
-            isSelected: false,
-            onTap: () {
-              if (widget.onBack != null) {
-                widget.onBack!();
-              } else {
-                Navigator.maybePop(context);
-              }
-            },
-          ),
-
-          // 2. Campaigns
-          _buildNavItem(
-            icon: Icons.campaign_outlined,
-            label: 'Campaigns',
-            isSelected: false,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CampaignScreen()),
-              );
-            },
-          ),
-
-          // 3. Loyalty (Selected active pill)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF08435E),
-              borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: _navigateToCreateProgram,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          height: 48,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF072D42), Color(0xFF031622)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.card_giftcard_rounded,
-                  color: Colors.white,
-                  size: 16,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  'Loyalty',
-                  style: customerText(11, weight: FontWeight.w700, color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-
-          // 4. Customers
-          _buildNavItem(
-            icon: Icons.people_outline_rounded,
-            label: 'Customers',
-            isSelected: false,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const MobileCustomersScreen()),
-              );
-            },
-          ),
-
-          // 5. More
-          _buildNavItem(
-            icon: Icons.more_horiz_rounded,
-            label: 'More',
-            isSelected: false,
-            onTap: () {
-              _navigateToPerformance();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isSelected ? const Color(0xFF08435E) : muted,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: customerText(
-                10,
-                weight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? const Color(0xFF08435E) : muted,
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 8,
+                offset: Offset(0, 3),
               ),
-            ),
-          ],
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Create Loyalty Program',
+                style: customerText(14, weight: FontWeight.w700, color: Colors.white),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
 }

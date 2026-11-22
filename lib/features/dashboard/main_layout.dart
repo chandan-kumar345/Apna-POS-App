@@ -70,6 +70,16 @@ class NavItemDef {
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
 
+  static void openSidebar(BuildContext context) {
+    final state = context.findAncestorStateOfType<_MainLayoutState>();
+    state?._openSidebar();
+  }
+
+  static void toggleSidebar(BuildContext context) {
+    final state = context.findAncestorStateOfType<_MainLayoutState>();
+    state?._toggleSidebar();
+  }
+
   @override
   State<MainLayout> createState() => _MainLayoutState();
 }
@@ -2069,7 +2079,10 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                               )
                                             : _buildAccessDeniedScreen('CRM'),
                                         (ctx) => _canAccessTab(8)
-                                            ? LoyaltyLandingScreen(onBack: _navigateToRootTab)
+                                            ? LoyaltyLandingScreen(
+                                                onBack: _navigateToRootTab,
+                                                onOpenDrawer: _toggleSidebar,
+                                              )
                                             : _buildAccessDeniedScreen('Loyalty'),
                                         (ctx) => _canAccessTab(9)
                                             ? CampaignScreen(onBack: _navigateToRootTab)

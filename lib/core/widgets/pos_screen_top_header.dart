@@ -7,6 +7,7 @@ import '../services/sound_service.dart';
 import '../services/wallet_service.dart';
 import '../widgets/connection_status_badge.dart';
 import '../widgets/glass_company_name_badge.dart';
+import '../../features/dashboard/main_layout.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/notifications/services/notification_service.dart';
 
@@ -184,9 +185,9 @@ class PosScreenTopHeader extends StatelessWidget {
       color: Colors.transparent,
       child: Row(
         children: [
-          // Circular Brand Logo
+          // Circular Brand Logo (Opens Sidebar on tap)
           InkWell(
-            onTap: onLogoTap ?? () => _showStoreInfoSheet(context, companyTitle),
+            onTap: onLogoTap ?? onStoreTap ?? () => _handleLogoOrStoreTap(context, companyTitle),
             borderRadius: BorderRadius.circular(22),
             child: Container(
               width: 44,
@@ -214,15 +215,15 @@ class PosScreenTopHeader extends StatelessWidget {
           ),
           const SizedBox(width: 9),
 
-          // Glass Company Name Badge ("Pizza 47 ▼")
+          // Glass Company Name Badge ("Pizza 47" without dropdown icon, opens Sidebar on tap)
           ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 90, maxWidth: 170),
             child: GlassCompanyNameBadge(
               name: companyTitle,
-              hasDropdown: true,
+              hasDropdown: false,
               isDropdownOpen: false,
               isNeumorphic: false,
-              onTap: onStoreTap ?? () => _showStoreInfoSheet(context, companyTitle),
+              onTap: onStoreTap ?? onLogoTap ?? () => _handleLogoOrStoreTap(context, companyTitle),
             ),
           ),
 
@@ -247,6 +248,18 @@ class PosScreenTopHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _handleLogoOrStoreTap(BuildContext context, String companyTitle) {
+    try {
+      MainLayout.toggleSidebar(context);
+    } catch (_) {
+      try {
+        Scaffold.maybeOf(context)?.openDrawer();
+      } catch (_) {
+        _showStoreInfoSheet(context, companyTitle);
+      }
+    }
   }
 
   void _showStoreInfoSheet(BuildContext context, String companyTitle) {

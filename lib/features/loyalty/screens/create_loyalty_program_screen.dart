@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../../../core/database/database_service.dart';
 import '../../../core/models/loyalty_program_model.dart';
 import '../../../core/services/loyalty_service.dart';
 import '../../campaign/mobile/campaign_style.dart';
+import '../../campaign/mobile/customer_style.dart';
 
 class CreateLoyaltyProgramScreen extends StatefulWidget {
   final LoyaltyProgramModel? programToEdit;
@@ -21,6 +24,7 @@ class CreateLoyaltyProgramScreen extends StatefulWidget {
 class _CreateLoyaltyProgramScreenState
     extends State<CreateLoyaltyProgramScreen> {
   final LoyaltyService _loyaltyService = LoyaltyService();
+  final DatabaseService _db = DatabaseService();
 
   int _currentStep = 0; // 0: Reward, 1: Rules, 2: Message, 3: Review
   bool _isSaving = false;
@@ -73,6 +77,10 @@ class _CreateLoyaltyProgramScreenState
         : (edit?.cashbackAmount ?? 50).toStringAsFixed(0);
     _rateController = TextEditingController(text: initialRate);
 
+    final now = DateTime.now();
+    final expiry = now.add(const Duration(days: 90));
+    final defaultValidity = '${DateFormat('dd MMM yyyy').format(now)} – ${DateFormat('dd MMM yyyy').format(expiry)}';
+
     _minOrderController = TextEditingController(
       text: (edit?.minimumOrder ?? 499).toStringAsFixed(0),
     );
@@ -80,7 +88,7 @@ class _CreateLoyaltyProgramScreenState
       text: (edit?.maximumCashback ?? 150).toStringAsFixed(0),
     );
     _validityController = TextEditingController(
-      text: edit?.validity ?? '01 Nov 2026 – 31 Dec 2026',
+      text: edit?.validity ?? defaultValidity,
     );
     _eligibleAudience = edit?.eligibleCustomers ?? 'All Customers';
 
@@ -168,7 +176,7 @@ class _CreateLoyaltyProgramScreenState
       minimumOrder: minOrder,
       maximumCashback: maxCashback,
       validity: _validityController.text.trim(),
-      startedDate: widget.programToEdit?.startedDate ?? '01 Nov 2026',
+      startedDate: widget.programToEdit?.startedDate ?? DateFormat('dd MMM yyyy').format(DateTime.now()),
       eligibleCustomers: _eligibleAudience,
       orderTypes: _selectedOrderTypes,
       messageTemplate: _messageController.text.trim(),
@@ -223,69 +231,81 @@ class _CreateLoyaltyProgramScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: ink, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.programToEdit != null
-              ? 'Edit Loyalty Program'
-              : 'Create Loyalty Program',
-          style: campaignText(16, weight: FontWeight.w700),
-        ),
-        centerTitle: false,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Stepper Header
-            _buildStepperHeader(),
-            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+    return CustomerShell(
+      header: _buildTopHeader(),
+      body: Column(
+        children: [
+          // Wizard Stepper Bar
+          _buildStepperHeader(),
 
-            // Step Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child: _buildCurrentStepBody(),
-              ),
+          // Active Step Body
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+              child: _buildCurrentStepBody(),
             ),
+          ),
+        ],
+      ),
+      footer: _buildFooterActions(),
+    );
+  }
 
-            // Bottom Actions (Save Draft, Next)
-            _buildFooterActions(),
-          ],
-        ),
+  Widget _buildTopHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+            onPressed: () => Navigator.pop(context),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            widget.programToEdit != null
+                ? 'Edit Loyalty Program'
+                : 'Create Loyalty Program',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // Horizontal 4-step wizard bar matching Screen 2
   Widget _buildStepperHeader() {
-    const steps = [
-      (0, '1 Reward'),
-      (1, '2 Rules'),
-      (2, '3 Message'),
-      (3, '4 Review'),
-    ];
+    const stepNames = ['Reward', 'Rules', 'Message', 'Review'];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2EAF2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C0F2942),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          for (int i = 0; i < steps.length; i++) ...[
+          for (int i = 0; i < stepNames.length; i++) ...[
             if (i > 0)
               Expanded(
                 child: Container(
                   height: 1.5,
-                  color: i <= _currentStep
-                      ? const Color(0xFF08435E)
-                      : const Color(0xFFE2E8F0),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
+                  color: i <= _currentStep ? const Color(0xFF08435E) : const Color(0xFFE2E8F0),
                 ),
               ),
             InkWell(
@@ -293,35 +313,56 @@ class _CreateLoyaltyProgramScreenState
               borderRadius: BorderRadius.circular(16),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: EdgeInsets.symmetric(
+                  horizontal: _currentStep == i ? 10 : 7,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: _currentStep == i
                       ? const Color(0xFF08435E)
-                      : (_currentStep > i
-                          ? const Color(0xFFE6F7F0)
-                          : Colors.transparent),
-                  borderRadius: BorderRadius.circular(20),
+                      : (_currentStep > i ? const Color(0xFFE8F7F0) : Colors.transparent),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: _currentStep == i
                         ? const Color(0xFF08435E)
-                        : (_currentStep > i
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFCBD5E1)),
+                        : (_currentStep > i ? const Color(0xFF10B981) : Colors.transparent),
                   ),
                 ),
-                child: Text(
-                  steps[i].$2,
-                  style: campaignText(
-                    12,
-                    weight: _currentStep == i
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    color: _currentStep == i
-                        ? Colors.white
-                        : (_currentStep > i
-                            ? const Color(0xFF10B981)
-                            : muted),
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_currentStep > i)
+                      const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF10B981))
+                    else
+                      Container(
+                        width: 17,
+                        height: 17,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _currentStep == i ? Colors.white.withOpacity(0.25) : const Color(0xFFE2E8F0),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '${i + 1}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: _currentStep == i ? Colors.white : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 4),
+                    Text(
+                      stepNames[i],
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: _currentStep == i ? FontWeight.w700 : FontWeight.w500,
+                        color: _currentStep == i
+                            ? Colors.white
+                            : (_currentStep > i ? const Color(0xFF065F46) : const Color(0xFF64748B)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -424,10 +465,10 @@ class _CreateLoyaltyProgramScreenState
   // 4 Option cards in row: Cashback, Points, Discount, Rewards
   Widget _buildProgramTypeRow() {
     final types = [
-      ('cashback', 'Cashback', Icons.currency_rupee_rounded, const Color(0xFF10B981)),
+      ('cashback', 'Cashback', Icons.currency_exchange_rounded, const Color(0xFF059669)),
       ('points', 'Points', Icons.card_giftcard_rounded, const Color(0xFF8B5CF6)),
       ('discount', 'Discount', Icons.local_offer_outlined, const Color(0xFFEC4899)),
-      ('rewards', 'Rewards', Icons.emoji_events_outlined, const Color(0xFFF59E0B)),
+      ('rewards', 'Rewards', Icons.military_tech_outlined, const Color(0xFFF59E0B)),
     ];
 
     return Row(
@@ -437,30 +478,39 @@ class _CreateLoyaltyProgramScreenState
           Expanded(
             child: InkWell(
               onTap: () => setState(() => _selectedProgramType = types[i].$1),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    height: 60,
+                    height: 68,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: _selectedProgramType == types[i].$1
-                          ? const Color(0xFFE6F7F0)
+                          ? const Color(0xFFE8F7F0)
                           : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: _selectedProgramType == types[i].$1
                             ? const Color(0xFF10B981)
-                            : const Color(0xFFE2E8F0),
+                            : const Color(0xFFE2EAF2),
                         width: _selectedProgramType == types[i].$1 ? 1.5 : 1,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _selectedProgramType == types[i].$1
+                              ? const Color(0x1810B981)
+                              : const Color(0x0A0F2942),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(types[i].$3, color: types[i].$4, size: 20),
-                        const SizedBox(height: 3),
+                        Icon(types[i].$3, color: types[i].$4, size: 21),
+                        const SizedBox(height: 4),
                         Text(
                           types[i].$2,
                           style: campaignText(
@@ -481,7 +531,7 @@ class _CreateLoyaltyProgramScreenState
                       top: 4,
                       right: 4,
                       child: Container(
-                        padding: const EdgeInsets.all(2),
+                        padding: const EdgeInsets.all(1.5),
                         decoration: const BoxDecoration(
                           color: Color(0xFF10B981),
                           shape: BoxShape.circle,
@@ -512,29 +562,49 @@ class _CreateLoyaltyProgramScreenState
               _rateController.text = '5';
             });
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(13),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: isPercent ? const Color(0xFFE6F7F0) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              color: isPercent ? const Color(0xFFEDF8F5) : Colors.white,
+              borderRadius: BorderRadius.circular(13),
               border: Border.all(
                 color: isPercent ? const Color(0xFF10B981) : const Color(0xFFE2E8F0),
+                width: isPercent ? 1.5 : 1,
               ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x080F2942),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               children: [
-                Icon(
-                  isPercent ? Icons.radio_button_checked : Icons.radio_button_off,
-                  color: isPercent ? const Color(0xFF10B981) : muted,
-                  size: 20,
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: isPercent ? const Color(0xFF10B981) : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isPercent ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: isPercent
+                      ? const Center(
+                          child: CircleAvatar(radius: 4, backgroundColor: Colors.white),
+                        )
+                      : null,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Text(
                   'Percentage Cashback (%)',
                   style: campaignText(
                     14,
-                    weight: isPercent ? FontWeight.w600 : FontWeight.w500,
+                    weight: isPercent ? FontWeight.w700 : FontWeight.w500,
                     color: isPercent ? const Color(0xFF065F46) : ink,
                   ),
                 ),
@@ -550,29 +620,49 @@ class _CreateLoyaltyProgramScreenState
               _rateController.text = '50';
             });
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(13),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: isFixed ? const Color(0xFFE6F7F0) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              color: isFixed ? const Color(0xFFEDF8F5) : Colors.white,
+              borderRadius: BorderRadius.circular(13),
               border: Border.all(
                 color: isFixed ? const Color(0xFF10B981) : const Color(0xFFE2E8F0),
+                width: isFixed ? 1.5 : 1,
               ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x080F2942),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               children: [
-                Icon(
-                  isFixed ? Icons.radio_button_checked : Icons.radio_button_off,
-                  color: isFixed ? const Color(0xFF10B981) : muted,
-                  size: 20,
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: isFixed ? const Color(0xFF10B981) : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isFixed ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: isFixed
+                      ? const Center(
+                          child: CircleAvatar(radius: 4, backgroundColor: Colors.white),
+                        )
+                      : null,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Text(
                   'Fixed Cashback (₹)',
                   style: campaignText(
                     14,
-                    weight: isFixed ? FontWeight.w600 : FontWeight.w500,
+                    weight: isFixed ? FontWeight.w700 : FontWeight.w500,
                     color: isFixed ? const Color(0xFF065F46) : ink,
                   ),
                 ),
@@ -587,49 +677,89 @@ class _CreateLoyaltyProgramScreenState
   Widget _buildRateInputField() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(13),
         border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x060F2942),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
-      child: TextField(
-        controller: _rateController,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        onChanged: (_) => setState(() {}),
-        style: campaignText(15, weight: FontWeight.w600),
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          hintText: _cashbackType == 'percentage' ? '5' : '50',
-          prefixText: _cashbackType == 'fixed' ? '₹ ' : null,
-          prefixStyle: campaignText(15, weight: FontWeight.w700),
-          suffixIcon: _cashbackType == 'percentage'
-              ? Padding(
-                  padding: const EdgeInsets.only(right: 14, top: 12),
-                  child: Text(
-                    '%',
-                    style: campaignText(16, weight: FontWeight.w700, color: muted),
-                  ),
-                )
-              : null,
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _rateController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+              style: campaignText(15, weight: FontWeight.w700, color: ink),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                hintText: _cashbackType == 'percentage' ? '5' : '50',
+                prefixText: _cashbackType == 'fixed' ? '₹ ' : null,
+                prefixStyle: campaignText(15, weight: FontWeight.w700, color: ink),
+              ),
+            ),
+          ),
+          if (_cashbackType == 'percentage')
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '%',
+                style: campaignText(14, weight: FontWeight.w700, color: const Color(0xFF64748B)),
+              ),
+            ),
+        ],
       ),
     );
   }
 
   Widget _buildExampleInfoBox() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFBFDBFE)),
+        color: const Color(0xFFE0F2FE),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFFBAE6FD)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x080284C7),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
             Icons.info_outline_rounded,
-            color: Color(0xFF2563EB),
+            color: Color(0xFF0284C7),
+            size: 19,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _calculatedExampleText,
+              style: campaignText(
+                12,
+                color: const Color(0xFF0369A1),
+                weight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
             size: 20,
           ),
           const SizedBox(width: 10),
@@ -683,7 +813,7 @@ class _CreateLoyaltyProgramScreenState
         const SizedBox(height: 6),
         _buildInputField(
           controller: _validityController,
-          hint: '01 Nov 2026 – 31 Dec 2026',
+          hint: 'e.g. 01 Jan 2026 – 31 Dec 2026',
           prefixIcon: Icons.calendar_today_outlined,
         ),
         const SizedBox(height: 16),
@@ -815,8 +945,8 @@ class _CreateLoyaltyProgramScreenState
                   _messageController.text
                       .replaceAll('{{name}}', 'Rahul')
                       .replaceAll('{{cashback}}', _cashbackType == 'percentage' ? '${_currentRateValue.toStringAsFixed(0)}%' : '₹${_currentRateValue.toStringAsFixed(0)}')
-                      .replaceAll('{{store}}', 'Pizza 47')
-                      .replaceAll('{{expiry}}', '31 Dec 2026'),
+                      .replaceAll('{{store}}', _db.restaurant?.name.trim().isNotEmpty == true ? _db.restaurant!.name.trim() : 'Our Store')
+                      .replaceAll('{{expiry}}', _validityController.text.contains('–') ? _validityController.text.split('–').last.trim() : '30 days'),
                   style: campaignText(13, color: ink, weight: FontWeight.w500),
                 ),
               ),
@@ -931,21 +1061,30 @@ class _CreateLoyaltyProgramScreenState
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(13),
         border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x060F2942),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
-        style: campaignText(14, weight: FontWeight.w500),
+        style: campaignText(14, weight: FontWeight.w600, color: ink),
         decoration: InputDecoration(
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           hintText: hint,
-          hintStyle: campaignText(14, color: const Color(0xFF94A3B8), weight: FontWeight.w400),
-          prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: muted, size: 20) : null,
+          hintStyle: campaignText(13, color: const Color(0xFF94A3B8), weight: FontWeight.w400),
+          prefixIcon: prefixIcon != null
+              ? Icon(prefixIcon, color: const Color(0xFF64748B), size: 19)
+              : null,
         ),
       ),
     );
@@ -954,59 +1093,75 @@ class _CreateLoyaltyProgramScreenState
   // Footer Actions matching Screen 2: "Save Draft" on left, "Next ->" on right
   Widget _buildFooterActions() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0C000000),
+            blurRadius: 10,
+            offset: Offset(0, -3),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           TextButton(
             onPressed: _isSaving ? null : () => _saveProgram(isDraft: true),
-            child: Text(
+            child: const Text(
               'Save Draft',
-              style: campaignText(
-                13,
-                weight: FontWeight.w600,
-                color: const Color(0xFF08435E),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF08435E),
+                decoration: TextDecoration.underline,
               ),
             ),
           ),
-          ElevatedButton(
-            onPressed: _isSaving ? null : _onNext,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF08435E),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              elevation: 0,
-            ),
-            child: _isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _currentStep == 3 ? 'Create Program' : 'Next',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      const Icon(Icons.arrow_forward_rounded, size: 15),
-                    ],
+          InkWell(
+            onTap: _isSaving ? null : _onNext,
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 11),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF08435E), Color(0xFF052B3C)],
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x3308435E),
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
                   ),
+                ],
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _currentStep == 3 ? 'Create Program' : 'Next',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_rounded, size: 15, color: Colors.white),
+                      ],
+                    ),
+            ),
           ),
         ],
       ),
