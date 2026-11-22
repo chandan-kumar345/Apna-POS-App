@@ -20,6 +20,7 @@ class CampaignStudioLayout extends StatelessWidget {
   final ValueChanged<CampaignModel> onCampaign;
   final ValueChanged<CampaignTemplateModel> onTemplate;
   final Future<void> Function() onRefresh;
+
   const CampaignStudioLayout({
     super.key,
     required this.stats,
@@ -173,6 +174,19 @@ class CampaignStudioLayout extends StatelessWidget {
                                 color: Color(0xFFE0DEEF),
                               ),
                             ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE0DEEF),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: _purple,
+                                width: 1.5,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -190,6 +204,39 @@ class CampaignStudioLayout extends StatelessWidget {
                           style: TextStyle(color: _muted, fontSize: 13),
                         ),
                       ] else ...[
+                        TextField(
+                          onChanged: onSearch,
+                          decoration: InputDecoration(
+                            hintText: 'Search $tab campaigns',
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              size: 20,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            isDense: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE0DEEF),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE0DEEF),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                color: _purple,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
                         Text(
                           tab,
                           style: const TextStyle(
@@ -216,8 +263,8 @@ class CampaignStudioLayout extends StatelessWidget {
                       final columns = constraints.crossAxisExtent < 520
                           ? 2
                           : constraints.crossAxisExtent < 850
-                          ? 3
-                          : 4;
+                              ? 3
+                              : 4;
                       return SliverGrid(
                         delegate: SliverChildBuilderDelegate(
                           (_, index) => _template(templates[index]),
@@ -225,9 +272,9 @@ class CampaignStudioLayout extends StatelessWidget {
                         ),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: columns,
-                          mainAxisExtent: 286,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
+                          mainAxisExtent: 290,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
                         ),
                       );
                     },
@@ -239,7 +286,7 @@ class CampaignStudioLayout extends StatelessWidget {
                   sliver: SliverList.builder(
                     itemCount: campaigns.length,
                     itemBuilder: (_, index) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.only(bottom: 12),
                       child: _campaign(campaigns[index]),
                     ),
                   ),
@@ -260,11 +307,18 @@ class CampaignStudioLayout extends StatelessWidget {
 
   Widget _surface(Widget child, {Color color = Colors.white}) => Container(
     width: double.infinity,
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
       color: color,
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: const Color(0xFFE1DFEF)),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0xFFE2E8F0)),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x06000000),
+          offset: Offset(0, 3),
+          blurRadius: 10,
+        ),
+      ],
     ),
     child: child,
   );
@@ -275,23 +329,34 @@ class CampaignStudioLayout extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Icon(Icons.campaign_rounded, color: _purple, size: 16),
-            const SizedBox(width: 6),
-            const Expanded(
-              child: Text(
-                'CAMPAIGN STUDIO',
-                style: TextStyle(
-                  color: _purple,
-                  fontSize: 11,
-                  letterSpacing: .9,
-                  fontWeight: FontWeight.w800,
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAE5FA),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.campaign_rounded, color: _purple, size: 14),
+                  SizedBox(width: 5),
+                  Text(
+                    'CAMPAIGN STUDIO',
+                    style: TextStyle(
+                      color: _purple,
+                      fontSize: 11,
+                      letterSpacing: .9,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               flex: 7,
@@ -302,12 +367,12 @@ class CampaignStudioLayout extends StatelessWidget {
                     'Reach customers.\nGrow your orders.',
                     style: TextStyle(
                       color: _ink,
-                      fontSize: 20,
-                      height: 1.15,
+                      fontSize: 22,
+                      height: 1.18,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 9),
+                  const SizedBox(height: 8),
                   const Text(
                     'Create WhatsApp offers and updates in minutes.',
                     style: TextStyle(color: _muted, fontSize: 13, height: 1.4),
@@ -320,14 +385,15 @@ class CampaignStudioLayout extends StatelessWidget {
               flex: 4,
               child: Image.asset(
                 'assets/images/campaign_hero_phone_3d.png',
-                height: 150,
+                height: 140,
                 fit: BoxFit.contain,
                 cacheWidth: 600,
+                errorBuilder: (_, error, stack) => const SizedBox.shrink(),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: onCreate,
           icon: const Icon(Icons.add_rounded, size: 18),
@@ -339,6 +405,7 @@ class CampaignStudioLayout extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
+            elevation: 0,
           ),
         ),
         const SizedBox(height: 8),
@@ -385,7 +452,8 @@ class CampaignStudioLayout extends StatelessWidget {
     style: OutlinedButton.styleFrom(
       foregroundColor: _ink,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      side: const BorderSide(color: Color(0xFFE1DFEF)),
+      side: const BorderSide(color: Color(0xFFE2E8F0)),
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
     child: Row(
@@ -406,10 +474,18 @@ class CampaignStudioLayout extends StatelessWidget {
 
   Widget _performance() => _surface(
     Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            const Icon(Icons.bar_chart_rounded, color: _purple, size: 20),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0EDFF),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.bar_chart_rounded, color: _purple, size: 18),
+            ),
             const SizedBox(width: 8),
             const Expanded(
               child: Text(
@@ -426,13 +502,13 @@ class CampaignStudioLayout extends StatelessWidget {
               onPressed: onPerformance,
               icon: const Icon(
                 Icons.arrow_outward_rounded,
-                size: 17,
+                size: 18,
                 color: _muted,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -482,26 +558,34 @@ class CampaignStudioLayout extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
           decoration: BoxDecoration(
             color: const Color(0xFFF4F3FA),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE8E5F5)),
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.account_balance_wallet_outlined,
-                size: 21,
-                color: _purple,
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  size: 20,
+                  color: _purple,
+                ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'Wallet balance',
-                      style: TextStyle(fontSize: 11, color: _muted),
+                      style: TextStyle(fontSize: 11, color: _muted, fontWeight: FontWeight.w600),
                     ),
                     Text(
                       '₹${stats.walletBalance.toStringAsFixed(2)}',
@@ -514,13 +598,20 @@ class CampaignStudioLayout extends StatelessWidget {
                   ],
                 ),
               ),
-              TextButton(
+              FilledButton.tonal(
                 onPressed: onTopUp,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _ink,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
                 child: const Text(
                   'Top up',
                   style: TextStyle(
-                    color: _ink,
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -545,7 +636,7 @@ class CampaignStudioLayout extends StatelessWidget {
       onTap: () => onTab(filter),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
         child: Row(
           children: [
             Icon(icon, size: 21, color: _ink),
@@ -582,73 +673,123 @@ class CampaignStudioLayout extends StatelessWidget {
     clipBehavior: Clip.antiAlias,
     child: InkWell(
       onTap: () => onTemplate(template),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(height: 118, child: _image(template.headerImageUrl)),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x06000000),
+              offset: Offset(0, 3),
+              blurRadius: 8,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 122,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Text(
-                    template.tagLabel.isEmpty
-                        ? template.category
-                        : template.tagLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: _purple,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    template.name,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.2,
-                      color: _ink,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Use template →',
-                    style: const TextStyle(
-                      color: _purple,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                  _image(template.headerImageUrl),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.verified_rounded, size: 11, color: Color(0xFF22C55E)),
+                          const SizedBox(width: 4),
+                          Text(
+                            template.tagLabel.isEmpty ? template.category : template.tagLabel,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      template.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.25,
+                        color: _ink,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (template.subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        template.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _muted, fontSize: 11),
+                      ),
+                    ],
+                    const Spacer(),
+                    Text(
+                      'Use template →',
+                      style: const TextStyle(
+                        color: _purple,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
 
   Widget _image(String path) {
     final fallback = Container(
-      color: const Color(0xFFEAE5FA),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFEBE6FA), Color(0xFFDED8F8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
       child: const Center(
-        child: Icon(Icons.campaign_outlined, color: _purple, size: 40),
+        child: Icon(Icons.campaign_outlined, color: _purple, size: 38),
       ),
     );
     if (path.isEmpty) return fallback;
-    if (path.startsWith('assets/'))
+    if (path.startsWith('assets/')) {
       return Image.asset(
         path,
         fit: BoxFit.cover,
         cacheWidth: 600,
         errorBuilder: (_, error, stack) => fallback,
       );
+    }
     return Image.network(
       ApiEndpoints.resolveMediaUrl(path),
       fit: BoxFit.cover,
@@ -657,78 +798,233 @@ class CampaignStudioLayout extends StatelessWidget {
     );
   }
 
-  Widget _campaign(CampaignModel campaign) => Material(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(14),
-    child: InkWell(
-      onTap: () => onCampaign(campaign),
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              campaign.name,
-              style: const TextStyle(
-                color: _ink,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
+  Widget _campaign(CampaignModel campaign) {
+    final status = campaign.status.toLowerCase();
+    Color statusBg;
+    Color statusFg;
+    IconData statusIcon;
+    String statusLabel = campaign.status.toUpperCase();
+
+    if (status == 'completed' || status == 'approved') {
+      statusBg = const Color(0xFFE6F9EE);
+      statusFg = const Color(0xFF0F766E);
+      statusIcon = Icons.check_circle_rounded;
+    } else if (status == 'scheduled') {
+      statusBg = const Color(0xFFEFF6FF);
+      statusFg = const Color(0xFF1D4ED8);
+      statusIcon = Icons.schedule_rounded;
+    } else if (status == 'running' || status == 'pending') {
+      statusBg = const Color(0xFFFFFBEB);
+      statusFg = const Color(0xFFB45309);
+      statusIcon = Icons.sync_rounded;
+    } else if (status == 'draft') {
+      statusBg = const Color(0xFFF1F5F9);
+      statusFg = const Color(0xFF475569);
+      statusIcon = Icons.edit_note_rounded;
+    } else {
+      statusBg = const Color(0xFFFEF2F2);
+      statusFg = const Color(0xFFB91C1C);
+      statusIcon = Icons.error_outline_rounded;
+    }
+
+    final sentCount = campaign.stats.messagesSent;
+    final deliveredCount = campaign.stats.delivered;
+    final readCount = campaign.stats.read;
+    final recipientCount = campaign.audience.recipientCount;
+
+    final deliveryPct = sentCount > 0 ? ((deliveredCount / sentCount) * 100).clamp(0.0, 100.0) : 0.0;
+    final readPct = deliveredCount > 0 ? ((readCount / deliveredCount) * 100).clamp(0.0, 100.0) : 0.0;
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      elevation: 0,
+      child: InkWell(
+        onTap: () => onCampaign(campaign),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x06000000),
+                offset: Offset(0, 3),
+                blurRadius: 8,
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 12,
-              runSpacing: 6,
-              children: [
-                Text(
-                  campaign.status.toUpperCase(),
-                  style: const TextStyle(
-                    color: _purple,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
+            ],
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      campaign.name,
+                      style: const TextStyle(
+                        color: _ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                ),
-                Text(
-                  '${campaign.audience.recipientCount} recipients',
-                  style: const TextStyle(color: _muted, fontSize: 12),
-                ),
-                Text(
-                  '${campaign.stats.messagesSent} sent',
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcon, size: 12, color: statusFg),
+                        const SizedBox(width: 4),
+                        Text(
+                          statusLabel,
+                          style: TextStyle(
+                            color: statusFg,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.chat_bubble_rounded, size: 10, color: Color(0xFF15803D)),
+                        SizedBox(width: 4),
+                        Text(
+                          'WhatsApp',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF15803D),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if ((campaign.rewardDetails?.discountAmount ?? 0) > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${campaign.rewardDetails!.discountAmount.toInt()}% OFF',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFB45309),
+                        ),
+                      ),
+                    ),
+                  Text(
+                    '$recipientCount recipients',
+                    style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                  Text(
+                    '$sentCount sent',
+                    style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ],
+              ),
+              if (sentCount > 0) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      'Delivered: ${deliveryPct.toStringAsFixed(1)}% ($deliveredCount/$sentCount)',
+                      style: const TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      'Read: ${readPct.toStringAsFixed(1)}% ($readCount)',
+                      style: const TextStyle(color: Color(0xFF6366F1), fontSize: 11, fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-
-  Widget _empty() => _surface(
-    Column(
-      children: [
-        const Icon(Icons.campaign_outlined, size: 32, color: _muted),
-        const SizedBox(height: 12),
-        Text(
-          loading
-              ? 'Loading your campaigns…'
-              : tab == 'Explore Campaigns'
-              ? 'No matching templates'
-              : 'No ${tab.toLowerCase()} campaigns',
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
+            ],
           ),
         ),
-        const SizedBox(height: 6),
-        const Text(
-          'Try another filter or create a new campaign.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: _muted, fontSize: 13),
-        ),
-      ],
+      ),
+    );
+  }
+
+  Widget _empty() => _surface(
+    Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: Column(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF0EDFF),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.campaign_outlined, size: 26, color: _purple),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            loading
+                ? 'Loading your campaigns…'
+                : tab == 'Explore Campaigns'
+                    ? 'No matching templates'
+                    : 'No ${tab.toLowerCase()} campaigns',
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Try another filter or create a new campaign.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _muted, fontSize: 13),
+          ),
+          if (!loading && tab != 'Explore Campaigns') ...[
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Create Campaign'),
+              style: FilledButton.styleFrom(
+                backgroundColor: _ink,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     ),
   );
 }

@@ -1057,12 +1057,16 @@ class CustomerLoyaltyModel {
   final String customerPhone;
   final String customerName;
   final int pointsBalance;
+  final double cashbackBalance;
+  final double totalCashbackEarned;
+  final double totalCashbackRedeemed;
   final int totalVisits;
   final int totalPointsEarned;
   final int totalPointsRedeemed;
   final String pointsName;
   final String programName;
   final bool isProgramActive;
+  final bool hasActiveCashback;
   final List<String> orderTypes;
   final List<String> unlockedStages;
   final List<AvailableRewardStageModel> availableStages;
@@ -1071,18 +1075,23 @@ class CustomerLoyaltyModel {
     required this.customerPhone,
     this.customerName = '',
     this.pointsBalance = 0,
+    this.cashbackBalance = 0.0,
+    this.totalCashbackEarned = 0.0,
+    this.totalCashbackRedeemed = 0.0,
     this.totalVisits = 0,
     this.totalPointsEarned = 0,
     this.totalPointsRedeemed = 0,
     this.pointsName = 'Cookie',
     this.programName = 'THE ROYAL GARDENIA',
     this.isProgramActive = true,
+    this.hasActiveCashback = false,
     this.orderTypes = const ['DineIn', 'Takeaway'],
     this.unlockedStages = const [],
     this.availableStages = const [],
   });
 
   bool get hasUnlockedStages => availableStages.any((s) => s.isUnlocked);
+  bool get hasAvailableCashback => cashbackBalance > 0;
 
   List<AvailableRewardStageModel> get claimableStages =>
       availableStages.where((s) => s.isUnlocked).toList();
@@ -1110,12 +1119,16 @@ class CustomerLoyaltyModel {
       customerPhone: json['customerPhone']?.toString() ?? '',
       customerName: json['customerName']?.toString() ?? '',
       pointsBalance: (json['pointsBalance'] as num?)?.toInt() ?? 0,
+      cashbackBalance: (json['cashbackBalance'] as num?)?.toDouble() ?? 0.0,
+      totalCashbackEarned: (json['totalCashbackEarned'] as num?)?.toDouble() ?? 0.0,
+      totalCashbackRedeemed: (json['totalCashbackRedeemed'] as num?)?.toDouble() ?? 0.0,
       totalVisits: (json['totalVisits'] as num?)?.toInt() ?? 0,
       totalPointsEarned: (json['totalPointsEarned'] as num?)?.toInt() ?? 0,
       totalPointsRedeemed: (json['totalPointsRedeemed'] as num?)?.toInt() ?? 0,
       pointsName: json['pointsName']?.toString() ?? 'Cookie',
       programName: json['programName']?.toString() ?? 'THE ROYAL GARDENIA',
       isProgramActive: json['isProgramActive'] != false,
+      hasActiveCashback: json['hasActiveCashback'] == true,
       orderTypes: parsedOrderTypes,
       unlockedStages: unlocked,
       availableStages: stages,

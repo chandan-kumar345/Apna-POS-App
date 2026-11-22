@@ -3,9 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/campaign_models.dart';
-import '../web/views/audience_groups_view.dart';
-import '../web/views/campaign_details_monitoring_view.dart';
-import '../web/web_campaign_portal_screen.dart';
 import 'campaign_editor.dart';
 import 'campaign_style.dart';
 import 'mobile_campaign_data.dart';
@@ -179,6 +176,53 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
     );
     if (mounted) await load();
   }
+
+  void _more() => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.refresh),
+            title: const Text('Refresh campaigns'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              refresh();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.add_circle_outline_rounded),
+            title: const Text('Create campaign'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              if (options != null) edit();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.people_alt_outlined),
+            title: const Text('Go to customers'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              if (widget.onNavigateToCustomers != null) {
+                widget.onNavigateToCustomers!();
+              } else {
+                openAux(
+                  (ctx) => MobileCustomersScreen(
+                    options: options,
+                    showHeader: true,
+                    onBack: () => Navigator.pop(ctx),
+                    onNavigateToCampaigns: () => Navigator.pop(ctx),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -371,15 +415,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                           ),
                         ),
                   ),
-                  _nav(
-                    'More',
-                    Icons.more_horiz,
-                    () => openAux(
-                      (ctx) => WebCampaignPortalScreen(
-                        onBack: () => Navigator.pop(ctx),
-                      ),
-                    ),
-                  ),
+                  _nav('More', Icons.more_horiz_rounded, _more),
                 ],
               ),
             ),

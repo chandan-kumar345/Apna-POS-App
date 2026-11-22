@@ -78,8 +78,12 @@ class LoyaltyController {
   async sendOtp(req, res, next) {
     try {
       const businessId = this._getBusinessId(req);
-      const { phone, stageId } = req.body;
-      const result = await loyaltyService.sendLoyaltyRedemptionOtp(businessId, phone, stageId);
+      const { phone, stageId, pointsToRedeem, amountToRedeem } = req.body;
+      const result = await loyaltyService.sendLoyaltyRedemptionOtp(businessId, phone, {
+        stageId,
+        pointsToRedeem: pointsToRedeem != null ? Number(pointsToRedeem) : undefined,
+        amountToRedeem: amountToRedeem != null ? Number(amountToRedeem) : undefined,
+      });
       res.json({
         success: true,
         data: result,

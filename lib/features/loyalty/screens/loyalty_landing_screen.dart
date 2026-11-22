@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -22,7 +21,7 @@ class LoyaltyLandingScreen extends StatefulWidget {
     super.key,
     this.onBack,
     this.onOpenDrawer,
-    this.showHeader = false,
+    this.showHeader = true,
   });
 
   @override
@@ -223,53 +222,6 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     return _db.companyLogoPath ?? _brandingData?.companyLogo ?? '';
   }
 
-  Widget _businessLogo(String logo, String business) {
-    if (logo.startsWith('http')) {
-      return Image.network(
-        logo,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => _brand(business),
-      );
-    }
-    if (logo.startsWith('assets/')) {
-      return Image.asset(
-        logo,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => _brand(business),
-      );
-    }
-    if (!kIsWeb && logo.isNotEmpty) {
-      try {
-        final file = File(logo);
-        if (file.existsSync()) {
-          return Image.file(
-            file,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => _brand(business),
-          );
-        }
-      } catch (_) {}
-    }
-    return _brand(business);
-  }
-
-  Widget _brand(String business) => Container(
-        color: const Color(0xFF13455A),
-        alignment: Alignment.center,
-        child: Text(
-          business.trim().isEmpty
-              ? 'AP'
-              : business
-                  .trim()
-                  .split(RegExp(r'\s+'))
-                  .take(2)
-                  .map((word) => word[0])
-                  .join()
-                  .toUpperCase(),
-          style: customerText(16, color: Colors.white, weight: FontWeight.w800),
-        ),
-      );
-
   @override
   Widget build(BuildContext context) {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -280,9 +232,24 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
           footer: _buildCreateProgramFooter(),
         );
       }
-      return CampaignShell(
-        body: _buildBody(),
-        footer: _buildCreateProgramFooter(),
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFFE9F7FF),
+              Color(0xFFDFF1FD),
+              Color(0xFFEBF8FF),
+            ],
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(child: _buildBody()),
+            _buildCreateProgramFooter(),
+          ],
+        ),
       );
     }
     return _buildDesktopWebLayout();
@@ -293,6 +260,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     return PosScreenTopHeader(
       onLogoTap: widget.onOpenDrawer,
       onStoreTap: widget.onOpenDrawer,
+      onNotificationTap: _openNotifications,
     );
   }
 
@@ -339,21 +307,9 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Title & Subtitle with smaller fonts
-            Row(
-              children: [
-                if (widget.onBack == null && Navigator.of(context).canPop()) ...[
-                  IconButton(
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.arrow_back_rounded, color: ink),
-                    tooltip: 'Back',
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                Text(
-                  'Loyalty Program',
-                  style: customerText(19, weight: FontWeight.w800),
-                ),
-              ],
+            Text(
+              'Loyalty Program',
+              style: customerText(19, weight: FontWeight.w800),
             ),
             const SizedBox(height: 3),
             Text(

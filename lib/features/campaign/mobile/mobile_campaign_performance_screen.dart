@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'campaign_audience_dialog.dart';
 
-import '../web/widgets/whatsapp_phone_preview.dart';
+import 'whatsapp_phone_preview.dart';
 
 import 'campaign_style.dart';
 import 'mobile_campaign_data.dart';

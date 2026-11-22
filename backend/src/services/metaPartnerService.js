@@ -9,6 +9,8 @@ const graphVersion = () => process.env.META_GRAPH_VERSION || 'v23.0';
 const catalog = [
   { name: 'order_confirmation', category: 'UTILITY', displayName: 'Order confirmation', description: 'Your order has been accepted. We will let you know when it is ready.' },
   { name: 'ebill_receipt', category: 'UTILITY', displayName: 'Bill receipt', description: 'Thank you for your visit. Reply to this message to request a copy of your bill.' },
+  { name: 'loyalty_cashback_earned', category: 'UTILITY', displayName: 'Loyalty Cashback Earned', description: 'Congratulations! You earned cashback on your order. Use your cashback balance on your next order.' },
+  { name: 'loyalty_redemption_otp', category: 'UTILITY', displayName: 'Loyalty Redemption OTP', description: 'Your OTP to redeem your loyalty cashback on your order.' },
 ];
 
 class MetaPartnerService {

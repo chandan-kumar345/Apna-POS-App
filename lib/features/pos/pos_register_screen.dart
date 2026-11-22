@@ -5265,7 +5265,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       textBaseline: TextBaseline.alphabetic,
                       children: [
                         Text(
-                          '${activeLoyalty.pointsBalance}',
+                          activeLoyalty.hasActiveCashback || activeLoyalty.cashbackBalance > 0
+                              ? '₹${activeLoyalty.cashbackBalance.toInt()}'
+                              : '${activeLoyalty.pointsBalance}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 34,
@@ -5275,7 +5277,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          ptsName,
+                          activeLoyalty.hasActiveCashback || activeLoyalty.cashbackBalance > 0
+                              ? 'Cashback'
+                              : ptsName,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
@@ -5286,7 +5290,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ),
                     const SizedBox(height: 8),
 
-                    // Earned & Redeemed Points stats and View Loyalty button Row
+                    // Earned & Redeemed stats and View Loyalty button Row
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -5296,7 +5300,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Earned: ${activeLoyalty.totalPointsEarned}',
+                                activeLoyalty.hasActiveCashback || activeLoyalty.cashbackBalance > 0
+                                    ? 'Earned: ₹${activeLoyalty.totalCashbackEarned.toInt()}'
+                                    : 'Earned: ${activeLoyalty.totalPointsEarned}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 13,
@@ -5305,7 +5311,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Redeemed: ${activeLoyalty.totalPointsRedeemed}',
+                                activeLoyalty.hasActiveCashback || activeLoyalty.cashbackBalance > 0
+                                    ? 'Redeemed: ₹${activeLoyalty.totalCashbackRedeemed.toInt()}'
+                                    : 'Redeemed: ${activeLoyalty.totalPointsRedeemed}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 13,
@@ -5327,6 +5335,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               currentOrderTotal: cartSubtotal,
                               onDiscountApplied: (discountAmount, stageId, pointsToRedeem) {
                                 setState(() {
+                                  _discountMode = 'flat';
+                                  _discountInputValue = discountAmount;
                                   _redeemedLoyaltyStageId = stageId;
                                   _redeemedLoyaltyPoints = pointsToRedeem;
                                   _loyaltyDiscountAmount = discountAmount;
@@ -6766,30 +6776,106 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         'Customer information',
                         style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                       ),
-                      if (_isLoyaltyActive || _currentCustomerLoyalty?.isProgramActive == true || _customerPhone.isNotEmpty || _customerName.isNotEmpty)
-                        InkWell(
-                          onTap: () {
-                            if (_customerPhone.isNotEmpty || _customerName.isNotEmpty) {
-                              _showLoyaltyPopupDialog(setStateCart);
+                      Builder(
+                        builder: (context) {
+                            final hasPhone = _customerPhone.trim().isNotEmpty;
+                            final cashbackBal = _currentCustomerLoyalty?.cashbackBalance ?? 0.0;
+                            final pointsBal = _currentCustomerLoyalty?.pointsBalance ?? 0;
+                            final isEnabled = hasPhone && (_isLoyaltyActive || _currentCustomerLoyalty?.isProgramActive == true);
+
+                            String badgeText;
+                            if (!hasPhone) {
+                              badgeText = 'L (Loyalty)';
+                            } else if (_currentCustomerLoyalty != null) {
+                              if (cashbackBal > 0) {
+                                badgeText = 'L: ₹${cashbackBal.toInt()}';
+                              } else if (pointsBal > 0) {
+                                badgeText = 'L: $pointsBal pts';
+                              } else {
+                                badgeText = 'L: ₹0';
+                              }
                             } else {
-                              _showAddCustomerDialog(setStateCart);
+                              badgeText = 'L: ...';
                             }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: (_customerPhone.isNotEmpty || _customerName.isNotEmpty) ? const Color(0xFF00A86B) : const Color(0xFF051C48).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              'Loyalty',
-                              style: TextStyle(
-                                color: (_customerPhone.isNotEmpty || _customerName.isNotEmpty) ? Colors.white : const Color(0xFF051C48),
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
+
+                            return InkWell(
+                              onLongPress: () {
+                                if (hasPhone) {
+                                  _showLoyaltyPopupDialog(setStateCart);
+                                }
+                              },
+                              onTap: () {
+                                if (!hasPhone) {
+                                  _showAddCustomerDialog(setStateCart);
+                                } else {
+                                  LoyaltyRedemptionDialog.show(
+                                    context,
+                                    customerPhone: _customerPhone.trim(),
+                                    customerName: _customerName.trim(),
+                                    currentOrderTotal: cartSubtotal,
+                                    onDiscountApplied: (discountAmount, stageId, pointsToRedeem) {
+                                      setState(() {
+                                        _discountMode = 'flat';
+                                        _discountInputValue = discountAmount;
+                                        _loyaltyDiscountAmount = discountAmount;
+                                        _redeemedLoyaltyStageId = stageId;
+                                        _redeemedLoyaltyPoints = pointsToRedeem;
+                                      });
+                                      setStateCart(() {});
+                                      _checkCustomerLoyalty();
+                                    },
+                                  );
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isEnabled ? const Color(0xFF00A86B) : const Color(0xFF051C48).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                  boxShadow: isEnabled
+                                      ? [
+                                          BoxShadow(
+                                            color: const Color(0xFF00A86B).withValues(alpha: 0.25),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 1),
+                                          )
+                                        ]
+                                      : null,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: isEnabled ? Colors.white.withValues(alpha: 0.25) : Colors.transparent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        'L',
+                                        style: TextStyle(
+                                          color: isEnabled ? Colors.white : const Color(0xFF051C48),
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      badgeText,
+                                      style: TextStyle(
+                                        color: isEnabled ? Colors.white : const Color(0xFF051C48),
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                     ],
                   ),
@@ -7250,12 +7336,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 ),
         ),
 
-        // Add Customer & Extra's Buttons (Mobile only)
+        // Add Customer, Extra's & Loyalty Buttons (Mobile only)
         if (!isDesktopPanel)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1.5),
             child: Row(
               children: [
+                // 1. Customer button (Expanded to fill available space)
                 Expanded(
                   child: InkWell(
                     onTap: () => _showAddCustomerDialog(setStateCart),
@@ -7298,56 +7385,129 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
 
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _showExtraBenefitDialog(setStateCart),
+                // 2. Extra's button (Compact when loyalty enabled, Expanded when loyalty disabled)
+                Builder(
+                  builder: (context) {
+                    final isLoyaltyEnabled = _customerPhone.isNotEmpty;
+                    final extrasBtn = InkWell(
+                      onTap: () => _showExtraBenefitDialog(setStateCart),
+                      borderRadius: BorderRadius.circular(22),
+                      child: Container(
+                        height: 40,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isLoyaltyEnabled ? 10 : 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.white,
+                              offset: Offset(-2, -2),
+                              blurRadius: 4,
+                            ),
+                            BoxShadow(
+                              color: Color(0xFFD3E0EA),
+                              offset: Offset(2, 2),
+                              blurRadius: 5,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: isLoyaltyEnabled ? MainAxisSize.min : MainAxisSize.max,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.local_offer_rounded, color: Color(0xFF0F2B48), size: 15),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                (computedDiscountAmount > 0 || _tipAmount > 0 || _additionalCharge > 0)
+                                    ? 'Extra\'s (₹${(computedDiscountAmount + _tipAmount + _additionalCharge).toStringAsFixed(0)})'
+                                    : 'Extra\'s',
+                                style: TextStyle(
+                                  color: const Color(0xFF0F2B48),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: isLoyaltyEnabled ? 12.0 : 13.0,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+
+                    return isLoyaltyEnabled ? extrasBtn : Expanded(child: extrasBtn);
+                  },
+                ),
+
+                // 3. Loyalty button (Positioned at the right end when enabled)
+                if (_customerPhone.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () {
+                      LoyaltyRedemptionDialog.show(
+                        context,
+                        customerPhone: _customerPhone.trim(),
+                        customerName: _customerName.trim(),
+                        currentOrderTotal: cartSubtotal,
+                        onDiscountApplied: (discountAmount, stageId, pointsToRedeem) {
+                          setState(() {
+                            _discountMode = 'flat';
+                            _discountInputValue = discountAmount;
+                            _loyaltyDiscountAmount = discountAmount;
+                            _redeemedLoyaltyStageId = stageId;
+                            _redeemedLoyaltyPoints = pointsToRedeem;
+                          });
+                          setStateCart(() {});
+                          _checkCustomerLoyalty();
+                        },
+                      );
+                    },
                     borderRadius: BorderRadius.circular(22),
                     child: Container(
                       height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: const Color(0xFF00A86B),
                         borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                        boxShadow: const [
+                        boxShadow: [
                           BoxShadow(
-                            color: Colors.white,
-                            offset: Offset(-2, -2),
-                            blurRadius: 4,
-                          ),
-                          BoxShadow(
-                            color: Color(0xFFD3E0EA),
-                            offset: Offset(2, 2),
-                            blurRadius: 5,
+                            color: const Color(0xFF00A86B).withValues(alpha: 0.35),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.local_offer_rounded, color: Color(0xFF0F2B48), size: 16),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              (computedDiscountAmount > 0 || _tipAmount > 0 || _additionalCharge > 0)
-                                  ? 'Extra\'s (₹${(computedDiscountAmount + _tipAmount + _additionalCharge).toStringAsFixed(0)})'
-                                  : 'Extra\'s',
-                              style: const TextStyle(
-                                color: Color(0xFF0F2B48),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13.0,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.25),
+                              shape: BoxShape.circle,
                             ),
+                            alignment: Alignment.center,
+                            child: const Text('L', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            (_currentCustomerLoyalty?.cashbackBalance ?? 0) > 0
+                                ? '₹${_currentCustomerLoyalty!.cashbackBalance.toInt()}'
+                                : '₹0',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12),
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

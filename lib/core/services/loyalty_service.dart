@@ -583,20 +583,25 @@ class LoyaltyService {
     return null;
   }
 
-  /// Request OTP for Stage Level Loyalty Redemption
+  /// Request OTP for Stage Level or Custom Cashback Loyalty Redemption
   Future<Map<String, dynamic>> sendRedemptionOtp({
     required String phone,
-    required String stageId,
+    String? stageId,
+    double? pointsToRedeem,
+    double? amountToRedeem,
   }) async {
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
+        final payload = <String, dynamic>{
+          'phone': phone.trim(),
+          'stageId': stageId ?? 'cashback_custom',
+        };
+        if (pointsToRedeem != null) payload['pointsToRedeem'] = pointsToRedeem;
+        if (amountToRedeem != null) payload['amountToRedeem'] = amountToRedeem;
         final response = await _apiClient.post(
           ApiEndpoints.loyaltySendOtp,
-          data: {
-            'phone': phone.trim(),
-            'stageId': stageId,
-          },
+          data: payload,
         );
         if (response != null) {
           final resData = (response is Map<String, dynamic> && response.containsKey('data'))

@@ -10,6 +10,74 @@ const ApiError = require('../utils/ApiError');
 
 class LoyaltyService {
   /**
+   * Helper to normalize phone variants across national & international formats:
+   * e.g. '9709593705' -> ['9709593705', '919709593705', '+919709593705', '+91 9709593705']
+   */
+  _getPhoneVariants(phone) {
+    if (!phone) return [];
+    const raw = String(phone).trim();
+    const digits = raw.replace(/\D/g, '');
+    const set = new Set([raw, digits]);
+    if (digits.length === 10) {
+      set.add(`91${digits}`);
+      set.add(`+91${digits}`);
+      set.add(`+91 ${digits}`);
+    } else if (digits.length === 12 && digits.startsWith('91')) {
+      const ten = digits.slice(2);
+      set.add(ten);
+      set.add(`+91${ten}`);
+      set.add(`+91 ${ten}`);
+    }
+    return Array.from(set).filter(Boolean);
+  }
+
+  /**
+   * Find CustomerLoyalty across phone variants and automatically consolidate any duplicates.
+   */
+  async _findCustomerLoyalty(businessId, phone) {
+    const variants = this._getPhoneVariants(phone);
+    if (!variants.length) return null;
+
+    const docs = await CustomerLoyalty.find({
+      businessId,
+      customerPhone: { $in: variants },
+    }).sort({ cashbackBalance: -1, pointsBalance: -1, updatedAt: -1 });
+
+    if (!docs || docs.length === 0) return null;
+
+    if (docs.length > 1) {
+      const primary = docs[0];
+      let maxCashback = 0;
+      let maxPoints = 0;
+      let maxEarned = 0;
+      let maxRedeemed = 0;
+      let maxVisits = 0;
+
+      for (const d of docs) {
+        maxCashback = Math.max(maxCashback, d.cashbackBalance || 0);
+        maxPoints = Math.max(maxPoints, d.pointsBalance || 0);
+        maxEarned = Math.max(maxEarned, d.totalPointsEarned || 0, d.totalCashbackEarned || 0);
+        maxRedeemed = Math.max(maxRedeemed, d.totalPointsRedeemed || 0, d.totalCashbackRedeemed || 0);
+        maxVisits = Math.max(maxVisits, d.totalVisits || 0);
+      }
+
+      primary.cashbackBalance = maxCashback;
+      primary.pointsBalance = maxPoints;
+      primary.totalCashbackEarned = Math.max(primary.totalCashbackEarned || 0, maxCashback);
+      primary.totalPointsEarned = Math.max(primary.totalPointsEarned || 0, maxPoints);
+      primary.totalVisits = Math.max(primary.totalVisits || 0, maxVisits);
+
+      for (let i = 1; i < docs.length; i++) {
+        await CustomerLoyalty.deleteOne({ _id: docs[i]._id }).catch(() => {});
+      }
+      await primary.save().catch(() => {});
+      return primary;
+    }
+
+    return docs[0];
+  }
+
+  /**
    * Default visit reward stages
    */
   getDefaultRewardStages() {
@@ -357,10 +425,11 @@ class LoyaltyService {
     }
 
     const cleanPhone = phone.trim();
-    let customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
+    let customerLoyalty = await this._findCustomerLoyalty(businessId, cleanPhone);
 
     if (!customerLoyalty) {
-      const customer = await Customer.findOne({ businessId, phone: cleanPhone });
+      const variants = this._getPhoneVariants(cleanPhone);
+      const customer = await Customer.findOne({ businessId, phone: { $in: variants } });
       customerLoyalty = await CustomerLoyalty.create({
         businessId,
         customerPhone: cleanPhone,
@@ -399,7 +468,12 @@ class LoyaltyService {
     customerLoyalty.unlockedStages = unlockedStageIds;
     await customerLoyalty.save();
 
-    const isProgramActive = visitConfig?.isActive === true && visitConfig?.status !== 'draft' && visitConfig?.status !== 'inactive';
+    const loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+    const activeCashbackPrograms = (loyaltyDoc?.programs || []).filter(
+      (p) => (p.type === 'cashback' || p.cashbackPercentage > 0 || p.cashbackAmount > 0) && p.isActive !== false && p.status === 'active'
+    );
+    const hasActiveCashback = activeCashbackPrograms.length > 0;
+    const isProgramActive = (visitConfig?.isActive === true && visitConfig?.status !== 'draft' && visitConfig?.status !== 'inactive') || hasActiveCashback;
     const orderTypesList = visitConfig?.orderType
       ? visitConfig.orderType.split(',').map((s) => s.trim().replace('-', '')).filter(Boolean)
       : ['DineIn', 'Takeaway'];
@@ -408,6 +482,9 @@ class LoyaltyService {
       customerPhone: customerLoyalty.customerPhone,
       customerName: customerLoyalty.customerName,
       pointsBalance: customerLoyalty.pointsBalance,
+      cashbackBalance: customerLoyalty.cashbackBalance || 0,
+      totalCashbackEarned: customerLoyalty.totalCashbackEarned || 0,
+      totalCashbackRedeemed: customerLoyalty.totalCashbackRedeemed || 0,
       totalVisits: customerLoyalty.totalVisits,
       totalPointsEarned: customerLoyalty.totalPointsEarned,
       totalPointsRedeemed: customerLoyalty.totalPointsRedeemed,
@@ -415,6 +492,16 @@ class LoyaltyService {
       pointsName: visitConfig?.pointsName || 'Cookie',
       programName: visitConfig?.programName || 'THE ROYAL GARDENIA',
       isProgramActive: isProgramActive,
+      hasActiveCashback: hasActiveCashback,
+      activeCashbackPrograms: activeCashbackPrograms.map((p) => ({
+        id: p.id,
+        title: p.title,
+        cashbackType: p.cashbackType,
+        cashbackPercentage: p.cashbackPercentage,
+        cashbackAmount: p.cashbackAmount,
+        minimumOrder: p.minimumOrder,
+        maximumCashback: p.maximumCashback,
+      })),
       orderTypes: orderTypesList.length > 0 ? orderTypesList : ['DineIn', 'Takeaway'],
       unlockedStages: unlockedStageIds,
       availableStages,
@@ -486,7 +573,7 @@ class LoyaltyService {
       }
     }
 
-    let customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
+    let customerLoyalty = await this._findCustomerLoyalty(businessId, cleanPhone);
 
     if (shouldAwardPoints && visitConfig.pointEarningGapEnabled && Number(visitConfig.pointEarningGap) > 0) {
       if (customerLoyalty && customerLoyalty.lastEarningAt) {
@@ -637,6 +724,28 @@ class LoyaltyService {
       // Non-blocking
     }
 
+    // Send automated WhatsApp notification for earned cashback
+    if (totalCashbackAwarded > 0) {
+      try {
+        const business = await Business.findById(businessId).lean();
+        const storeName = business?.name || programName || 'Apna POS';
+        const whatsappService = require('./whatsappService');
+        await whatsappService.sendLoyaltyCashbackEarnedMessage({
+          to: cleanPhone,
+          customerName: order.customerName || customerLoyalty.customerName || 'Valued Customer',
+          businessName: storeName,
+          cashbackEarned: totalCashbackAwarded,
+          availableBalance: customerLoyalty.cashbackBalance,
+          orderNumber: order.orderNumber || '',
+          phoneNumberId: business?.whatsappSettings?.phoneNumberId,
+          accessToken: business?.whatsappSettings?.accessToken,
+          appSecret: business?.whatsappSettings?.appSecret,
+        });
+      } catch (waErr) {
+        console.warn('[awardPointsForCompletedOrder] WhatsApp cashback notification notice:', waErr.message);
+      }
+    }
+
     return {
       earned: true,
       pointsAwarded,
@@ -651,36 +760,75 @@ class LoyaltyService {
   }
 
   /**
-   * Generate & Send OTP for Stage Level Loyalty Redemption
+   * Generate & Send OTP for Loyalty / Cashback Redemption
    */
-  async sendLoyaltyRedemptionOtp(businessId, phone, stageId) {
+  async sendLoyaltyRedemptionOtp(businessId, phone, stageOrOptions) {
     if (!phone) {
       throw ApiError.badRequest('Customer phone number is required');
     }
-    if (!stageId) {
-      throw ApiError.badRequest('Reward stage ID is required');
+
+    let stageId = null;
+    let pointsToRedeem = null;
+    let amountToRedeem = null;
+
+    if (typeof stageOrOptions === 'object' && stageOrOptions !== null) {
+      stageId = stageOrOptions.stageId;
+      pointsToRedeem = stageOrOptions.pointsToRedeem;
+      amountToRedeem = stageOrOptions.amountToRedeem;
+    } else {
+      stageId = stageOrOptions;
     }
 
     const cleanPhone = phone.trim();
-    const customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
+    const customerLoyalty = await this._findCustomerLoyalty(businessId, cleanPhone);
 
     if (!customerLoyalty) {
       throw ApiError.notFound('Customer loyalty account not found');
     }
 
     const visitConfig = await this.getVisitConfig(businessId);
-    const stages = visitConfig?.rewardStages || this.getDefaultRewardStages();
-    const stage = stages.find((s) => s.id === stageId);
+    const business = await Business.findById(businessId).lean();
+    const storeName = business?.name || visitConfig?.programName || 'Apna POS';
 
-    if (!stage) {
-      throw ApiError.badRequest('Invalid reward stage selected');
-    }
+    let requiredPoints = 0;
+    let discountValue = 0;
+    let effectiveStageId = stageId || 'cashback_custom';
+    let redemptionType = 'stage';
 
-    const requiredPoints = Number(stage.visitCount || stage.value || 0);
-    const discountValue = Number(stage.rewardValue || 100);
+    // 1. Check if custom cashback points redemption
+    const isCustomCashback = (pointsToRedeem != null && Number(pointsToRedeem) > 0) ||
+      (amountToRedeem != null && Number(amountToRedeem) > 0) ||
+      stageId === 'cashback_custom';
 
-    if (customerLoyalty.pointsBalance < requiredPoints) {
-      throw ApiError.badRequest(`Insufficient points balance. Requires ${requiredPoints} ${visitConfig.pointsName || 'Cookies'}, current balance is ${customerLoyalty.pointsBalance}`);
+    if (isCustomCashback) {
+      redemptionType = 'cashback';
+      effectiveStageId = 'cashback_custom';
+      discountValue = Number(amountToRedeem || pointsToRedeem || 0);
+      requiredPoints = Number(pointsToRedeem || amountToRedeem || 0);
+
+      if (discountValue <= 0) {
+        throw ApiError.badRequest('Please enter a valid amount of cashback points to redeem');
+      }
+
+      const availableCashback = Number(customerLoyalty.cashbackBalance || 0);
+      if (availableCashback < requiredPoints) {
+        throw ApiError.badRequest(`Insufficient cashback balance. You have ₹${availableCashback} cashback available.`);
+      }
+    } else {
+      // 2. Stage-based redemption fallback
+      const stages = visitConfig?.rewardStages || this.getDefaultRewardStages();
+      const stage = stages.find((s) => s.id === stageId);
+
+      if (!stage) {
+        throw ApiError.badRequest('Invalid reward stage selected');
+      }
+
+      requiredPoints = Number(stage.visitCount || stage.value || 0);
+      discountValue = Number(stage.rewardValue || 100);
+
+      if (customerLoyalty.pointsBalance < requiredPoints) {
+        throw ApiError.badRequest(`Insufficient points balance. Requires ${requiredPoints} ${visitConfig.pointsName || 'Cookies'}, current balance is ${customerLoyalty.pointsBalance}`);
+      }
     }
 
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
@@ -688,24 +836,25 @@ class LoyaltyService {
 
     customerLoyalty.activeOtp = {
       otp,
-      stageId: stage.id,
+      stageId: effectiveStageId,
       discountValue,
       pointsToRedeem: requiredPoints,
+      redemptionType,
       expiresAt,
     };
 
     await customerLoyalty.save();
 
-    const programName = visitConfig.programName || 'THE ROYAL GARDENIA';
-    const pointsName = visitConfig.pointsName || 'Cookie';
-    const otpMessage = `[APNA POS] Your OTP to redeem ₹${discountValue} OFF (${requiredPoints} ${pointsName}) at ${programName} is ${otp}. Valid for 10 minutes.`;
+    const otpMessage = redemptionType === 'cashback'
+      ? `[APNA POS] Your OTP to redeem ₹${discountValue} cashback at ${storeName} is ${otp}. Valid for 10 minutes.`
+      : `[APNA POS] Your OTP to redeem ₹${discountValue} OFF (${requiredPoints} ${visitConfig.pointsName || 'Cookies'}) at ${storeName} is ${otp}. Valid for 10 minutes.`;
 
     console.log('\n================================================================');
     console.log('🔑 [LOYALTY REDEEM OTP TEST - TERMINAL OUTPUT]');
     console.log(`📱 Customer Phone : ${cleanPhone}`);
     console.log(`🔢 OTP Code       : >>> ${otp} <<<`);
     console.log(`🎁 Reward Discount: ₹${discountValue}`);
-    console.log(`🍪 Points Deducted: ${requiredPoints}`);
+    console.log(`💰 Points/Cashback: ${requiredPoints} (${redemptionType})`);
     console.log('================================================================\n');
 
     try {
@@ -716,19 +865,37 @@ class LoyaltyService {
         message: otpMessage,
         read: false,
         recipientPhone: cleanPhone,
-        metadata: { otp, stageId, discountValue, pointsToRedeem: requiredPoints },
+        metadata: { otp, stageId: effectiveStageId, discountValue, pointsToRedeem: requiredPoints, redemptionType },
       });
     } catch (e) {
       // Non-blocking
+    }
+
+    // Send WhatsApp OTP to customer
+    try {
+      const whatsappService = require('./whatsappService');
+      await whatsappService.sendOtpMessage({
+        to: cleanPhone,
+        otpCode: otp,
+        purpose: 'loyalty_redemption',
+        amount: discountValue,
+        businessName: storeName,
+        phoneNumberId: business?.whatsappSettings?.phoneNumberId,
+        accessToken: business?.whatsappSettings?.accessToken,
+        appSecret: business?.whatsappSettings?.appSecret,
+      });
+    } catch (waErr) {
+      console.warn('[sendLoyaltyRedemptionOtp] WhatsApp OTP dispatch notice:', waErr.message);
     }
 
     return {
       success: true,
       message: `OTP generated: ${otp}`,
       phone: cleanPhone,
-      stageId: stage.id,
+      stageId: effectiveStageId,
       discountValue,
       pointsToRedeem: requiredPoints,
+      redemptionType,
       otpDebug: otp,
     };
   }
@@ -744,7 +911,7 @@ class LoyaltyService {
     const cleanPhone = phone.trim();
     const cleanOtp = otp.toString().trim();
 
-    const customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
+    const customerLoyalty = await this._findCustomerLoyalty(businessId, cleanPhone);
 
     if (!customerLoyalty || !customerLoyalty.activeOtp) {
       throw ApiError.badRequest('No active OTP request found for this customer');
@@ -770,7 +937,8 @@ class LoyaltyService {
       stageId: activeOtp.stageId,
       discountAmount: activeOtp.discountValue,
       pointsToRedeem: activeOtp.pointsToRedeem,
-      message: 'OTP verified successfully. Stage reward discount applied!',
+      redemptionType: activeOtp.redemptionType || 'cashback',
+      message: 'OTP verified successfully. Cashback discount applied!',
     };
   }
 
@@ -783,19 +951,30 @@ class LoyaltyService {
     }
 
     const cleanPhone = phone.trim();
-    const customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
+    const customerLoyalty = await this._findCustomerLoyalty(businessId, cleanPhone);
 
     if (!customerLoyalty) {
       throw ApiError.notFound('Customer loyalty account not found');
     }
 
     const points = Number(pointsToRedeem) || 0;
-    if (customerLoyalty.pointsBalance < points) {
-      throw ApiError.badRequest('Insufficient points balance for redemption');
+    const discount = Number(discountAmount) || points;
+    const isCashback = stageId === 'cashback_custom' || ((customerLoyalty.cashbackBalance || 0) >= points && points > 0);
+
+    if (isCashback) {
+      if ((customerLoyalty.cashbackBalance || 0) < points) {
+        throw ApiError.badRequest('Insufficient cashback balance for redemption');
+      }
+      customerLoyalty.cashbackBalance = Math.max(0, (customerLoyalty.cashbackBalance || 0) - points);
+      customerLoyalty.totalCashbackRedeemed = (customerLoyalty.totalCashbackRedeemed || 0) + points;
+    } else {
+      if (customerLoyalty.pointsBalance < points) {
+        throw ApiError.badRequest('Insufficient points balance for redemption');
+      }
+      customerLoyalty.pointsBalance = Math.max(0, customerLoyalty.pointsBalance - points);
+      customerLoyalty.totalPointsRedeemed += points;
     }
 
-    customerLoyalty.pointsBalance -= points;
-    customerLoyalty.totalPointsRedeemed += points;
     customerLoyalty.activeOtp = null;
     customerLoyalty.lastRedemptionAt = new Date();
 
@@ -807,7 +986,20 @@ class LoyaltyService {
 
     await customerLoyalty.save();
 
-    const msg = `[APNA POS] ₹${discountAmount} discount applied on Order #${orderNumber || 'POS'}. ${points} ${visitConfig.pointsName || 'Cookies'} redeemed. Remaining balance: ${customerLoyalty.pointsBalance} ${visitConfig.pointsName || 'Cookies'}.`;
+    // Increment redemptions counter on LoyaltyProgram doc
+    try {
+      const loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+      if (loyaltyDoc && loyaltyDoc.dashboardMetrics) {
+        loyaltyDoc.dashboardMetrics.redemptions = (loyaltyDoc.dashboardMetrics.redemptions || 0) + 1;
+        loyaltyDoc.markModified('dashboardMetrics');
+        await loyaltyDoc.save();
+      }
+    } catch (_) {}
+
+    const storeName = visitConfig?.programName || 'Apna POS';
+    const msg = isCashback
+      ? `[APNA POS] ₹${discount} cashback discount applied on Order #${orderNumber || 'POS'}. Remaining cashback balance: ₹${customerLoyalty.cashbackBalance}.`
+      : `[APNA POS] ₹${discount} discount applied on Order #${orderNumber || 'POS'}. ${points} ${visitConfig.pointsName || 'Cookies'} redeemed. Remaining balance: ${customerLoyalty.pointsBalance} ${visitConfig.pointsName || 'Cookies'}.`;
 
     await LoyaltyTransaction.create({
       businessId,
@@ -816,9 +1008,9 @@ class LoyaltyService {
       orderNumber: orderNumber || '',
       type: 'redeem',
       points: -points,
-      balanceAfter: customerLoyalty.pointsBalance,
-      stageId: stageId || '',
-      discountAmount: Number(discountAmount) || 0,
+      balanceAfter: isCashback ? customerLoyalty.cashbackBalance : customerLoyalty.pointsBalance,
+      stageId: stageId || (isCashback ? 'cashback_custom' : ''),
+      discountAmount: discount,
       messageHeader: 'APNA POS',
       message: msg,
     });
@@ -827,7 +1019,9 @@ class LoyaltyService {
       success: true,
       pointsRedeemed: points,
       remainingBalance: customerLoyalty.pointsBalance,
-      discountApplied: discountAmount,
+      remainingCashbackBalance: customerLoyalty.cashbackBalance,
+      discountApplied: discount,
+      isCashback,
       message: msg,
     };
   }

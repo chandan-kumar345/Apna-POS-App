@@ -66,7 +66,7 @@ internal object IncomingOrderAlertDispatcher {
             while (handled.length() > 128) {
                 handled.keys().asSequence().minByOrNull { handled.optLong(it) }?.let { handled.remove(it) }
             }
-            prefs.edit().putString("flutter.apna_handled_order_keys", handled.toString()).commit()
+            prefs.edit().putString("flutter.apna_handled_order_keys", handled.toString()).apply()
             OrderRingtoneService.stopMatching(context, key)
             cancel(context, key)
             for (prefKey in listOf("flutter.pending_incoming_order_payload", "pending_incoming_order_payload")) {
@@ -75,7 +75,7 @@ internal object IncomingOrderAlertDispatcher {
                     val json = JSONObject(queued)
                     normalize(json.keys().asSequence().associateWith { json.opt(it).toString() })
                 } catch (_: Exception) { emptyMap() }
-                if (OrderAlertPolicy.key(queuedData) == key) prefs.edit().remove(prefKey).commit()
+                if (OrderAlertPolicy.key(queuedData) == key) prefs.edit().remove(prefKey).apply()
             }
             return true
         }
@@ -86,9 +86,9 @@ internal object IncomingOrderAlertDispatcher {
         if (age in 0 until DEDUPE_MS && recent.has(key)) return true
 
         val payload = JSONObject(data).toString()
-        // Commit on the receiver/service worker, before launching the activity.
+        // Save asynchronously without blocking the thread
         prefs.edit().putString("flutter.pending_incoming_order_payload", payload)
-            .putString("pending_incoming_order_payload", payload).commit()
+            .putString("pending_incoming_order_payload", payload).apply()
 
         if (MainActivity.isAppInForeground) {
             MainActivity.activeInstance?.let { activity ->
@@ -178,7 +178,7 @@ internal object IncomingOrderAlertDispatcher {
         }
         recent.put(key, now)
         while (recent.length() > 128) recent.keys().asSequence().minByOrNull { recent.optLong(it) }?.let { recent.remove(it) }
-        context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit().putString(RECENT, recent.toString()).commit()
+        context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit().putString(RECENT, recent.toString()).apply()
     }
 
     private fun ensureChannel(manager: NotificationManager) {

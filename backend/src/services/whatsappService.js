@@ -832,16 +832,23 @@ class WhatsAppService {
 
   /**
    * Send Authentication OTP via Meta WhatsApp Cloud API
-   * Uses approved AUTHENTICATION template ('apna_pos_auth_otp')
+   * Uses approved AUTHENTICATION template ('apna_pos_auth_otp') or UTILITY template ('loyalty_redemption_otp')
    * with fallback to direct text message if 24-hr customer window is open
    */
   async sendOtpMessage({
     to,
     otpCode,
+    otp,
+    purpose = 'auth',
+    amount = null,
+    discountAmount = null,
+    businessName = 'Apna POS',
     phoneNumberId = null,
     accessToken = null,
     appSecret = null,
   }) {
+    const code = otpCode || otp;
+    const finalAmount = amount != null ? amount : discountAmount;
     const normalizedPhone = this.normalizePhoneNumber(to);
     if (!this.isValidPhoneNumber(normalizedPhone)) {
       throw ApiError.badRequest(
@@ -870,7 +877,7 @@ class WhatsAppService {
       activeAccessToken === 'mock_token' ||
       activeAccessToken === 'test_token'
     ) {
-      console.warn(`[WhatsAppService] ⚠️ SIMULATION MODE: OTP ${otpCode} simulated for ${normalizedPhone}`);
+      console.warn(`[WhatsAppService] ⚠️ SIMULATION MODE: OTP ${code} (purpose: ${purpose}) simulated for ${normalizedPhone}`);
       return {
         success: true,
         messageId: `wamid.HBg${Date.now()}${Math.floor(Math.random() * 1000000)}==`,
@@ -884,14 +891,22 @@ class WhatsAppService {
       appSecret: activeAppSecret,
     });
 
-    // 1. First attempt: Official Meta AUTHENTICATION Template ('apna_pos_auth_otp')
-    const templateCandidates = [
-      { name: 'apna_pos_auth_otp', lang: 'en_US' },
-      { name: 'apna_pos_auth_otp', lang: 'en' },
-    ];
+    // 1. First attempt: Official Meta Templates
+    const templateCandidates = purpose === 'loyalty_redemption'
+      ? [
+          { name: 'loyalty_redemption_otp', lang: 'en_US' },
+          { name: 'loyalty_redemption_otp', lang: 'en' },
+          { name: 'apna_pos_auth_otp', lang: 'en_US' },
+          { name: 'apna_pos_auth_otp', lang: 'en' },
+        ]
+      : [
+          { name: 'apna_pos_auth_otp', lang: 'en_US' },
+          { name: 'apna_pos_auth_otp', lang: 'en' },
+        ];
 
     for (const t of templateCandidates) {
       try {
+        const isAuthTemplate = t.name === 'apna_pos_auth_otp';
         const templatePayload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
@@ -900,18 +915,29 @@ class WhatsAppService {
           template: {
             name: t.name,
             language: { code: t.lang },
-            components: [
-              {
-                type: 'body',
-                parameters: [{ type: 'text', text: String(otpCode) }],
-              },
-              {
-                type: 'button',
-                sub_type: 'url',
-                index: '0',
-                parameters: [{ type: 'text', text: String(otpCode) }],
-              },
-            ],
+            components: isAuthTemplate
+              ? [
+                  {
+                    type: 'body',
+                    parameters: [{ type: 'text', text: String(code) }],
+                  },
+                  {
+                    type: 'button',
+                    sub_type: 'url',
+                    index: '0',
+                    parameters: [{ type: 'text', text: String(code) }],
+                  },
+                ]
+              : [
+                  {
+                    type: 'body',
+                    parameters: [
+                      { type: 'text', text: String(finalAmount || 'points') },
+                      { type: 'text', text: businessName || 'Apna POS' },
+                      { type: 'text', text: String(code) },
+                    ],
+                  },
+                ],
           },
         };
 
@@ -942,7 +968,9 @@ class WhatsAppService {
     }
 
     // 2. Second attempt: Fall back to direct text message (works if customer sent a message in last 24h)
-    const textBody = `*Apna POS Verification Code*\n\nYour login verification OTP is: *${otpCode}*\n\nThis OTP is valid for 5 minutes. Do not share this code with anyone.`;
+    const textBody = purpose === 'loyalty_redemption'
+      ? `*${businessName} - Loyalty Cashback Redemption*\n\nYour OTP to redeem *₹${finalAmount || 'points'}* cashback on your order is: *${code}*\n\nThis OTP is valid for 10 minutes. Please share this code with the cashier to apply your cashback discount.`
+      : `*Apna POS Verification Code*\n\nYour login verification OTP is: *${code}*\n\nThis OTP is valid for 5 minutes. Do not share this code with anyone.`;
     const textPayload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -977,6 +1005,143 @@ class WhatsAppService {
       errMsg = `Meta WhatsApp 24-Hour Policy: To receive an OTP, please first send 'Hi' to +91 73036 32949 on WhatsApp, or wait for Meta to approve the authentication template.`;
     }
     throw ApiError.badRequest(errMsg, null, errCode || 'OTP_DISPATCH_FAILED');
+  }
+
+  /**
+   * Send Loyalty Cashback Earned notification message via WhatsApp Utility Template or direct text
+   */
+  async sendLoyaltyCashbackEarnedMessage({
+    to,
+    customerName = 'Valued Customer',
+    businessName = 'Apna POS',
+    cashbackEarned = 0,
+    availableBalance = 0,
+    orderNumber = '',
+    phoneNumberId = null,
+    accessToken = null,
+    appSecret = null,
+  }) {
+    const normalizedPhone = this.normalizePhoneNumber(to);
+    if (!this.isValidPhoneNumber(normalizedPhone)) {
+      throw ApiError.badRequest(`Invalid customer WhatsApp phone number: ${to}`, null, 'INVALID_PHONE_NUMBER');
+    }
+
+    const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
+    const activeAccessToken = accessToken || this.accessToken;
+    const activeAppSecret = appSecret || this.appSecret;
+
+    if (
+      process.env.NODE_ENV === 'test' ||
+      !activeAccessToken ||
+      activeAccessToken === 'mock_token' ||
+      activeAccessToken === 'test_token'
+    ) {
+      console.log(`[WhatsAppService] ⚠️ SIMULATION MODE: Loyalty cashback notification simulated for ${normalizedPhone}: ₹${cashbackEarned} earned, ₹${availableBalance} balance`);
+      return {
+        success: true,
+        messageId: `wamid.HBg${Date.now()}${Math.floor(Math.random() * 1000000)}==`,
+        recipient: normalizedPhone,
+        isSimulated: true,
+      };
+    }
+
+    const url = this.buildGraphUrl(`${activePhoneNumberId}/messages`, {
+      accessToken: activeAccessToken,
+      appSecret: activeAppSecret,
+    });
+
+    // 1. First attempt: Utility template 'loyalty_cashback_earned'
+    const templateCandidates = [
+      { name: 'loyalty_cashback_earned', lang: 'en_US' },
+      { name: 'loyalty_cashback_earned', lang: 'en' },
+    ];
+
+    for (const t of templateCandidates) {
+      try {
+        const templatePayload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: normalizedPhone,
+          type: 'template',
+          template: {
+            name: t.name,
+            language: { code: t.lang },
+            components: [
+              {
+                type: 'body',
+                parameters: [
+                  { type: 'text', text: String(cashbackEarned) },
+                  { type: 'text', text: businessName || 'Apna POS' },
+                  { type: 'text', text: String(availableBalance) },
+                ],
+              },
+            ],
+          },
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${activeAccessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(templatePayload),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.messages?.[0]?.id) {
+          console.log(`[WhatsAppService] ✅ Loyalty cashback notification sent via template '${t.name}' to ${normalizedPhone}`);
+          return {
+            success: true,
+            messageId: data.messages[0].id,
+            recipient: normalizedPhone,
+            viaTemplate: true,
+          };
+        }
+      } catch (err) {
+        console.warn(`[WhatsAppService] Loyalty template dispatch notice (${t.name}):`, err.message);
+      }
+    }
+
+    // 2. Second attempt: Direct formatted WhatsApp message
+    const textBody = `*🎉 Congratulations from ${businessName}! 🎉*\n\nYou have earned *₹${cashbackEarned} cashback* on your order${orderNumber ? ` (#${orderNumber})` : ''}!\n\n💰 *Total Available Cashback Balance:* *₹${availableBalance}*\n\nYou can redeem your available cashback directly on your next order at ${businessName}.\n\nThank you for choosing us!`;
+    const textPayload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: normalizedPhone,
+      type: 'text',
+      text: { preview_url: false, body: textBody },
+    };
+
+    try {
+      const textRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${activeAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(textPayload),
+      });
+
+      const textData = await textRes.json().catch(() => ({}));
+      if (textRes.ok && textData?.messages?.[0]?.id) {
+        console.log(`[WhatsAppService] ✅ Loyalty cashback notification sent via direct text to ${normalizedPhone}`);
+        return {
+          success: true,
+          messageId: textData.messages[0].id,
+          recipient: normalizedPhone,
+          viaText: true,
+        };
+      }
+    } catch (e) {
+      console.warn(`[WhatsAppService] Direct text message failed: ${e.message}`);
+    }
+
+    return {
+      success: false,
+      recipient: normalizedPhone,
+      error: 'WhatsApp message delivery failed',
+    };
   }
 
   /**

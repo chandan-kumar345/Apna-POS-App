@@ -33,6 +33,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Android (and iOS) mobile: strictly untouched, identical behavior as requested!
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return IndexedStack(
         index: _activeTab.clamp(0, 1),
@@ -49,6 +50,8 @@ class _CampaignScreenState extends State<CampaignScreen> {
         ],
       );
     }
+
+    // Web & Windows desktop: modern Campaign Studio
     return WebCampaignPortalScreen(
       onBack: widget.onBack,
       initialTabIndex: widget.initialTabIndex,

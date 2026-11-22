@@ -61,10 +61,11 @@ class MainActivity : FlutterActivity() {
         pending.success(canUseOrderFullScreenIntent())
     }
 
-    // RenderMode.texture (TextureView) avoids native SurfaceView GPU/raster deadlocks
-    // on Android 11+ and eliminates LegacyMessageQueue freezes during screen/overlay transitions
+    // RenderMode.surface (SurfaceView) gives full hardware acceleration via SurfaceFlinger,
+    // bypassing Android's HWUI main-thread View traversal and eliminating HWUI Davey! freezes
+    // and skipped Choreographer frames during rendering.
     override fun getRenderMode(): RenderMode {
-        return RenderMode.texture
+        return RenderMode.surface
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -587,7 +588,7 @@ class MainActivity : FlutterActivity() {
                 } else {
                     editor.remove("flutter.pending_notification_action").remove("pending_notification_action")
                 }
-                editor.commit()
+                editor.apply()
                 flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
                     MethodChannel(messenger, "com.apnapos.app/incoming_order")
                         .invokeMethod("incomingOrder", mapOf("payload" to payloadString, "action" to action))
@@ -609,7 +610,7 @@ class MainActivity : FlutterActivity() {
             } else {
                 editor.remove("flutter.pending_notification_action").remove("pending_notification_action")
             }
-            editor.commit()
+            editor.apply()
             flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
                 MethodChannel(messenger, "com.apnapos.app/incoming_order")
                     .invokeMethod("incomingOrder", mapOf("payload" to payloadString, "action" to action))

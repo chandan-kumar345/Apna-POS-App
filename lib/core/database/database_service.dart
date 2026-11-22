@@ -4998,6 +4998,9 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _saveTablesDebounceTimer;
   Future<void> Function()? _pendingTablesSave;
 
+  String? _lastSavedTablesEncoded;
+  String? _lastSavedTablesScope;
+
   Future<void> saveTablesToPrefs({bool immediate = false}) => _saveTablesToPrefs(immediate: immediate);
 
   Future<void> _saveTablesToPrefs({bool immediate = false}) async {
@@ -5022,9 +5025,19 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _executeSaveTablesToPrefs() async {
     try {
+      final bizKey = _businessKey('tables');
+      final currentScope = '$bizKey|${_userKey('tables')}';
       final jsonStr = jsonEncode(tables.map((e) => e.toJson()).toList());
-      await _prefs?.setString(_businessKey('tables'), jsonStr);
-      await _prefs?.setString(_userKey('tables'), jsonStr);
+      if (_lastSavedTablesScope == currentScope && _lastSavedTablesEncoded == jsonStr) {
+        return;
+      }
+      _lastSavedTablesScope = currentScope;
+      _lastSavedTablesEncoded = jsonStr;
+      await _prefs?.setString(bizKey, jsonStr);
+      final userKey = _userKey('tables');
+      if (userKey != bizKey) {
+        await _prefs?.setString(userKey, jsonStr);
+      }
     } catch (e) {
       debugPrint('[DatabaseService] _executeSaveTablesToPrefs error: $e');
     }
@@ -6379,6 +6392,8 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     }).toList();
   }
 
+  String? _lastSavedOrdersEncoded;
+  String? _lastSavedOrdersScope;
   Timer? _saveOrdersDebounceTimer;
   Future<void> Function()? _pendingOrdersSave;
 
@@ -6404,11 +6419,24 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _executeSaveOrdersToPrefs() async {
     try {
+      final bizKey = _businessKey('orders');
+      final currentScope = '$bizKey|${_userKey('orders')}';
       final encoded = jsonEncode(orders.map((e) => e.toJson()).toList());
-      await _prefs?.setString(_businessKey('orders'), encoded);
-      await _prefs?.setString(_userKey('orders'), encoded);
+      if (_lastSavedOrdersScope == currentScope && _lastSavedOrdersEncoded == encoded) {
+        return;
+      }
+      _lastSavedOrdersScope = currentScope;
+      _lastSavedOrdersEncoded = encoded;
+      await _prefs?.setString(bizKey, encoded);
+      final userKey = _userKey('orders');
+      if (userKey != bizKey) {
+        await _prefs?.setString(userKey, encoded);
+      }
       if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
-        await _prefs?.setString('apna_pos_${restaurant!.id}_orders', encoded);
+        final restKey = 'apna_pos_${restaurant!.id}_orders';
+        if (restKey != bizKey && restKey != userKey) {
+          await _prefs?.setString(restKey, encoded);
+        }
       }
     } catch (e) {
       debugPrint('[DatabaseService] _executeSaveOrdersToPrefs error: $e');

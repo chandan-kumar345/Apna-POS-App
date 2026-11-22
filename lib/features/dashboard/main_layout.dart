@@ -1935,7 +1935,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                         ),
                       ),
                       secondChild: const SizedBox.shrink(),
-                      crossFadeState: ((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8)
+                      crossFadeState: (_selectedIndex == 1 && _isPosFullScreen)
                           ? CrossFadeState.showSecond
                           : CrossFadeState.showFirst,
                       duration: const Duration(milliseconds: 250),
@@ -2082,6 +2082,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                             ? LoyaltyLandingScreen(
                                                 onBack: _navigateToRootTab,
                                                 onOpenDrawer: _toggleSidebar,
+                                                showHeader: false,
                                               )
                                             : _buildAccessDeniedScreen('Loyalty'),
                                         (ctx) => _canAccessTab(9)

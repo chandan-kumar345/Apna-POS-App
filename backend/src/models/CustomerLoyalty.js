@@ -3,9 +3,10 @@ const mongoose = require('mongoose');
 const activeOtpSchema = new mongoose.Schema(
   {
     otp: { type: String, required: true },
-    stageId: { type: String, required: true },
+    stageId: { type: String, default: 'cashback_custom' },
     discountValue: { type: Number, required: true },
     pointsToRedeem: { type: Number, required: true },
+    redemptionType: { type: String, default: 'cashback' },
     expiresAt: { type: Date, required: true },
   },
   { _id: false }
