@@ -6,6 +6,7 @@ import 'views/create_auto_campaign_view.dart';
 import 'views/campaign_details_monitoring_view.dart';
 import 'views/audience_groups_view.dart';
 import 'views/use_template_dispatch_view.dart';
+import 'views/web_customers_view.dart';
 
 class WebCampaignPortalScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -23,8 +24,9 @@ class WebCampaignPortalScreen extends StatefulWidget {
 }
 
 class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
-  late String _currentView; // 'dashboard', 'create', 'create_auto', 'details', 'groups', 'dispatch'
+  late String _currentView; // 'dashboard', 'create', 'create_auto', 'details', 'groups', 'customers', 'dispatch'
   CampaignModel? _selectedCampaign;
+  CampaignModel? _selectedCampaignForEdit;
   CampaignTemplateModel? _selectedTemplateForCreate;
   CampaignTemplateModel? _selectedTemplateForDispatch;
 
@@ -38,15 +40,17 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
     setState(() {
       _currentView = 'dashboard';
       _selectedCampaign = null;
+      _selectedCampaignForEdit = null;
       _selectedTemplateForCreate = null;
       _selectedTemplateForDispatch = null;
     });
   }
 
-  void _navigateToCreate({CampaignTemplateModel? template}) {
+  void _navigateToCreate({CampaignModel? campaign, CampaignTemplateModel? template}) {
     setState(() {
       _currentView = 'create';
       _selectedCampaign = null;
+      _selectedCampaignForEdit = campaign;
       _selectedTemplateForCreate = template;
       _selectedTemplateForDispatch = null;
     });
@@ -56,6 +60,7 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
     setState(() {
       _currentView = 'dispatch';
       _selectedCampaign = null;
+      _selectedCampaignForEdit = null;
       _selectedTemplateForDispatch = template;
     });
   }
@@ -64,6 +69,15 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
     setState(() {
       _currentView = 'groups';
       _selectedCampaign = null;
+      _selectedCampaignForEdit = null;
+    });
+  }
+
+  void _navigateToCustomers() {
+    setState(() {
+      _currentView = 'customers';
+      _selectedCampaign = null;
+      _selectedCampaignForEdit = null;
     });
   }
 
@@ -71,6 +85,7 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
     setState(() {
       _currentView = 'create_auto';
       _selectedCampaign = null;
+      _selectedCampaignForEdit = null;
     });
   }
 
@@ -79,6 +94,15 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
       _selectedCampaign = campaign;
       _currentView = 'details';
     });
+  }
+
+  void _handleSelectCampaignFromDashboard(CampaignModel campaign) {
+    final status = campaign.status.toLowerCase();
+    if (status == 'draft' || (status == 'approved' && campaign.stats.messagesSent == 0)) {
+      _navigateToCreate(campaign: campaign);
+    } else {
+      _navigateToDetails(campaign);
+    }
   }
 
   @override
@@ -97,17 +121,28 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
             onCreateCampaign: () => _navigateToCreate(),
             onUseTemplate: _navigateToDispatch,
             onCreateGroup: _navigateToGroups,
+            onViewCustomers: _navigateToCustomers,
             onCreateAutoCampaign: _navigateToCreateAuto,
-            onSelectCampaign: _navigateToDetails,
+            onSelectCampaign: _handleSelectCampaignFromDashboard,
           );
         }
         break;
       case 'groups':
-        currentWidget = AudienceGroupsView(onBack: _navigateToDashboard);
+        currentWidget = AudienceGroupsView(
+          onBack: _navigateToDashboard,
+          onViewCustomers: _navigateToCustomers,
+        );
+        break;
+      case 'customers':
+        currentWidget = WebCustomersView(
+          onBack: _navigateToDashboard,
+          onNavigateToGroups: _navigateToGroups,
+        );
         break;
       case 'create':
         currentWidget = CreateCampaignWizardView(
           initialTemplate: _selectedTemplateForCreate,
+          existingCampaign: _selectedCampaignForEdit,
           onCancel: _navigateToDashboard,
           onCampaignCreated: (campaign) => _navigateToDetails(campaign),
         );
@@ -123,14 +158,22 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
           currentWidget = CampaignDetailsMonitoringView(
             campaign: _selectedCampaign!,
             onBack: _navigateToDashboard,
+            onEditCampaign: (campaign) => _navigateToCreate(campaign: campaign),
+            onFollowUpCampaign: (campaign) => _navigateToCreate(
+              campaign: campaign.copyWith(
+                id: '',
+                name: 'Follow-up: ${campaign.name}',
+              ),
+            ),
           );
         } else {
           currentWidget = CampaignDashboardView(
             onCreateCampaign: () => _navigateToCreate(),
             onUseTemplate: _navigateToDispatch,
             onCreateGroup: _navigateToGroups,
+            onViewCustomers: _navigateToCustomers,
             onCreateAutoCampaign: _navigateToCreateAuto,
-            onSelectCampaign: _navigateToDetails,
+            onSelectCampaign: _handleSelectCampaignFromDashboard,
           );
         }
         break;
@@ -140,8 +183,9 @@ class _WebCampaignPortalScreenState extends State<WebCampaignPortalScreen> {
           onCreateCampaign: () => _navigateToCreate(),
           onUseTemplate: _navigateToDispatch,
           onCreateGroup: _navigateToGroups,
+          onViewCustomers: _navigateToCustomers,
           onCreateAutoCampaign: _navigateToCreateAuto,
-          onSelectCampaign: _navigateToDetails,
+          onSelectCampaign: _handleSelectCampaignFromDashboard,
         );
         break;
     }

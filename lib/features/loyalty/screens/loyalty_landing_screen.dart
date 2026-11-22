@@ -10,8 +10,8 @@ import '../../campaign/mobile/campaign_style.dart';
 import '../../campaign/mobile/customer_style.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import 'create_loyalty_program_screen.dart';
-import 'loyalty_performance_screen.dart';
 import 'loyalty_program_details_screen.dart';
+import 'loyalty_visit_made_screen.dart';
 
 class LoyaltyLandingScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -39,6 +39,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   LoyaltyBrandingModel? _brandingData;
+  int _desktopFilterIndex = 0; // 0: All, 1: Active, 2: Inactive, 3: Visit Made
 
   @override
   void initState() {
@@ -96,15 +97,6 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
-  void _navigateToPerformance() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoyaltyPerformanceScreen(),
-      ),
-    );
-  }
-
   void _openNotifications() {
     Navigator.push(
       context,
@@ -112,6 +104,109 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
         builder: (_) => const NotificationsScreen(),
       ),
     );
+  }
+
+  void _navigateToEditProgram(LoyaltyProgramModel program) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateLoyaltyProgramScreen(
+          programToEdit: program,
+          onSaved: () => _loadLoyaltyData(forceRefresh: true),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToVisitMade() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LoyaltyVisitMadeScreen(
+          companyName: _currentStoreName,
+          companyLogo: _companyLogo,
+          onCompleted: () => _loadLoyaltyData(forceRefresh: true),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleProgramActive(LoyaltyProgramModel program, bool newValue) async {
+    final ok = await _loyaltyService.updateProgramStatus(program.id, isActive: newValue);
+    if (mounted) {
+      if (ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newValue ? 'Program activated' : 'Program deactivated'),
+            backgroundColor: newValue ? const Color(0xFF10B981) : Colors.black87,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        _loadLoyaltyData(forceRefresh: true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to update status'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteProgram(LoyaltyProgramModel program) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete Loyalty Program?', style: customerText(18, weight: FontWeight.w700)),
+        content: Text(
+          'Are you sure you want to delete "${program.title}"? Customers will no longer earn or redeem rewards for this program.',
+          style: customerText(14, color: muted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: customerText(14, color: muted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete Program'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final ok = await _loyaltyService.deleteLoyaltyProgram(program.id);
+      if (mounted) {
+        if (ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Program "${program.title}" deleted successfully.'),
+              backgroundColor: const Color(0xFF10B981),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          _loadLoyaltyData(forceRefresh: true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to delete program. Please try again.'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
   }
 
   String get _currentStoreName {
@@ -175,11 +270,14 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CustomerShell(
-      header: _buildTopHeader(),
-      body: _buildBody(),
-      footer: _buildCreateProgramFooter(),
-    );
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return CustomerShell(
+        header: _buildTopHeader(),
+        body: _buildBody(),
+        footer: _buildCreateProgramFooter(),
+      );
+    }
+    return _buildDesktopWebLayout();
   }
 
   // POS Screen Top Header: Circular Brand Logo + Store badge (opens Sidebar on tap)
@@ -252,36 +350,10 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             _buildMetricCardsRow(data),
             const SizedBox(height: 16),
 
-            // Section Header: Active Programs (2) & View All ->
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Active Programs (${activePrograms.isNotEmpty ? activePrograms.length : allPrograms.length})',
-                  style: customerText(14, weight: FontWeight.w700),
-                ),
-                InkWell(
-                  onTap: _navigateToPerformance,
-                  child: Row(
-                    children: [
-                      Text(
-                        'View All',
-                        style: customerText(
-                          11,
-                          weight: FontWeight.w600,
-                          color: const Color(0xFF08435E),
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 13,
-                        color: Color(0xFF08435E),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            // Section Header: Active Programs
+            Text(
+              'Active Programs (${activePrograms.isNotEmpty ? activePrograms.length : allPrograms.length})',
+              style: customerText(14, weight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
 
@@ -642,6 +714,800 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // =========================================================================
+  // DESKTOP & WEB LAYOUT
+  // =========================================================================
+
+  Widget _buildDesktopWebLayout() {
+    if (_isLoading && _brandingData == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF08435E)),
+        ),
+      );
+    }
+
+    final data = _brandingData ?? _loyaltyService.getDefaultLoyaltyBranding();
+    final allPrograms = data.programs;
+
+    // Filter according to _desktopFilterIndex: 0: All, 1: Active, 2: Inactive, 3: Visit Made
+    final filteredPrograms = allPrograms.where((p) {
+      if (_desktopFilterIndex == 1) return p.isActive;
+      if (_desktopFilterIndex == 2) return !p.isActive;
+      if (_desktopFilterIndex == 3) return p.type == LoyaltyType.visitMade;
+      return true;
+    }).toList();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Desktop Top Header
+            _buildDesktopTopHeader(),
+
+            // Scrollable Content
+            Expanded(
+              child: RefreshIndicator(
+                color: const Color(0xFF08435E),
+                onRefresh: () => _loadLoyaltyData(forceRefresh: true),
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1280),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 1. Metric Cards Row (4 cards)
+                          _buildDesktopMetricCardsRow(data),
+                          const SizedBox(height: 20),
+
+                          // 2. Hero Banner Card
+                          _buildDesktopHeroCard(),
+                          const SizedBox(height: 24),
+
+                          // 3. Section Header & Filter Tabs Row
+                          _buildDesktopFilterHeader(allPrograms),
+                          const SizedBox(height: 16),
+
+                          // 4. Programs Grid or Empty State
+                          if (filteredPrograms.isNotEmpty)
+                            _buildDesktopProgramsGrid(filteredPrograms)
+                          else
+                            _buildDesktopEmptyState(),
+                          const SizedBox(height: 32),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopTopHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
+      ),
+      child: Row(
+        children: [
+          if (widget.onBack != null) ...[
+            IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A), size: 22),
+              onPressed: widget.onBack,
+              tooltip: 'Back to Dashboard',
+            ),
+            const SizedBox(width: 8),
+          ],
+
+          // Store Logo & Name
+          InkWell(
+            onTap: widget.onOpenDrawer,
+            borderRadius: BorderRadius.circular(10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SmoothBrandLogoWidget(
+                  logoPath: _companyLogo,
+                  companyName: _currentStoreName,
+                  size: 38,
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          _currentStoreName,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Loyalty Hub',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Cashback, Points & Automated Customer Retention',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+
+          // Action 1: Visit Made Stamp Card
+          OutlinedButton.icon(
+            onPressed: _navigateToVisitMade,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF0F766E),
+              side: const BorderSide(color: Color(0xFF99F6E4)),
+              backgroundColor: const Color(0xFFF0FDFA),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.card_membership_rounded, size: 18, color: Color(0xFF0F766E)),
+            label: const Text('Visit Stamp Card', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
+          const SizedBox(width: 10),
+
+          // Action 3: Refresh Button
+          IconButton(
+            onPressed: () => _loadLoyaltyData(forceRefresh: true),
+            tooltip: 'Refresh Programs',
+            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF64748B), size: 20),
+          ),
+          const SizedBox(width: 8),
+
+          // Action 4: + Create Loyalty Program
+          ElevatedButton.icon(
+            onPressed: _navigateToCreateProgram,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF08435E),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 1,
+            ),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Create Program', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopMetricCardsRow(LoyaltyBrandingModel data) {
+    final membersStr = NumberFormat.decimalPattern('en_IN').format(data.members);
+    final cashbackStr = _currencyFormat.format(data.totalCashback);
+    final redemptionsStr = NumberFormat.decimalPattern('en_IN').format(data.redemptions);
+    final activeCount = data.programs.where((p) => p.isActive).length;
+
+    return Row(
+      children: [
+        // 1. Members
+        Expanded(
+          child: _buildDesktopMetricTile(
+            bgColor: const Color(0xFFE8F7F0),
+            borderColor: const Color(0xFFC7EED8),
+            icon: Icons.people_outline_rounded,
+            iconColor: const Color(0xFF10B981),
+            label: 'Total Members',
+            value: membersStr,
+            subtitle: 'Enrolled in loyalty',
+          ),
+        ),
+        const SizedBox(width: 14),
+
+        // 2. Total Cashback Given
+        Expanded(
+          child: _buildDesktopMetricTile(
+            bgColor: const Color(0xFFF1EEFF),
+            borderColor: const Color(0xFFDDD6FE),
+            icon: Icons.currency_rupee_rounded,
+            iconColor: const Color(0xFF8B5CF6),
+            label: 'Total Cashback Given',
+            value: cashbackStr,
+            subtitle: 'Credited to customer wallets',
+          ),
+        ),
+        const SizedBox(width: 14),
+
+        // 3. Redemptions
+        Expanded(
+          child: _buildDesktopMetricTile(
+            bgColor: const Color(0xFFFFF4E5),
+            borderColor: const Color(0xFFFED7AA),
+            icon: Icons.confirmation_number_outlined,
+            iconColor: const Color(0xFFF59E0B),
+            label: 'Total Redemptions',
+            value: redemptionsStr,
+            subtitle: 'Offers claimed at checkout',
+          ),
+        ),
+        const SizedBox(width: 14),
+
+        // 4. Active Programs
+        Expanded(
+          child: _buildDesktopMetricTile(
+            bgColor: const Color(0xFFE0F2FE),
+            borderColor: const Color(0xFFBAE6FD),
+            icon: Icons.loyalty_rounded,
+            iconColor: const Color(0xFF0284C7),
+            label: 'Active Programs',
+            value: '$activeCount / ${data.programs.length}',
+            subtitle: 'Currently running live',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopMetricTile({
+    required Color bgColor,
+    required Color borderColor,
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required String subtitle,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopHeroCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFEDE9FE),
+            Color(0xFFF5F3FF),
+            Color(0xFFFAF5FF),
+          ],
+        ),
+        border: Border.all(color: const Color(0xFFDDD6FE)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C8B5CF6),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.emoji_events_rounded,
+              color: Color(0xFFF59E0B),
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Automated Cashback & Loyalty Engine',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Reward customers with instant or future cashback on every checkout. Cashbacks automatically credit to customer mobile numbers and drive repeat visits.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          ElevatedButton.icon(
+            onPressed: _navigateToCreateProgram,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B5CF6),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
+            label: const Text(
+              'Add Program',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopFilterHeader(List<LoyaltyProgramModel> allPrograms) {
+    final activeCount = allPrograms.where((p) => p.isActive).length;
+    final inactiveCount = allPrograms.where((p) => !p.isActive).length;
+    final visitCount = allPrograms.where((p) => p.type == LoyaltyType.visitMade).length;
+
+    final filterTabs = [
+      {'label': 'All Programs', 'count': allPrograms.length},
+      {'label': 'Active', 'count': activeCount},
+      {'label': 'Inactive', 'count': inactiveCount},
+      {'label': 'Visit Made', 'count': visitCount},
+    ];
+
+    return Row(
+      children: [
+        const Text(
+          'Loyalty Programs',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(width: 20),
+
+        // Filter tabs pills
+        Wrap(
+          spacing: 8,
+          children: [
+            for (int i = 0; i < filterTabs.length; i++)
+              InkWell(
+                onTap: () => setState(() => _desktopFilterIndex = i),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _desktopFilterIndex == i
+                        ? const Color(0xFF08435E)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _desktopFilterIndex == i
+                          ? const Color(0xFF08435E)
+                          : const Color(0xFFCBD5E1),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        filterTabs[i]['label'] as String,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _desktopFilterIndex == i ? Colors.white : const Color(0xFF475569),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: _desktopFilterIndex == i
+                              ? Colors.white.withOpacity(0.25)
+                              : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${filterTabs[i]['count']}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: _desktopFilterIndex == i ? Colors.white : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopProgramsGrid(List<LoyaltyProgramModel> programs) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = constraints.maxWidth >= 900 ? 2 : 1;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            mainAxisExtent: 224,
+          ),
+          itemCount: programs.length,
+          itemBuilder: (ctx, i) => _buildDesktopProgramCard(programs[i]),
+        );
+      },
+    );
+  }
+
+  Widget _buildDesktopProgramCard(LoyaltyProgramModel program) {
+    final isPercent = program.cashbackType == 'percentage' || program.title.contains('%');
+    final isVisitMade = program.type == LoyaltyType.visitMade;
+
+    final iconBgColor = isVisitMade
+        ? const Color(0xFFFEF3C7)
+        : (isPercent ? const Color(0xFFE6F7F0) : const Color(0xFFF1EEFF));
+    final iconColor = isVisitMade
+        ? const Color(0xFFD97706)
+        : (isPercent ? const Color(0xFF10B981) : const Color(0xFF8B5CF6));
+    final iconData = isVisitMade
+        ? Icons.card_membership_rounded
+        : Icons.currency_rupee_rounded;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: program.isActive ? const Color(0xFFCBD5E1) : const Color(0xFFE2E8F0),
+          width: program.isActive ? 1.2 : 1.0,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Row 1: Icon, Title, Active Badge, Switch Toggle
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(iconData, color: iconColor, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      program.title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Started: ${program.startedDate}',
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // Active / Inactive Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: program.isActive ? const Color(0xFFE6F7F0) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  program.isActive ? 'Active' : 'Inactive',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: program.isActive ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // Switch Toggle
+              Transform.scale(
+                scale: 0.8,
+                child: Switch(
+                  value: program.isActive,
+                  activeColor: const Color(0xFF10B981),
+                  onChanged: (val) => _toggleProgramActive(program, val),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Row 2: Description
+          Text(
+            program.description.isNotEmpty
+                ? program.description
+                : 'Give cashback on orders to build loyal customers.',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF475569),
+              height: 1.3,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+
+          // Row 3: Rule Pills
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              _buildRuleChip(
+                icon: Icons.percent_rounded,
+                text: isPercent
+                    ? '${program.cashbackPercentage.toStringAsFixed(0)}% Cashback'
+                    : '₹${program.cashbackAmount.toStringAsFixed(0)} Cashback',
+                color: const Color(0xFF0F766E),
+                bg: const Color(0xFFF0FDFA),
+              ),
+              _buildRuleChip(
+                icon: Icons.shopping_bag_outlined,
+                text: 'Min ₹${program.minimumOrder.toStringAsFixed(0)}',
+                color: const Color(0xFF0369A1),
+                bg: const Color(0xFFF0F9FF),
+              ),
+              if (program.maximumCashback > 0)
+                _buildRuleChip(
+                  icon: Icons.shield_outlined,
+                  text: 'Max ₹${program.maximumCashback.toStringAsFixed(0)}',
+                  color: const Color(0xFF4338CA),
+                  bg: const Color(0xFFEEF2FF),
+                ),
+              _buildRuleChip(
+                icon: Icons.groups_outlined,
+                text: program.eligibleCustomers,
+                color: const Color(0xFF334155),
+                bg: const Color(0xFFF8FAFC),
+              ),
+            ],
+          ),
+          const Spacer(),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 8),
+
+          // Row 4: Action Buttons (View Details, Edit, Delete)
+          Row(
+            children: [
+              Text(
+                'Validity: ${program.validity}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () => _navigateToEditProgram(program),
+                tooltip: 'Edit Program',
+                icon: const Icon(Icons.edit_outlined, size: 16, color: Color(0xFF475569)),
+              ),
+              IconButton(
+                onPressed: () => _deleteProgram(program),
+                tooltip: 'Delete Program',
+                icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+              ),
+              const SizedBox(width: 4),
+              ElevatedButton(
+                onPressed: () => _navigateToProgramDetails(program),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF08435E),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
+                child: const Text('Details', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRuleChip({
+    required IconData icon,
+    required String text,
+    required Color color,
+    required Color bg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Center(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.loyalty_outlined, size: 40, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'No Loyalty Programs Found',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Create your first cashback program or visit stamp card to start rewarding customers.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: _navigateToCreateProgram,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF08435E),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Create Loyalty Program', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
         ),
       ),
     );

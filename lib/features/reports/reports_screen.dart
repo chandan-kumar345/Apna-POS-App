@@ -196,8 +196,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
     super.dispose();
   }
 
+  bool _needsReportReload = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool isVisible = TickerMode.valuesOf(context).enabled;
+    if (isVisible && _needsReportReload) {
+      _needsReportReload = false;
+      _dbDebounceTimer?.cancel();
+      _dbDebounceTimer = Timer(const Duration(milliseconds: 350), () {
+        if (mounted) {
+          _loadSalesReport(showLoading: false);
+        }
+      });
+    }
+  }
+
   void _onDbChange() {
     if (!mounted) return;
+    final bool isVisible = TickerMode.valuesOf(context).enabled;
+    if (!isVisible) {
+      _needsReportReload = true;
+      return;
+    }
     _dbDebounceTimer?.cancel();
     _dbDebounceTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {

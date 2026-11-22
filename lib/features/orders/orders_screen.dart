@@ -261,8 +261,26 @@ class _OrdersScreenState extends State<OrdersScreen> {
     super.dispose();
   }
 
+  bool _needsRefreshWhenVisible = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool isVisible = TickerMode.valuesOf(context).enabled;
+    if (isVisible && _needsRefreshWhenVisible) {
+      _needsRefreshWhenVisible = false;
+      if (mounted) setState(() {});
+    }
+  }
+
   void _onDbChange() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final bool isVisible = TickerMode.valuesOf(context).enabled;
+    if (isVisible) {
+      setState(() {});
+    } else {
+      _needsRefreshWhenVisible = true;
+    }
   }
 
   Color _getStatusColor(OrderStatus status) {

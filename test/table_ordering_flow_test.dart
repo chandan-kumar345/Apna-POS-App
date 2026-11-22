@@ -102,6 +102,7 @@ void main() {
         name: 'Margherita Pizza',
         category: 'Pizzas',
         price: 199.0,
+        description: 'Classic cheese and basil',
       );
 
       expect(item.rating, 4.8);
@@ -113,6 +114,10 @@ void main() {
         id: 'r_1',
         name: 'Pizza 47',
         companyName: 'Pizza 47 LLC',
+        address: '123 Main St',
+        cuisineType: 'Italian',
+        phone: '9876543210',
+        tagline: 'Best Pizza in Town',
         likesCount: 1520,
       );
 

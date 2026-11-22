@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/loyalty_program_model.dart';
@@ -174,32 +175,35 @@ class _LoyaltyProgramDetailsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return CustomerShell(
-      header: _buildTopHeader(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Hero Status Card (Matching Screen 3)
-            _buildProgramHeroCard(),
-            const SizedBox(height: 14),
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return CustomerShell(
+        header: _buildTopHeader(),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Hero Status Card (Matching Screen 3)
+              _buildProgramHeroCard(),
+              const SizedBox(height: 14),
 
-            // Program Details Card
-            _buildProgramDetailsCard(),
-            const SizedBox(height: 14),
+              // Program Details Card
+              _buildProgramDetailsCard(),
+              const SizedBox(height: 14),
 
-            // Program Performance Card
-            _buildProgramPerformanceCard(),
-            const SizedBox(height: 16),
+              // Program Performance Card
+              _buildProgramPerformanceCard(),
+              const SizedBox(height: 16),
 
-            // 4 Action Buttons Row (Edit, Reports, Customers, Deactivate)
-            _buildActionButtonsRow(),
-            const SizedBox(height: 20),
-          ],
+              // 4 Action Buttons Row (Edit, Reports, Customers, Deactivate)
+              _buildActionButtonsRow(),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
+    return _buildDesktopLayout();
   }
 
   Widget _buildTopHeader() {
@@ -658,6 +662,723 @@ class _LoyaltyProgramDetailsScreenState
           ],
         ),
       ),
+    );
+  }
+
+  // =========================================================================
+  // DESKTOP & WEB LAYOUT
+  // =========================================================================
+
+  void _navigateToEdit() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateLoyaltyProgramScreen(
+          programToEdit: _currentProgram,
+          onSaved: () {
+            widget.onProgramChanged?.call();
+            setState(() {
+              // Reloaded through parent callback
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  void _navigateToPerformance() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LoyaltyPerformanceScreen(),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLayout() {
+    final isPercent = _currentProgram.cashbackType == 'percentage' ||
+        _currentProgram.title.contains('%');
+    final rateStr = isPercent
+        ? '${_currentProgram.cashbackPercentage.toStringAsFixed(0)}% Cashback'
+        : '₹${_currentProgram.cashbackAmount.toStringAsFixed(0)} Cashback';
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF0F172A),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, size: 20),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Back',
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _currentProgram.title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            Text(
+              'Started: ${_currentProgram.startedDate} • Status: ${_isActive ? "Active" : "Inactive"}',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          // Active Switch
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _isActive ? 'Active' : 'Inactive',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: _isActive ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _isToggling
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF10B981)),
+                    )
+                  : Switch(
+                      value: _isActive,
+                      activeColor: const Color(0xFF10B981),
+                      onChanged: (val) {
+                        if (!val) {
+                          _confirmDeactivate();
+                        } else {
+                          _handleToggle(true);
+                        }
+                      },
+                    ),
+            ],
+          ),
+          const SizedBox(width: 12),
+
+          // Edit Program Button
+          OutlinedButton.icon(
+            onPressed: _navigateToEdit,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF08435E),
+              side: const BorderSide(color: Color(0xFFCBD5E1)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('Edit Program', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          ),
+          const SizedBox(width: 8),
+
+          // Analytics Button
+          OutlinedButton.icon(
+            onPressed: _navigateToPerformance,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF0F766E),
+              side: const BorderSide(color: Color(0xFF99F6E4)),
+              backgroundColor: const Color(0xFFF0FDFA),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: const Icon(Icons.insights_rounded, size: 16, color: Color(0xFF0F766E)),
+            label: const Text('Performance', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1200),
+              child: LayoutBuilder(
+                builder: (ctx, constraints) {
+                  final isWide = constraints.maxWidth >= 860;
+                  if (isWide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left Column: Hero Status + Rules Details + Actions
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildDesktopProgramHero(rateStr),
+                              const SizedBox(height: 16),
+                              _buildDesktopRulesCard(),
+                              const SizedBox(height: 16),
+                              _buildDesktopActionRow(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+
+                        // Right Column: Performance Analytics + WhatsApp Preview
+                        SizedBox(
+                          width: 380,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildDesktopPerformanceCard(),
+                              const SizedBox(height: 16),
+                              _buildDesktopMessagePreview(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  } else {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildDesktopProgramHero(rateStr),
+                        const SizedBox(height: 14),
+                        _buildDesktopRulesCard(),
+                        const SizedBox(height: 14),
+                        _buildDesktopPerformanceCard(),
+                        const SizedBox(height: 14),
+                        _buildDesktopMessagePreview(),
+                        const SizedBox(height: 16),
+                        _buildDesktopActionRow(),
+                      ],
+                    );
+                  }
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopProgramHero(String rateStr) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE6F7F0),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.currency_exchange_rounded,
+              color: Color(0xFF10B981),
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      _currentProgram.title,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _isActive ? const Color(0xFFE6F7F0) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _isActive ? 'Active' : 'Inactive',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: _isActive ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _currentProgram.description.isNotEmpty
+                      ? _currentProgram.description
+                      : 'Give cashback on orders to build loyal customers.',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF475569),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEDE9FE),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFDDD6FE)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'Cashback Rate',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF6D28D9)),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  rateStr,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF5B21B6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopRulesCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.tune_rounded, size: 18, color: Color(0xFF08435E)),
+              SizedBox(width: 8),
+              Text(
+                'Program Rules & Configuration',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildDetailTile(
+                  title: 'Minimum Order',
+                  value: '₹${_currentProgram.minimumOrder.toInt()}',
+                  icon: Icons.shopping_cart_outlined,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildDetailTile(
+                  title: 'Max Cashback',
+                  value: '₹${_currentProgram.maximumCashback.toInt()}',
+                  icon: Icons.shield_outlined,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildDetailTile(
+                  title: 'Validity',
+                  value: _currentProgram.validity,
+                  icon: Icons.event_available_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Eligible Audience',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                    ),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: _showEligibleCustomersSheet,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFBBF7D0)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.people_outline_rounded, size: 15, color: Color(0xFF16A34A)),
+                            const SizedBox(width: 6),
+                            Text(
+                              _currentProgram.eligibleCustomers,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF15803D)),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF16A34A)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Applicable Order Types',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        for (final type in _currentProgram.orderTypes)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              type,
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailTile({
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: const Color(0xFF64748B)),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopPerformanceCard() {
+    final distributedStr = _currencyFormat.format(_currentProgram.cashbackGiven);
+    final ordersCount = _currentProgram.ordersCount;
+    final rate = _currentProgram.redemptionRate;
+    final membersCount = _currentProgram.membersCount > 0 ? _currentProgram.membersCount : _currentProgram.ordersCount;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Performance Metrics',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              InkWell(
+                onTap: _navigateToPerformance,
+                child: const Text(
+                  'Full Report →',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF08435E)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricMini(
+                  label: 'Members Active',
+                  value: '$membersCount',
+                  color: const Color(0xFF10B981),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricMini(
+                  label: 'Cashback Issued',
+                  value: distributedStr,
+                  color: const Color(0xFF8B5CF6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricMini(
+                  label: 'Total Orders',
+                  value: '$ordersCount',
+                  color: const Color(0xFFF59E0B),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricMini(
+                  label: 'Redemption Rate',
+                  value: '${rate.toStringAsFixed(1)}%',
+                  color: const Color(0xFF0284C7),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricMini({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopMessagePreview() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Color(0xFF16A34A)),
+              SizedBox(width: 8),
+              Text(
+                'Customer Notification Preview',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF15803D),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Text(
+              _currentProgram.messageTemplate.isNotEmpty
+                  ? _currentProgram.messageTemplate
+                  : 'Hi {{name}}! Earn cashback on your next order.',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF1E293B),
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopActionRow() {
+    return Row(
+      children: [
+        ElevatedButton.icon(
+          onPressed: _navigateToEdit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF08435E),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            elevation: 0,
+          ),
+          icon: const Icon(Icons.edit_outlined, size: 16),
+          label: const Text('Edit Program', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        ),
+        const SizedBox(width: 12),
+        OutlinedButton.icon(
+          onPressed: _showEligibleCustomersSheet,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF0F172A),
+            side: const BorderSide(color: Color(0xFFCBD5E1)),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          icon: const Icon(Icons.people_outline_rounded, size: 16),
+          label: const Text('Audience Details', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ),
+        const SizedBox(width: 12),
+        OutlinedButton.icon(
+          onPressed: _navigateToPerformance,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF0F172A),
+            side: const BorderSide(color: Color(0xFFCBD5E1)),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          icon: const Icon(Icons.insights_rounded, size: 16),
+          label: const Text('View Analytics', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: _isActive ? _confirmDeactivate : () => _handleToggle(true),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _isActive ? Colors.redAccent : const Color(0xFF10B981),
+            side: BorderSide(color: _isActive ? const Color(0xFFFECACA) : const Color(0xFFA7F3D0)),
+            backgroundColor: _isActive ? const Color(0xFFFEF2F2) : const Color(0xFFECFDF5),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          icon: Icon(_isActive ? Icons.power_settings_new_rounded : Icons.check_circle_outline, size: 16),
+          label: Text(
+            _isActive ? 'Deactivate Program' : 'Activate Program',
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/database/database_service.dart';
@@ -231,24 +232,27 @@ class _CreateLoyaltyProgramScreenState
 
   @override
   Widget build(BuildContext context) {
-    return CustomerShell(
-      header: _buildTopHeader(),
-      body: Column(
-        children: [
-          // Wizard Stepper Bar
-          _buildStepperHeader(),
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return CustomerShell(
+        header: _buildTopHeader(),
+        body: Column(
+          children: [
+            // Wizard Stepper Bar
+            _buildStepperHeader(),
 
-          // Active Step Body
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-              child: _buildCurrentStepBody(),
+            // Active Step Body
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                child: _buildCurrentStepBody(),
+              ),
             ),
-          ),
-        ],
-      ),
-      footer: _buildFooterActions(),
-    );
+          ],
+        ),
+        footer: _buildFooterActions(),
+      );
+    }
+    return _buildDesktopLayout();
   }
 
   Widget _buildTopHeader() {
@@ -760,23 +764,6 @@ class _CreateLoyaltyProgramScreenState
       ),
     );
   }
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _calculatedExampleText,
-              style: campaignText(
-                13,
-                color: const Color(0xFF1E40AF),
-                weight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   // STEP 2: Rules (Minimum Order, Max Cap, Validity, Order Types, Audience)
   Widget _buildStep2Rules() {
@@ -1167,4 +1154,521 @@ class _CreateLoyaltyProgramScreenState
       ),
     );
   }
+
+  // =========================================================================
+  // DESKTOP & WEB LAYOUT
+  // =========================================================================
+
+  String _getStepTitle(int step) {
+    switch (step) {
+      case 0:
+        return 'Reward Details';
+      case 1:
+        return 'Rules & Eligibility';
+      case 2:
+        return 'Message & Automation';
+      case 3:
+      default:
+        return 'Review & Launch';
+    }
+  }
+
+  Widget _buildDesktopLayout() {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF0F172A),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, size: 20),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Back',
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.programToEdit != null
+                  ? 'Edit Loyalty Program'
+                  : 'Create Loyalty Program',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            Text(
+              'Step ${_currentStep + 1} of 4 • ${_getStepTitle(_currentStep)}',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: _isSaving ? null : () => _saveProgram(isDraft: true),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF08435E),
+              side: const BorderSide(color: Color(0xFFCBD5E1)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Save Draft', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: _isSaving ? null : _onNext,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF08435E),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : Icon(_currentStep == 3 ? Icons.rocket_launch_rounded : Icons.arrow_forward_rounded, size: 16),
+            label: Text(
+              _currentStep == 3 ? 'Launch Program' : 'Next Step',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Stepper bar
+            _buildDesktopStepperBar(),
+
+            // 2-column or responsive body
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1180),
+                    child: LayoutBuilder(
+                      builder: (ctx, constraints) {
+                        final isWide = constraints.maxWidth >= 860;
+                        if (isWide) {
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Left Column: Step Form
+                              Expanded(
+                                flex: 3,
+                                child: Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x06000000),
+                                        blurRadius: 10,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: _buildCurrentStepBody(),
+                                ),
+                              ),
+                              const SizedBox(width: 24),
+
+                              // Right Column: Live Interactive Preview
+                              SizedBox(
+                                width: 360,
+                                child: _buildDesktopLivePreviewSide(),
+                              ),
+                            ],
+                          );
+                        } else {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: _buildCurrentStepBody(),
+                              ),
+                              const SizedBox(height: 20),
+                              _buildDesktopLivePreviewSide(),
+                            ],
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Bottom action bar
+            _buildDesktopBottomBar(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopStepperBar() {
+    const steps = [
+      {'title': 'Reward Details', 'desc': 'Type & Cashback Rate'},
+      {'title': 'Rules & Eligibility', 'desc': 'Min order & channels'},
+      {'title': 'Message & Template', 'desc': 'Customer notification'},
+      {'title': 'Review & Launch', 'desc': 'Summary & confirmation'},
+    ];
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Row(
+            children: [
+              for (int i = 0; i < steps.length; i++) ...[
+                if (i > 0)
+                  Expanded(
+                    child: Container(
+                      height: 2,
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                      color: i <= _currentStep ? const Color(0xFF08435E) : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                InkWell(
+                  onTap: () => setState(() => _currentStep = i),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: _currentStep == i
+                                ? const Color(0xFF08435E)
+                                : (_currentStep > i ? const Color(0xFF10B981) : const Color(0xFFF1F5F9)),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: _currentStep > i
+                                ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+                                : Text(
+                                    '${i + 1}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: _currentStep == i ? Colors.white : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              steps[i]['title']!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: _currentStep == i ? FontWeight.w800 : FontWeight.w600,
+                                color: _currentStep == i ? const Color(0xFF08435E) : const Color(0xFF475569),
+                              ),
+                            ),
+                            Text(
+                              steps[i]['desc']!,
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLivePreviewSide() {
+    final storeName = _db.restaurant?.name.trim().isNotEmpty == true
+        ? _db.restaurant!.name.trim()
+        : 'Store';
+    final pName = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : 'Cashback on Every Order';
+    final rateStr = _cashbackType == 'percentage'
+        ? '${_rateController.text}% Cashback'
+        : '₹${_rateController.text} Fixed Cashback';
+
+    // Simulated message
+    final msg = _messageController.text
+        .replaceAll('{{name}}', 'Rahul')
+        .replaceAll('{{cashback}}', rateStr)
+        .replaceAll('{{store}}', storeName)
+        .replaceAll('{{expiry}}', _validityController.text);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Card Preview Header
+        const Text(
+          'Live Customer Preview',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 1. Digital Loyalty Card Preview
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0F3B56), Color(0xFF072132)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1F072132),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    storeName,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white70,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                    ),
+                    child: Text(
+                      rateStr,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF34D399),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                pName,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _descController.text.trim().isNotEmpty
+                    ? _descController.text.trim()
+                    : 'Earn cashback on qualifying orders.',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white60,
+                  height: 1.3,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: Colors.white12, height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Min Order: ₹${_minOrderController.text}',
+                    style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    'Max: ₹${_maxCashbackController.text}',
+                    style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    _eligibleAudience,
+                    style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // 2. WhatsApp Notification Preview
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFECE5DD),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Color(0xFF075E54)),
+                  SizedBox(width: 6),
+                  Text(
+                    'WhatsApp Notification',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF075E54),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x08000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  msg,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF1E293B),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopBottomBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Row(
+            children: [
+              if (_currentStep > 0)
+                OutlinedButton.icon(
+                  onPressed: () => setState(() => _currentStep -= 1),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                  label: const Text('Back', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+              const Spacer(),
+              OutlinedButton(
+                onPressed: _isSaving ? null : () => _saveProgram(isDraft: true),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF08435E),
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Save as Draft', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _isSaving ? null : _onNext,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF08435E),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : Icon(_currentStep == 3 ? Icons.rocket_launch_rounded : Icons.arrow_forward_rounded, size: 16),
+                label: Text(
+                  _currentStep == 3 ? 'Create Program' : 'Next Step',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 }

@@ -107,6 +107,7 @@ class CampaignDashboardView extends StatefulWidget {
   final VoidCallback onCreateAutoCampaign;
   final ValueChanged<CampaignModel> onSelectCampaign;
   final ValueChanged<CampaignTemplateModel>? onUseTemplate;
+  final VoidCallback? onViewCustomers;
 
   const CampaignDashboardView({
     super.key,
@@ -115,6 +116,7 @@ class CampaignDashboardView extends StatefulWidget {
     required this.onCreateAutoCampaign,
     required this.onSelectCampaign,
     this.onUseTemplate,
+    this.onViewCustomers,
   });
 
   @override
@@ -402,6 +404,7 @@ class _CampaignDashboardViewState extends State<CampaignDashboardView> {
     onCreate: widget.onCreateCampaign,
     onAuto: widget.onCreateAutoCampaign,
     onGroups: widget.onCreateGroup,
+    onCustomers: widget.onViewCustomers,
     onTopUp: _onTopUpWallet,
     onPerformance: _onViewCampaignPerformance,
     onTab: _onMainTabChanged,

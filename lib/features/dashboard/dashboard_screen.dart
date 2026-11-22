@@ -60,10 +60,13 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     _loadDashboardData(isManual: false);
   }
 
+  bool _needsRefreshOnActive = false;
+
   @override
   void didUpdateWidget(covariant GlassDashboardScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isActive && !oldWidget.isActive) {
+    if (widget.isActive && (!oldWidget.isActive || _needsRefreshOnActive)) {
+      _needsRefreshOnActive = false;
       _loadDashboardData(isManual: false);
     }
   }
@@ -83,18 +86,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     if (widget.isActive) {
       _loadDashboardData(isManual: false);
     } else {
-      final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
-      if (localData != null && mounted) {
-        setState(() {
-          _summaryData = localData.summary;
-          _orderTypesData = localData.orderTypes;
-          _productSales = localData.productSales;
-          _customerData = localData.customers;
-          _paymentMethodsData = localData.payments;
-          _taxData = localData.taxes;
-          _orderStatsData = localData.orderStats;
-        });
-      }
+      // Do not waste main-thread cycles calculating heavy metrics while offstage
+      _needsRefreshOnActive = true;
     }
   }
 

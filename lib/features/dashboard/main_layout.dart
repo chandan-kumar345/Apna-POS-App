@@ -2768,6 +2768,7 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
   late final Animation<double> _scaleAnimation;
   late int _currentIndex;
   final Set<int> _activatedTabs = {};
+  final Map<int, Widget> _cachedTabWidgets = {};
 
   @override
   void initState() {
@@ -2825,13 +2826,17 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
     final children = List<Widget>.generate(widget.tabBuilders.length, (i) {
       if (_activatedTabs.contains(i)) {
         final bool isCurrentTab = (i == _currentIndex);
+        // Only re-invoke builder for current active tab or when activating for the first time
+        if (isCurrentTab || !_cachedTabWidgets.containsKey(i)) {
+          _cachedTabWidgets[i] = widget.tabBuilders[i](context);
+        }
         return TickerMode(
           enabled: isCurrentTab,
           child: Offstage(
             offstage: !isCurrentTab,
             child: RepaintBoundary(
               key: ValueKey('tab_boundary_$i'),
-              child: widget.tabBuilders[i](context),
+              child: _cachedTabWidgets[i]!,
             ),
           ),
         );

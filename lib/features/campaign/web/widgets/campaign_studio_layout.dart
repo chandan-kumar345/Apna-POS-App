@@ -15,6 +15,7 @@ class CampaignStudioLayout extends StatelessWidget {
   final String tab, category;
   final bool loading;
   final VoidCallback onCreate, onAuto, onGroups, onTopUp, onPerformance;
+  final VoidCallback? onCustomers;
   final ValueChanged<String> onTab, onCategory, onSearch;
   final ValueChanged<CampaignModel> onCampaign;
   final ValueChanged<CampaignTemplateModel> onTemplate;
@@ -32,6 +33,7 @@ class CampaignStudioLayout extends StatelessWidget {
     required this.onCreate,
     required this.onAuto,
     required this.onGroups,
+    this.onCustomers,
     required this.onTopUp,
     required this.onPerformance,
     required this.onTab,
@@ -357,6 +359,16 @@ class CampaignStudioLayout extends StatelessWidget {
                 onGroups,
               ),
             ),
+            if (onCustomers != null) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: _secondary(
+                  'Customers',
+                  Icons.people_outline_rounded,
+                  onCustomers!,
+                ),
+              ),
+            ],
           ],
         ),
       ],

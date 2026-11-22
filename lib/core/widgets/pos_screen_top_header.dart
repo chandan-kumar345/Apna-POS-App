@@ -179,73 +179,75 @@ class PosScreenTopHeader extends StatelessWidget {
     final user = db.currentUser;
     final companyTitle = storeTitle ?? rest?.name ?? user?.companyName ?? 'Pizza 47';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
-      color: Colors.transparent,
-      child: Row(
-        children: [
-          // Circular Brand Logo (Opens Sidebar on tap)
-          InkWell(
-            onTap: onLogoTap ?? onStoreTap ?? () => _handleLogoOrStoreTap(context, companyTitle),
-            borderRadius: BorderRadius.circular(22),
-            child: Container(
-              width: 44,
-              height: 44,
-              padding: const EdgeInsets.all(2.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 4,
-                    offset: Offset(0, 1.5),
+    return RepaintBoundary(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+        color: Colors.transparent,
+        child: Row(
+          children: [
+            // Circular Brand Logo (Opens Sidebar on tap)
+            InkWell(
+              onTap: onLogoTap ?? onStoreTap ?? () => _handleLogoOrStoreTap(context, companyTitle),
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                width: 44,
+                height: 44,
+                padding: const EdgeInsets.all(2.0),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 4,
+                      offset: Offset(0, 1.5),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: SmoothBrandLogoWidget(
+                    size: 40,
+                    logoPath: db.companyLogoPath,
+                    companyName: companyTitle,
                   ),
-                ],
-              ),
-              child: ClipOval(
-                child: SmoothBrandLogoWidget(
-                  size: 40,
-                  logoPath: db.companyLogoPath,
-                  companyName: companyTitle,
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 9),
+            const SizedBox(width: 9),
 
-          // Glass Company Name Badge ("Pizza 47" without dropdown icon, opens Sidebar on tap)
-          ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 90, maxWidth: 170),
-            child: GlassCompanyNameBadge(
-              name: companyTitle,
-              hasDropdown: false,
-              isDropdownOpen: false,
-              isNeumorphic: false,
-              onTap: onStoreTap ?? onLogoTap ?? () => _handleLogoOrStoreTap(context, companyTitle),
+            // Glass Company Name Badge ("Pizza 47" without dropdown icon, opens Sidebar on tap)
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 90, maxWidth: 170),
+              child: GlassCompanyNameBadge(
+                name: companyTitle,
+                hasDropdown: false,
+                isDropdownOpen: false,
+                isNeumorphic: false,
+                onTap: onStoreTap ?? onLogoTap ?? () => _handleLogoOrStoreTap(context, companyTitle),
+              ),
             ),
-          ),
 
-          const SizedBox(width: 9),
-          const Spacer(),
-
-          // ONLINE / OFFLINE STATUS DOT INDICATOR
-          if (showStatusBadge) ...[
-            const GlassConnectionStatusBadge(isDarkTheme: true),
             const SizedBox(width: 9),
-          ],
+            const Spacer(),
 
-          // WALLET KHAZANA BUTTON
-          if (showWallet) ...[
-            _buildWalletButton(context),
-            const SizedBox(width: 9),
-          ],
+            // ONLINE / OFFLINE STATUS DOT INDICATOR
+            if (showStatusBadge) ...[
+              const GlassConnectionStatusBadge(isDarkTheme: true),
+              const SizedBox(width: 9),
+            ],
 
-          // NOTIFICATION BELL BUTTON
-          if (showNotifications)
-            _buildNotificationBellButton(context),
-        ],
+            // WALLET KHAZANA BUTTON
+            if (showWallet) ...[
+              _buildWalletButton(context),
+              const SizedBox(width: 9),
+            ],
+
+            // NOTIFICATION BELL BUTTON
+            if (showNotifications)
+              _buildNotificationBellButton(context),
+          ],
+        ),
       ),
     );
   }

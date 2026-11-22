@@ -14,12 +14,14 @@ class CreateCampaignWizardView extends StatefulWidget {
   final VoidCallback onCancel;
   final ValueChanged<CampaignModel> onCampaignCreated;
   final CampaignTemplateModel? initialTemplate;
+  final CampaignModel? existingCampaign;
 
   const CreateCampaignWizardView({
     super.key,
     required this.onCancel,
     required this.onCampaignCreated,
     this.initialTemplate,
+    this.existingCampaign,
   });
 
   @override
@@ -188,6 +190,45 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
     _ctaButtonTitleController = TextEditingController(text: 'Offer details');
     _ctaButtonUrlController = TextEditingController(text: 'https://loyalty.knowwu.me/b/{{1}}');
     _sendCampaignDisplayName = _hasCustomMetaIntegration ? _businessDisplayName : 'Knowwu';
+
+    final edit = widget.existingCampaign;
+    if (edit != null) {
+      _persistedCampaignId = edit.id;
+      _savedStatus = edit.status == 'approved' ? 'Approved' : 'Saved as Draft';
+      _campaignTitleController.text = edit.name;
+      if (edit.rewardDetails != null) {
+        final r = edit.rewardDetails!;
+        if (r.description.isNotEmpty) _descriptionController.text = r.description;
+        if (r.discountAmount > 0) _discountValueController.text = r.discountAmount.toStringAsFixed(0);
+        if (r.minSpendAmount > 0) _minSpendController.text = r.minSpendAmount.toStringAsFixed(0);
+        if (r.maxCashbackCap > 0) _maxCashbackController.text = r.maxCashbackCap.toStringAsFixed(0);
+        if (r.rewardType == 'percent_discount' || r.rewardType == 'percentage') {
+          _selectedRewardType = 'Percentage Discount';
+        } else if (r.rewardType == 'cashback') {
+          _selectedRewardType = 'Cashback';
+        } else if (r.rewardType == 'free_gift') {
+          _selectedRewardType = 'Free Product';
+        } else if (r.rewardType == 'bogo') {
+          _selectedRewardType = 'Buy 1 Get 1 (BOGO)';
+        } else {
+          _selectedRewardType = 'Flat Cash Discount';
+        }
+      }
+      if (edit.couponSettings != null && edit.couponSettings!.couponCode.isNotEmpty) {
+        _couponCodeController.text = edit.couponSettings!.couponCode;
+        _useCustomCouponCode = true;
+      }
+      if (edit.template.body.isNotEmpty) {
+        _whatsappBodyController.text = edit.template.body;
+      }
+      if (edit.template.headerImageUrl.isNotEmpty) {
+        _bannerImageUrl = edit.template.headerImageUrl;
+      }
+      _hasSendSchedule = edit.scheduleMode == 'later';
+      if (edit.scheduledAt != null) {
+        _sendDate = edit.scheduledAt!;
+      }
+    }
 
     // Attach listeners so live preview reacts immediately as user types
     _campaignTitleController.addListener(() => setState(() {}));
@@ -495,10 +536,22 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
       displayCouponInProfile: false,
     );
 
+    final groupNumbers = _selectedGroup?.numbers ?? [];
+    final recipients = groupNumbers
+        .map((n) => CampaignRecipientModel(
+              id: n.id,
+              name: n.name,
+              phone: n.phone,
+              status: 'pending',
+            ))
+        .toList();
     final audience = CampaignAudienceModel(
       source: 'group',
       groupName: _selectedGroup?.name ?? 'All Customers',
-      recipientCount: _selectedGroup?.count ?? 320,
+      recipientCount: recipients.isNotEmpty
+          ? recipients.length
+          : (_selectedGroup?.count ?? 320),
+      recipients: recipients,
     );
 
     CampaignChannelModel channel = _selectedChannel ?? const CampaignChannelModel();
@@ -4341,6 +4394,97 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
                   ),
                 ),
               ],
+
+              const SizedBox(height: 20),
+              const Divider(color: _cardBorder, height: 1),
+              const SizedBox(height: 20),
+
+              // Section 6: Target Audience Group
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Target Audience Group',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _selectedGroup != null
+                            ? '${_selectedGroup!.name} • ${_selectedGroup!.count} recipients'
+                            : 'Select customer audience group to send this campaign',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                  if (_selectedGroup != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${_selectedGroup!.count} contacts',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0052FF)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (_audienceGroups.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _borderGrey),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<AudienceGroupModel>(
+                      value: _audienceGroups.any((g) => g.id == _selectedGroup?.id)
+                          ? _audienceGroups.firstWhere((g) => g.id == _selectedGroup?.id)
+                          : _audienceGroups.first,
+                      isExpanded: true,
+                      items: _audienceGroups
+                          .map(
+                            (g) => DropdownMenuItem(
+                              value: g,
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.groups_rounded, size: 18, color: Color(0xFF082559)),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(g.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                                  Text('${g.count} recipients', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedGroup = val);
+                      },
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFDE68A)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFD97706)),
+                      SizedBox(width: 8),
+                      Text('No audience groups found. A default "All Customers" group will be used.', style: TextStyle(fontSize: 12, color: Color(0xFF92400E))),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -4373,28 +4517,52 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
               child: const Text('Save Draft', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             ),
             const SizedBox(width: 12),
-            ElevatedButton(
+            OutlinedButton.icon(
               onPressed: _isSubmittingApproval ? null : _submitForMetaApproval,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryNavy,
-                foregroundColor: Colors.white,
-                elevation: 0,
+              icon: _isSubmittingApproval
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _primaryNavy),
+                    )
+                  : const Icon(Icons.verified_outlined, size: 16),
+              label: const Text('Submit for Approval', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _primaryNavy,
+                side: const BorderSide(color: _primaryNavy),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               ),
-              child: _isSubmittingApproval
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: _isPublishing
+                  ? null
+                  : () {
+                      final tpl = _submittedTemplate ??
+                          widget.initialTemplate ??
+                          CampaignTemplateModel(
+                            id: 'custom_tpl',
+                            name: _campaignTitleController.text.trim(),
+                            body: _whatsappBodyController.text.trim(),
+                          );
+                      _publishApprovedCampaign(tpl);
+                    },
+              icon: _isPublishing
                   ? const SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Row(
-                      children: [
-                        Text('Submit for Approval', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                        SizedBox(width: 4),
-                        Icon(Icons.chevron_right_rounded, size: 18),
-                      ],
-                    ),
+                  : const Icon(Icons.rocket_launch_rounded, size: 16),
+              label: const Text('Launch Campaign', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -4995,10 +5163,22 @@ class _CreateCampaignWizardViewState extends State<CreateCampaignWizardView> {
       displayCouponInProfile: false,
     );
 
+    final groupNumbers = _selectedGroup?.numbers ?? [];
+    final recipients = groupNumbers
+        .map((n) => CampaignRecipientModel(
+              id: n.id,
+              name: n.name,
+              phone: n.phone,
+              status: 'pending',
+            ))
+        .toList();
     final audience = CampaignAudienceModel(
       source: 'group',
       groupName: _selectedGroup?.name ?? 'All Customers',
-      recipientCount: _selectedGroup?.count ?? 320,
+      recipientCount: recipients.isNotEmpty
+          ? recipients.length
+          : (_selectedGroup?.count ?? 320),
+      recipients: recipients,
     );
 
     CampaignChannelModel channel = _selectedChannel ?? const CampaignChannelModel();

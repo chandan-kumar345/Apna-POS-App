@@ -6,11 +6,15 @@ import '../../services/campaign_service.dart';
 class CampaignDetailsMonitoringView extends StatefulWidget {
   final CampaignModel campaign;
   final VoidCallback onBack;
+  final ValueChanged<CampaignModel>? onEditCampaign;
+  final ValueChanged<CampaignModel>? onFollowUpCampaign;
 
   const CampaignDetailsMonitoringView({
     super.key,
     required this.campaign,
     required this.onBack,
+    this.onEditCampaign,
+    this.onFollowUpCampaign,
   });
 
   @override
@@ -229,6 +233,52 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
           const SizedBox(width: 4),
+          if ((_currentCampaign.status == 'draft' || _currentCampaign.status == 'approved') && widget.onEditCampaign != null) ...[
+            SizedBox(
+              height: isNarrow ? 30 : 38,
+              child: ElevatedButton.icon(
+                onPressed: () => widget.onEditCampaign?.call(_currentCampaign),
+                icon: Icon(Icons.edit_rounded, size: isNarrow ? 13 : 16),
+                label: Text(
+                  'Edit Draft',
+                  style: TextStyle(
+                    fontSize: isNarrow ? 10.5 : 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF082559),
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          if (widget.onFollowUpCampaign != null && _currentCampaign.status != 'draft') ...[
+            SizedBox(
+              height: isNarrow ? 30 : 38,
+              child: OutlinedButton.icon(
+                onPressed: () => widget.onFollowUpCampaign?.call(_currentCampaign),
+                icon: Icon(Icons.forward_to_inbox_rounded, size: isNarrow ? 13 : 16),
+                label: Text(
+                  'Follow-up',
+                  style: TextStyle(
+                    fontSize: isNarrow ? 10.5 : 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF7047D6),
+                  side: const BorderSide(color: Color(0xFFDDD6FE)),
+                  padding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
           // Pause / Resume Button
           SizedBox(
             height: isNarrow ? 30 : 38,

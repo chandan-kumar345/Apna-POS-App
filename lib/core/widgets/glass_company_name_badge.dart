@@ -22,15 +22,16 @@ class GlassCompanyNameBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final displayName = name.trim().isNotEmpty ? name : 'My Business';
 
-    return InkWell(
-      onTap: onTap == null
-          ? null
-          : () {
-              SoundService.playButtonClick();
-              onTap!();
-            },
-      borderRadius: BorderRadius.circular(20),
-      child: isNeumorphic
+    return RepaintBoundary(
+      child: InkWell(
+        onTap: onTap == null
+            ? null
+            : () {
+                SoundService.playButtonClick();
+                onTap!();
+              },
+        borderRadius: BorderRadius.circular(20),
+        child: isNeumorphic
           ? AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: EdgeInsets.symmetric(
@@ -171,6 +172,7 @@ class GlassCompanyNameBadge extends StatelessWidget {
                 ),
               ),
             ),
+      ),
     );
   }
 }

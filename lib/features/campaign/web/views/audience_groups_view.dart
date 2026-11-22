@@ -5,11 +5,13 @@ import '../../services/campaign_service.dart';
 class AudienceGroupsView extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<AudienceGroupModel>? onGroupSelected;
+  final VoidCallback? onViewCustomers;
 
   const AudienceGroupsView({
     super.key,
     required this.onBack,
     this.onGroupSelected,
+    this.onViewCustomers,
   });
 
   @override
@@ -384,81 +386,219 @@ class _AudienceGroupsViewState extends State<AudienceGroupsView> {
   }
 
   void _openViewMembersDialog(AudienceGroupModel group) {
+    String memberSearch = '';
+    final newPhoneCtrl = TextEditingController();
+    final newNameCtrl = TextEditingController();
+    List<ContactNumberModel> currentNumbers = List.from(group.numbers);
+
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        backgroundColor: Colors.white,
-        child: Container(
-          width: 540,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setMemberState) {
+          final filtered = currentNumbers.where((n) {
+            if (memberSearch.trim().isEmpty) return true;
+            final q = memberSearch.trim().toLowerCase();
+            return n.phone.toLowerCase().contains(q) || n.name.toLowerCase().contains(q);
+          }).toList();
+
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            backgroundColor: Colors.white,
+            child: Container(
+              width: 580,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        group.name,
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            group.name,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Total: ${currentNumbers.length} numbers • ${group.source}',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Total: ${group.count} numbers • ${group.source}',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      IconButton(
+                        onPressed: () => Navigator.pop(dialogCtx),
+                        icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
                       ),
                     ],
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                  const SizedBox(height: 14),
+
+                  // Quick search + Add inline
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 38,
+                          child: TextField(
+                            onChanged: (val) => setMemberState(() => memberSearch = val),
+                            style: const TextStyle(fontSize: 13),
+                            decoration: InputDecoration(
+                              hintText: 'Search within group...',
+                              prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF64748B)),
+                              contentPadding: EdgeInsets.zero,
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Add contact row
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: SizedBox(
+                          height: 38,
+                          child: TextField(
+                            controller: newNameCtrl,
+                            style: const TextStyle(fontSize: 12.5),
+                            decoration: InputDecoration(
+                              hintText: 'Name (optional)',
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 4,
+                        child: SizedBox(
+                          height: 38,
+                          child: TextField(
+                            controller: newPhoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            style: const TextStyle(fontSize: 12.5),
+                            decoration: InputDecoration(
+                              hintText: 'Mobile number *',
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final phone = newPhoneCtrl.text.trim().replaceAll(RegExp(r'[^\d+]'), '');
+                          if (phone.isEmpty) return;
+                          final newContact = ContactNumberModel(
+                            id: 'c_${DateTime.now().microsecondsSinceEpoch}',
+                            name: newNameCtrl.text.trim().isNotEmpty ? newNameCtrl.text.trim() : 'Contact',
+                            phone: phone,
+                            addedAt: DateTime.now(),
+                          );
+                          setMemberState(() {
+                            currentNumbers.insert(0, newContact);
+                            newPhoneCtrl.clear();
+                            newNameCtrl.clear();
+                          });
+                          await _campaignService.updateAudienceGroup(group.id, {
+                            'numbers': currentNumbers.map((c) => {'name': c.name, 'phone': c.phone}).toList(),
+                          });
+                          _loadGroups();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0052FF),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('Add', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Members List
+                  Container(
+                    height: 280,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: filtered.isEmpty
+                        ? const Center(child: Text('No contacts found', style: TextStyle(color: Color(0xFF94A3B8))))
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: filtered.length,
+                            separatorBuilder: (context, index) => const Divider(height: 8, color: Color(0xFFE2E8F0)),
+                            itemBuilder: (context, idx) {
+                              final num = filtered[idx];
+                              return Row(
+                                children: [
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle),
+                                    child: const Center(child: Icon(Icons.phone, size: 13, color: Color(0xFF0052FF))),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          num.phone,
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                                        ),
+                                        if (num.name.isNotEmpty)
+                                          Text(num.name, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                                    tooltip: 'Remove from group',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () async {
+                                      setMemberState(() {
+                                        currentNumbers.removeWhere((c) => c.phone == num.phone);
+                                      });
+                                      await _campaignService.updateAudienceGroup(group.id, {
+                                        'numbers': currentNumbers.map((c) => {'name': c.name, 'phone': c.phone}).toList(),
+                                      });
+                                      _loadGroups();
+                                    },
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Container(
-                height: 300,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: group.numbers.isEmpty
-                    ? const Center(child: Text('No numbers saved in this group yet', style: TextStyle(color: Color(0xFF94A3B8))))
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: group.numbers.length,
-                        separatorBuilder: (context, index) => const Divider(height: 8, color: Color(0xFFE2E8F0)),
-                        itemBuilder: (context, idx) {
-                          final num = group.numbers[idx];
-                          return Row(
-                            children: [
-                              Container(
-                                width: 30,
-                                height: 30,
-                                decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle),
-                                child: const Center(child: Icon(Icons.phone, size: 14, color: Color(0xFF0052FF))),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  num.phone,
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                                ),
-                              ),
-                              Text(num.name, style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
-                            ],
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -578,6 +718,23 @@ class _AudienceGroupsViewState extends State<AudienceGroupsView> {
           ),
           Row(
             children: [
+              if (widget.onViewCustomers != null) ...[
+                SizedBox(
+                  height: 38,
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onViewCustomers,
+                    icon: const Icon(Icons.people_alt_rounded, size: 16),
+                    label: const Text('Customers Directory', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF0052FF),
+                      side: const BorderSide(color: Color(0xFF93C5FD)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               SizedBox(
                 height: 38,
                 child: OutlinedButton.icon(

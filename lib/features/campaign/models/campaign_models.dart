@@ -815,6 +815,48 @@ class CampaignModel {
       createdAt: parsedCreated,
     );
   }
+
+  CampaignModel copyWith({
+    String? id,
+    String? campaignId,
+    String? name,
+    String? type,
+    String? status,
+    CampaignAudienceModel? audience,
+    CampaignChannelModel? channel,
+    CampaignTemplateModel? template,
+    String? scheduleMode,
+    DateTime? scheduledAt,
+    String? estimatedSendingTime,
+    CampaignCostModel? cost,
+    CampaignStatsDetailModel? stats,
+    CampaignRewardDetailsModel? rewardDetails,
+    CampaignCouponSettingsModel? couponSettings,
+    List<String>? orderTypes,
+    List<DeliveryTimelinePoint>? deliveryTimeline,
+    DateTime? createdAt,
+  }) {
+    return CampaignModel(
+      id: id ?? this.id,
+      campaignId: campaignId ?? this.campaignId,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      status: status ?? this.status,
+      audience: audience ?? this.audience,
+      channel: channel ?? this.channel,
+      template: template ?? this.template,
+      scheduleMode: scheduleMode ?? this.scheduleMode,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      estimatedSendingTime: estimatedSendingTime ?? this.estimatedSendingTime,
+      cost: cost ?? this.cost,
+      stats: stats ?? this.stats,
+      rewardDetails: rewardDetails ?? this.rewardDetails,
+      couponSettings: couponSettings ?? this.couponSettings,
+      orderTypes: orderTypes ?? this.orderTypes,
+      deliveryTimeline: deliveryTimeline ?? this.deliveryTimeline,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }
 
 /// Auto Campaign Entity

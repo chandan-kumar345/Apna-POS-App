@@ -1018,7 +1018,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  void clearTableCartAndFree(String? tableRef, {bool syncToBackend = true}) {
+  void clearTableCartAndFree(String? tableRef, {bool syncToBackend = true, bool persist = true, bool notify = true}) {
     if (tableRef == null || tableRef.trim().isEmpty) return;
     final tRef = tableRef.trim();
 
@@ -1057,9 +1057,13 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         if (syncToBackend) updateTableStatus(t.id, TableStatus.free);
       }
     }
-    _saveLiveTableCartsToPrefs();
-    _saveTablesToPrefs();
-    notifyListeners();
+    if (persist) {
+      _saveLiveTableCartsToPrefs();
+      _saveTablesToPrefs();
+    }
+    if (notify) {
+      notifyListeners();
+    }
   }
 
   /// Cancels active preparing/pending orders for a table, syncs cancellation to backend, and marks table as Free
@@ -1103,12 +1107,40 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
   void _reconcileTablesWithRunningOrders() {
     _clearTablesForTerminalOrders();
+
+    // Fast O(N) indexing of running active orders to eliminate nested O(Tables * Orders) loops
+    final activeOrdersByTable = <String, OrderModel>{};
+    final activeOrdersById = <String, OrderModel>{};
+    for (final o in orders) {
+      if (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled) {
+        if (o.tableNumber != null && o.tableNumber!.trim().isNotEmpty) {
+          final tKey = o.tableNumber!.trim().toLowerCase();
+          activeOrdersByTable.putIfAbsent(tKey, () => o);
+          activeOrdersByTable.putIfAbsent(tKey.replaceAll('table ', 't-').replaceAll('table', 't-'), () => o);
+        }
+        if (o.id.isNotEmpty) {
+          activeOrdersById[o.id] = o;
+        }
+      }
+    }
+
     for (int i = 0; i < tables.length; i++) {
       final tbl = tables[i];
-      final activeOrder = orders.where((o) =>
-        (isSameTable(o.tableNumber, tbl.name) || (tbl.currentOrderId != null && o.id == tbl.currentOrderId)) &&
-        (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)
-      ).firstOrNull;
+      OrderModel? activeOrder = tbl.currentOrderId != null ? activeOrdersById[tbl.currentOrderId] : null;
+      if (activeOrder == null) {
+        final tKey = tbl.name.trim().toLowerCase();
+        activeOrder = activeOrdersByTable[tKey] ??
+            activeOrdersByTable['t-${tbl.tableNumber}'] ??
+            activeOrdersByTable['table ${tbl.tableNumber}'];
+        if (activeOrder == null) {
+          for (final entry in activeOrdersByTable.entries) {
+            if (isSameTable(entry.key, tbl.name) || isSameTable(entry.key, 'T-${tbl.tableNumber}')) {
+              activeOrder = entry.value;
+              break;
+            }
+          }
+        }
+      }
 
       if (activeOrder != null) {
         final agentDraft = _chotuDraftForOrder(tbl.name, activeOrder);
@@ -1376,9 +1408,11 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     tryLoadOrdersFromJson(_prefs?.getString(_businessKey('orders')));
-    tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${userId}_orders'));
-    if (restaurant?.id != null && restaurant!.id != userId) {
-      tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_orders'));
+    if (loadedOrders.isEmpty) {
+      tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${userId}_orders'));
+      if (loadedOrders.isEmpty && restaurant?.id != null && restaurant!.id != userId) {
+        tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_orders'));
+      }
     }
 
     if (loadedOrders.isNotEmpty) {
@@ -1445,7 +1479,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     syncCustomersFromBackend();
 
     // Asynchronously sync user's isolated notification & ringtone settings from cloud backend
-    fetchNotificationSettings().catchError((_) {});
+    fetchNotificationSettings().catchError((_) => NotificationSettingModel.defaults());
 
     // Start real-time Firestore listener for incoming table QR / storefront orders
     startFirestorePendingOrdersListener();
@@ -1690,7 +1724,19 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
         effectiveTable = updatedTable.copyWith(occupiedSince: occupiedSince);
         // Compare the merged timer too: repeated snapshots may carry a newer
         // timestamp even though nothing about the running session has changed.
-        if (!mapEquals(existing.toJson(), effectiveTable.toJson())) {
+        final bool tableDiffers = existing.status != effectiveTable.status ||
+            existing.activeOrderId != effectiveTable.activeOrderId ||
+            existing.activeOrderNumber != effectiveTable.activeOrderNumber ||
+            existing.activeOrderTotal != effectiveTable.activeOrderTotal ||
+            existing.activeItemCount != effectiveTable.activeItemCount ||
+            existing.occupiedSince != effectiveTable.occupiedSince ||
+            existing.name != effectiveTable.name ||
+            existing.tableNumber != effectiveTable.tableNumber ||
+            existing.floor != effectiveTable.floor ||
+            existing.capacity != effectiveTable.capacity ||
+            existing.position != effectiveTable.position;
+
+        if (tableDiffers) {
           tables[idx] = effectiveTable;
           tablesChanged = true;
         }
@@ -1931,6 +1977,29 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     await syncTablesAndOrdersSilently();
   }
 
+  /// Fast, zero-allocation comparison of orders lists to avoid main-thread JSON encoding
+  bool _haveOrdersChanged(List<OrderModel> current, List<OrderModel> updated) {
+    if (identical(current, updated)) return false;
+    if (current.length != updated.length) return true;
+    for (int i = 0; i < current.length; i++) {
+      final a = current[i];
+      final b = updated[i];
+      if (a.id != b.id ||
+          a.orderNumber != b.orderNumber ||
+          a.status != b.status ||
+          a.isPaid != b.isPaid ||
+          a.paymentStatus != b.paymentStatus ||
+          a.totalAmount != b.totalAmount ||
+          a.tableNumber != b.tableNumber ||
+          a.isSynced != b.isSynced ||
+          a.items.length != b.items.length ||
+          a.createdAt != b.createdAt) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Performs a silent, non-blocking background sync of live tables and active orders across all devices
   Future<void> syncTablesAndOrdersSilently() async {
     if (_isSilentSyncing) return;
@@ -1979,9 +2048,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
       if (remoteOrders.isNotEmpty) {
         final mergedOrders = _mergeRemoteOrders(remoteOrders);
 
-        if (orders.length != mergedOrders.length ||
-            !listEquals(orders.map((o) => jsonEncode(o.toJson())).toList(),
-                mergedOrders.map((o) => jsonEncode(o.toJson())).toList())) {
+        if (_haveOrdersChanged(orders, mergedOrders)) {
           orders = mergedOrders;
           hasChanged = true;
         }
@@ -4928,13 +4995,39 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
-  Future<void> saveTablesToPrefs() => _saveTablesToPrefs();
+  Timer? _saveTablesDebounceTimer;
+  Future<void> Function()? _pendingTablesSave;
 
-  Future<void> _saveTablesToPrefs() async {
+  Future<void> saveTablesToPrefs({bool immediate = false}) => _saveTablesToPrefs(immediate: immediate);
+
+  Future<void> _saveTablesToPrefs({bool immediate = false}) async {
     _sortTablesSequentially();
-    final jsonStr = jsonEncode(tables.map((e) => e.toJson()).toList());
-    await _prefs?.setString(_businessKey('tables'), jsonStr);
-    await _prefs?.setString(_userKey('tables'), jsonStr);
+    if (immediate) {
+      _saveTablesDebounceTimer?.cancel();
+      _saveTablesDebounceTimer = null;
+      _pendingTablesSave = null;
+      await _executeSaveTablesToPrefs();
+      return;
+    }
+
+    _pendingTablesSave = () => _executeSaveTablesToPrefs();
+    _saveTablesDebounceTimer?.cancel();
+    _saveTablesDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _saveTablesDebounceTimer = null;
+      final save = _pendingTablesSave;
+      _pendingTablesSave = null;
+      save?.call();
+    });
+  }
+
+  Future<void> _executeSaveTablesToPrefs() async {
+    try {
+      final jsonStr = jsonEncode(tables.map((e) => e.toJson()).toList());
+      await _prefs?.setString(_businessKey('tables'), jsonStr);
+      await _prefs?.setString(_userKey('tables'), jsonStr);
+    } catch (e) {
+      debugPrint('[DatabaseService] _executeSaveTablesToPrefs error: $e');
+    }
   }
 
   // --- ORDERS & POS BILLING SERVICES ---
@@ -5306,9 +5399,20 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Clear only the cart bound to a closed order, preserving newer table orders.
   void _clearTablesForTerminalOrders() {
+    final tablesWithActiveOrders = <String>{};
+    for (final o in orders) {
+      if (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled) {
+        if (o.tableNumber != null && o.tableNumber!.trim().isNotEmpty) {
+          tablesWithActiveOrders.add(o.tableNumber!.trim().toLowerCase());
+        }
+      }
+    }
+
     for (final table in List<TableModel>.of(tables)) {
-      if (orders.any((o) => isSameTable(o.tableNumber, table.name) &&
-          o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)) {
+      final tKey = table.name.trim().toLowerCase();
+      if (tablesWithActiveOrders.contains(tKey) ||
+          tablesWithActiveOrders.contains('table ${table.tableNumber}') ||
+          tablesWithActiveOrders.contains('t-${table.tableNumber}')) {
         continue;
       }
       final closedOrder = orders.where((o) =>
@@ -5318,7 +5422,7 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
             _orderNumberKey(o.orderNumber) == _orderNumberKey(table.activeOrderNumber!))))
           .firstOrNull;
       if (closedOrder != null) {
-        clearTableCartAndFree(table.name, syncToBackend: false);
+        clearTableCartAndFree(table.name, syncToBackend: false, persist: false, notify: false);
       }
     }
   }
@@ -6275,17 +6379,43 @@ class DatabaseService extends ChangeNotifier with WidgetsBindingObserver {
     }).toList();
   }
 
-  Future<void> saveOrdersToPrefs() async {
+  Timer? _saveOrdersDebounceTimer;
+  Future<void> Function()? _pendingOrdersSave;
+
+  Future<void> saveOrdersToPrefs({bool immediate = false}) async {
     orders = deduplicateOrdersList(orders);
-    final encoded = jsonEncode(orders.map((e) => e.toJson()).toList());
-    await _prefs?.setString(_businessKey('orders'), encoded);
-    await _prefs?.setString(_userKey('orders'), encoded);
-    if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
-      await _prefs?.setString('apna_pos_${restaurant!.id}_orders', encoded);
+    if (immediate) {
+      _saveOrdersDebounceTimer?.cancel();
+      _saveOrdersDebounceTimer = null;
+      _pendingOrdersSave = null;
+      await _executeSaveOrdersToPrefs();
+      return;
+    }
+
+    _pendingOrdersSave = () => _executeSaveOrdersToPrefs();
+    _saveOrdersDebounceTimer?.cancel();
+    _saveOrdersDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _saveOrdersDebounceTimer = null;
+      final save = _pendingOrdersSave;
+      _pendingOrdersSave = null;
+      save?.call();
+    });
+  }
+
+  Future<void> _executeSaveOrdersToPrefs() async {
+    try {
+      final encoded = jsonEncode(orders.map((e) => e.toJson()).toList());
+      await _prefs?.setString(_businessKey('orders'), encoded);
+      await _prefs?.setString(_userKey('orders'), encoded);
+      if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
+        await _prefs?.setString('apna_pos_${restaurant!.id}_orders', encoded);
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] _executeSaveOrdersToPrefs error: $e');
     }
   }
 
-  Future<void> _saveOrdersToPrefs() => saveOrdersToPrefs();
+  Future<void> _saveOrdersToPrefs({bool immediate = false}) => saveOrdersToPrefs(immediate: immediate);
 
   // --- INVENTORY SERVICES ---
   Future<void> addInventoryStock(String id, double addedQty) async {

@@ -355,15 +355,28 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   bool _tabIsVisible = true;
+  bool _needsRefreshOnVisible = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _tabIsVisible = TickerMode.valuesOf(context).enabled;
+    final bool visible = TickerMode.valuesOf(context).enabled;
+    if (visible && (!_tabIsVisible || _needsRefreshOnVisible)) {
+      _needsRefreshOnVisible = false;
+      _tabIsVisible = true;
+      if (mounted) setState(() {});
+    } else {
+      _tabIsVisible = visible;
+    }
   }
 
   void _onDbChange() {
-    if (mounted && _tabIsVisible && !_publishingCart && !db.isPublishingDraftChange) setState(() {});
+    if (!mounted) return;
+    if (_tabIsVisible && !_publishingCart && !db.isPublishingDraftChange) {
+      setState(() {});
+    } else {
+      _needsRefreshOnVisible = true;
+    }
   }
 
   void _onChotuCommandReceived(ChotuParsedCommand cmd) {
@@ -10359,18 +10372,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     // Only display categories that have products assigned to them
     final categoriesWithProducts = <String>[];
+    final existingCatsLower = <String>{};
     for (final cat in db.categories) {
       final catTrim = cat.trim();
-      if (catTrim.isNotEmpty && activeCategoriesSet.contains(catTrim.toLowerCase()) && !categoriesWithProducts.contains(catTrim)) {
+      final catLower = catTrim.toLowerCase();
+      if (catTrim.isNotEmpty && activeCategoriesSet.contains(catLower) && !existingCatsLower.contains(catLower)) {
         categoriesWithProducts.add(catTrim);
+        existingCatsLower.add(catLower);
       }
     }
 
     // Include any categories directly present in uniqueItems
     for (final item in uniqueItems) {
       final catTrim = item.category.trim();
-      if (catTrim.isNotEmpty && !categoriesWithProducts.any((c) => c.toLowerCase() == catTrim.toLowerCase())) {
+      final catLower = catTrim.toLowerCase();
+      if (catTrim.isNotEmpty && !existingCatsLower.contains(catLower)) {
         categoriesWithProducts.add(catTrim);
+        existingCatsLower.add(catLower);
       }
     }
 
