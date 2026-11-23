@@ -306,6 +306,44 @@ class CampaignService {
   }) {
     return const [
       CampaignTemplateModel(
+        id: 'pizza47_apnapos_promo_v1',
+        name: 'Pizza 47 Powered by Apna POS',
+        subtitle: 'Faster Billing & ₹100 Cashback',
+        category: 'Promotional',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'pizza47_apnapos_promo_v1',
+        metaCategory: 'MARKETING',
+        language: 'EN',
+        headerImageUrl: 'assets/images/pizza47_apnapos_campaign_banner.png',
+        iconCode: 'tag',
+        tagLabel: 'Apna POS Special',
+        tagColor: '#0EA5E9',
+        isMetaVerified: true,
+        body:
+            '🎉 Exciting news, {{1}}!\n\n🍕 *Pizza 47* has upgraded to the next-gen *Apna POS* platform to bring you an unbeatable dining experience! 🚀\n\nHere is what is new for you:\n⚡ *Ultra-Fast Billing*: No waiting, instant digital KOT\n🎁 *5% Instant Cashback*: Earn Khazana reward cash on every bite\n📲 *WhatsApp Digital Bills*: Instant paperless bills on your phone\n🍕 *QR Table Ordering*: Scan, browse menu & order seamlessly\n\n🎁 *Special Launch Offer*:\nGet *FLAT ₹100 CASHBACK* on orders above ₹499!\nUse Code: *APNAPOS47*\n\nOrder online or visit us today! 🍕',
+        sampleParameters: ['Foodie'],
+      ),
+      CampaignTemplateModel(
+        id: 'pizza47_apnapos_utility_v1',
+        name: 'Pizza 47 Order & Cashback Receipt',
+        subtitle: 'Digital Bill & Wallet Update',
+        category: 'Utility',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'pizza47_apnapos_utility_v1',
+        metaCategory: 'UTILITY',
+        language: 'EN',
+        headerImageUrl: 'assets/images/pizza47_apnapos_campaign_banner.png',
+        iconCode: 'crown',
+        tagLabel: 'Transactional Utility',
+        tagColor: '#10B981',
+        isMetaVerified: true,
+        body:
+            '🧾 *PIZZA 47 • ORDER RECEIPT & REWARD UPDATE*\n_Powered by Apna POS_\n\nHi *{{1}}*, thank you for dining with Pizza 47! Your order *#{{2}}* has been confirmed.\n\n💳 *Bill Amount*: ₹{{3}}\n⚡ *Payment Mode*: Instant UPI / Card\n🎁 *Khazana Cashback Earned*: ₹{{4}}\n💰 *Total Wallet Balance*: ₹{{5}}\n\n✨ *Apna POS Smart Services Active*:\n• 📲 Eco-friendly Digital Bill attached\n• 🎁 5% Cashback credited to your Khazana Wallet\n• 🍕 Track live kitchen status anytime\n\n📄 *View Detailed Tax Invoice & Loyalty Pass*:\n{{6}}\n\nNeed help with this order? Reply *HELP* or call our store.',
+        sampleParameters: ['Chandan', 'ORD-4701', '540', '27', '180', 'https://apnapos.in/bill/4701'],
+      ),
+      CampaignTemplateModel(
         id: 'special_weekend_offer',
         name: 'Special Weekend Offer',
         subtitle: 'Up to 50% OFF',
@@ -404,6 +442,7 @@ class CampaignService {
     return [
       {'id': 'all', 'label': 'All', 'icon': 'grid', 'isDefault': true},
       {'id': 'promotional', 'label': 'Promotional', 'icon': 'megaphone'},
+      {'id': 'utility', 'label': 'Utility', 'icon': 'shield'},
       {'id': 'free_gift', 'label': 'Free Gift', 'icon': 'gift'},
       {
         'id': 'flat_cash_discount',

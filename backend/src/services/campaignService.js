@@ -31,6 +31,7 @@ class CampaignService {
     return [
       { id: 'all', label: 'All', icon: 'grid', isDefault: true },
       { id: 'promotional', label: 'Promotional', icon: 'megaphone' },
+      { id: 'utility', label: 'Utility', icon: 'shield' },
       { id: 'free_gift', label: 'Free Gift', icon: 'gift' },
       { id: 'flat_cash_discount', label: 'Flat Cash Discount', icon: 'tag' },
       { id: 'percent_discount', label: 'Percent Discount', icon: 'percent' },
@@ -785,7 +786,69 @@ class CampaignService {
     }
 
     const templates = await CampaignTemplate.find(query).sort({ createdAt: 1 });
+    if (!templates || templates.length === 0) {
+      return this.getDefaultSystemTemplates().filter(t => {
+        if (category && category !== 'All' && category !== 'AI') {
+          if (t.category.toLowerCase() !== category.toLowerCase()) return false;
+        }
+        if (channel && channel !== 'all') {
+          if (t.channel.toLowerCase() !== channel.toLowerCase()) return false;
+        }
+        return true;
+      });
+    }
     return templates;
+  }
+
+  getDefaultSystemTemplates() {
+    return [
+      {
+        templateId: 'pizza47_apnapos_promo_v1',
+        name: 'Pizza 47 Powered by Apna POS',
+        subtitle: 'Faster Billing & ₹100 Cashback',
+        category: 'Promotional',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'pizza47_apnapos_promo_v1',
+        metaCategory: 'MARKETING',
+        language: 'en_US',
+        headerType: 'IMAGE',
+        headerImageUrl: 'assets/images/pizza47_apnapos_campaign_banner.png',
+        iconCode: 'tag',
+        tagLabel: 'Apna POS Special',
+        tagColor: '#0EA5E9',
+        isMetaVerified: true,
+        body: '🎉 Exciting news, {{1}}!\n\n🍕 *Pizza 47* has upgraded to the next-gen *Apna POS* platform to bring you an unbeatable dining experience! 🚀\n\nHere is what is new for you:\n⚡ *Ultra-Fast Billing*: No waiting, instant digital KOT\n🎁 *5% Instant Cashback*: Earn Khazana reward cash on every bite\n📲 *WhatsApp Digital Bills*: Instant paperless bills on your phone\n🍕 *QR Table Ordering*: Scan, browse menu & order seamlessly\n\n🎁 *Special Launch Offer*:\nGet *FLAT ₹100 CASHBACK* on orders above ₹499!\nUse Code: *APNAPOS47*\n\nOrder online or visit us today! 🍕',
+        sampleParameters: ['Foodie'],
+        buttons: [
+          { type: 'QUICK_REPLY', text: '🎁 Claim ₹100 Cashback' },
+          { type: 'URL', text: '🍕 View Menu & Order', url: 'https://apnapos.in/order/pizza47' }
+        ]
+      },
+      {
+        templateId: 'pizza47_apnapos_utility_v1',
+        name: 'Pizza 47 Order & Cashback Receipt',
+        subtitle: 'Digital Bill & Wallet Update',
+        category: 'Utility',
+        channel: 'whatsapp',
+        metaStatus: 'APPROVED',
+        metaTemplateName: 'pizza47_apnapos_utility_v1',
+        metaCategory: 'UTILITY',
+        language: 'en_US',
+        headerType: 'IMAGE',
+        headerImageUrl: 'assets/images/pizza47_apnapos_campaign_banner.png',
+        iconCode: 'crown',
+        tagLabel: 'Transactional Utility',
+        tagColor: '#10B981',
+        isMetaVerified: true,
+        body: '🧾 *PIZZA 47 • ORDER RECEIPT & REWARD UPDATE*\n_Powered by Apna POS_\n\nHi *{{1}}*, thank you for dining with Pizza 47! Your order *#{{2}}* has been confirmed.\n\n💳 *Bill Amount*: ₹{{3}}\n⚡ *Payment Mode*: Instant UPI / Card\n🎁 *Khazana Cashback Earned*: ₹{{4}}\n💰 *Total Wallet Balance*: ₹{{5}}\n\n✨ *Apna POS Smart Services Active*:\n• 📲 Eco-friendly Digital Bill attached\n• 🎁 5% Cashback credited to your Khazana Wallet\n• 🍕 Track live kitchen status anytime\n\n📄 *View Detailed Tax Invoice & Loyalty Pass*:\n{{6}}\n\nNeed help with this order? Reply *HELP* or call our store.',
+        sampleParameters: ['Chandan', 'ORD-4701', '540', '27', '180', 'https://apnapos.in/bill/4701'],
+        buttons: [
+          { type: 'URL', text: '📄 Download Tax Invoice', url: 'https://apnapos.in/invoice/{{1}}' },
+          { type: 'QUICK_REPLY', text: '🎁 View Cashback Wallet' }
+        ]
+      }
+    ];
   }
 
   /**
