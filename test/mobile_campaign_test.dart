@@ -105,7 +105,11 @@ class _Api extends MobileCampaignApi {
   }
 
   @override
-  Future<CampaignJson> launch(MobileCampaignDraft draft, int count) async {
+  Future<CampaignJson> launch(
+    MobileCampaignDraft draft,
+    int count, {
+    List<String> phones = const [],
+  }) async {
     sends++;
     return {'status': 'scheduled'};
   }

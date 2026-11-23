@@ -131,7 +131,6 @@ void main() {
     expect(find.text('Phone numbers'), findsOneWidget);
     expect(find.text('Customer group'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '9876543210');
-    await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Check audience'));
     await tester.pumpAndSettle();

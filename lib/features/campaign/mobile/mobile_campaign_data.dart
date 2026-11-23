@@ -291,14 +291,21 @@ class MobileCampaignApi {
     );
   }
 
-  Future<CampaignJson> launch(MobileCampaignDraft draft, int count) async =>
+  Future<CampaignJson> launch(
+    MobileCampaignDraft draft,
+    int count, {
+    List<String> phones = const [],
+  }) async =>
       (await _client.postOnce(
         '$path/${draft.id}/launch',
         data: {
           'revision': draft.revision,
           'confirmedOptIn': true,
           'confirmedCount': count,
-          'groupId': draft.group,
+          'groupId': (draft.group.isNotEmpty && draft.group != 'all')
+              ? draft.group
+              : null,
+          'phones': phones,
           'scheduleMode': draft.later ? 'later' : 'now',
           'sendAt': draft.sendAt?.toUtc().toIso8601String(),
         },

@@ -33,28 +33,34 @@ class _CampaignScreenState extends State<CampaignScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Android (and iOS) mobile: strictly untouched, identical behavior as requested!
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return IndexedStack(
-        index: _activeTab.clamp(0, 1),
-        children: [
-          MobileCampaignDashboard(
-            onBack: widget.onBack,
-            onNavigateToCustomers: () => setState(() => _activeTab = 1),
-          ),
-          MobileCustomersScreen(
-            onBack: widget.onBack,
-            showHeader: false,
-            onNavigateToCampaigns: () => setState(() => _activeTab = 0),
-          ),
-        ],
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final content = IndexedStack(
+          index: _activeTab.clamp(0, 1),
+          children: [
+            MobileCampaignDashboard(
+              onBack: widget.onBack,
+              onNavigateToCustomers: () => setState(() => _activeTab = 1),
+            ),
+            MobileCustomersScreen(
+              onBack: widget.onBack,
+              showHeader: false,
+              onNavigateToCampaigns: () => setState(() => _activeTab = 0),
+            ),
+          ],
+        );
 
-    // Web & Windows desktop: modern Campaign Studio
-    return WebCampaignPortalScreen(
-      onBack: widget.onBack,
-      initialTabIndex: widget.initialTabIndex,
+        if (constraints.maxWidth > 720) {
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: content,
+            ),
+          );
+        }
+
+        return content;
+      },
     );
   }
 }

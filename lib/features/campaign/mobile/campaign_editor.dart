@@ -29,6 +29,7 @@ class _CampaignEditorState extends State<CampaignEditor> {
   MobileCampaignDraft get d => widget.draft;
   CampaignOptions get options => widget.options;
   final scroll = ScrollController();
+  final manualPhones = TextEditingController();
   int step = 0;
   bool busy = false,
       uploading = false,
@@ -58,7 +59,39 @@ class _CampaignEditorState extends State<CampaignEditor> {
   @override
   void dispose() {
     scroll.dispose();
+    manualPhones.dispose();
     super.dispose();
+  }
+
+  /// Normalizes phone numbers:
+  /// - Strips spaces, dashes, parentheses, non-digits
+  /// - Automatically prepends '91' for 10-digit Indian numbers internally
+  /// - Handles 11-digit numbers starting with 0
+  /// - Preserves already formatted 91XXXXXXXXXX numbers without duplicating 91
+  /// - Deduplicates and filters valid length numbers
+  List<String> extractNormalizedPhones(String input) {
+    if (input.trim().isEmpty) return const [];
+    final tokens = input.split(RegExp(r'[,;\n\r\t]+'));
+    final Set<String> normalized = {};
+    for (final raw in tokens) {
+      final clean = raw.replaceAll(RegExp(r'[^0-9+]'), '');
+      if (clean.isEmpty) continue;
+      String digits = clean;
+      if (digits.startsWith('+')) {
+        digits = digits.substring(1);
+      }
+      if (digits.startsWith('0') && digits.length == 11) {
+        digits = digits.substring(1);
+      }
+      if (digits.length == 10) {
+        // Prepend 91 internally so user does not need to type 91
+        digits = '91$digits';
+      }
+      if (digits.length >= 10 && digits.length <= 15) {
+        normalized.add(digits);
+      }
+    }
+    return normalized.toList();
   }
 
   void change(VoidCallback update) => setState(() {
@@ -169,10 +202,14 @@ class _CampaignEditorState extends State<CampaignEditor> {
     if (!widget.approved) {
       return d.rewardError ?? d.messageError ?? d.actionError;
     }
-    if ((options.group(d.group)?['count'] ?? 0) == 0) {
-      return 'Select an audience with WhatsApp contacts.';
+    if (widget.approved && !optedIn) {
+      return 'Confirm customer consent to send this campaign.';
     }
-    if (!optedIn) return 'Confirm that the selected contacts opted in.';
+    final groupCount = options.group(d.group)?['count'] as int? ?? 0;
+    final manualCount = extractNormalizedPhones(manualPhones.text).length;
+    if (groupCount + manualCount == 0) {
+      return 'Select an audience group or enter mobile numbers to send.';
+    }
     if (d.later &&
         (d.sendAt?.isAfter(DateTime.now()) != true ||
             !d.sendAt!.isBefore(d.expiry!))) {
@@ -186,7 +223,13 @@ class _CampaignEditorState extends State<CampaignEditor> {
     change(() => busy = true);
     try {
       if (widget.approved) {
-        await widget.api.launch(d, options.group(d.group)!['count'] as int);
+        final phonesList = extractNormalizedPhones(manualPhones.text);
+        final totalCount = (options.group(d.group)?['count'] as int? ?? 0) + phonesList.length;
+        await widget.api.launch(
+          d,
+          totalCount,
+          phones: phonesList,
+        );
       } else {
         final saved = await widget.api.save(d);
         d.revision = saved['mobileStudio']['revision'];

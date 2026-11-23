@@ -341,229 +341,367 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
 
     final bodyWidget = RefreshIndicator(
       onRefresh: _refresh,
+      color: const Color(0xFF0077B6),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(15, 8, 15, 6),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         children: [
           const SizedBox(height: 6),
+
+          // Header Row: Title & Subtitle on left, 3D Customer Group Graphic on right
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (widget.onBack != null) ...[
-                IconButton(
-                  onPressed: widget.onBack,
-                  icon: const Icon(Icons.arrow_back_rounded, color: ink),
-                  tooltip: 'Back',
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        if (widget.onBack != null) ...[
+                          IconButton(
+                            onPressed: widget.onBack,
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
+                              color: Color(0xFF0F1E36),
+                            ),
+                            tooltip: 'Back',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        const Text(
+                          'Customers',
+                          style: TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 27,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0F1E36),
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Manage customers and their groups.',
+                      style: TextStyle(
+                        fontFamily: 'Roboto',
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-              ],
-              Text('Customers', style: campaignText(29, weight: FontWeight.w800)),
+              ),
+              const _CustomerGroup3DGraphic(),
             ],
           ),
-            Text(
-              'Manage customers and their groups.',
-              style: campaignText(15, color: muted, weight: FontWeight.w400),
+          const SizedBox(height: 14),
+
+          // Metric Cards: Total customers & Groups
+          Row(
+            children: [
+              _metricCard(
+                label: 'Total customers',
+                value: _totalCustomers == null
+                    ? '—'
+                    : _format.format(_totalCustomers),
+                icon: Icons.people_alt_rounded,
+                gradient: const [Color(0xFFEDE9FE), Color(0xFFDDD6FE)],
+                iconColor: const Color(0xFF8B5CF6),
+                waveColor: const Color(0xFFEDE9FE),
+                onTap: () => _switchTab(0),
+              ),
+              const SizedBox(width: 12),
+              _metricCard(
+                label: 'Groups',
+                value: '${_groups?.length ?? 0}',
+                icon: Icons.folder_rounded,
+                gradient: const [Color(0xFFDCFCE7), Color(0xFFBBF7D0)],
+                iconColor: const Color(0xFF10B981),
+                waveColor: const Color(0xFFDCFCE7),
+                onTap: () => _switchTab(1),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Search Input Bar
+          Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2EDF5).withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: const Color(0xFFD6E4EF),
+                width: 1.2,
+              ),
             ),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                _metric(
-                  'Total customers',
-                  _totalCustomers == null ? '—' : _format.format(_totalCustomers),
-                  Icons.people_alt_outlined,
-                  const Color(0xFFE2D8FA),
-                  const Color(0xFF7049AE),
-                  onTap: () => _switchTab(0),
-                ),
-                const SizedBox(width: 10),
-                _metric(
-                  'Groups',
-                  '${_groups?.length ?? 0}',
-                  Icons.folder_outlined,
-                  const Color(0xFFCBF3DE),
-                  const Color(0xFF187348),
-                  onTap: () => _switchTab(1),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
+            child: TextField(
               controller: _search,
               onChanged: _searchChanged,
-              style: campaignText(14),
-              decoration: campaignInput(
-                hint: _tab == 1
-                    ? 'Search groups'
-                    : 'Search by name or mobile',
-              ).copyWith(
+              style: const TextStyle(
+                fontFamily: 'Roboto',
+                fontSize: 14,
+                color: Color(0xFF0F1E36),
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: InputDecoration(
+                hintText: _tab == 1 ? 'Search groups...' : 'Search customers...',
+                hintStyle: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13.5,
+                  color: Color(0xFF94A3B8),
+                  fontWeight: FontWeight.w400,
+                ),
                 prefixIcon: const Icon(
                   Icons.search_rounded,
-                  color: ink,
+                  color: Color(0xFF64748B),
                   size: 20,
                 ),
                 suffixIcon: _search.text.isEmpty
                     ? null
                     : IconButton(
                         tooltip: 'Clear search',
-                        icon: const Icon(Icons.close, size: 18),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: Color(0xFF64748B),
+                        ),
                         onPressed: () {
                           _search.clear();
                           _searchChanged('');
                         },
                       ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 13,
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                for (final (i, e) in const {
-                  0: 'All customers',
-                  1: 'Groups',
-                }.entries.indexed) ...[
-                  if (i > 0) const SizedBox(width: 7),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _switchTab(e.key),
-                      child: Container(
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: campaignCard(
-                          color: _tab == e.key
-                              ? teal
-                              : const Color(0xFFF6FAFE),
-                          radius: 20,
-                        ),
-                        child: Text(
-                          e.value,
-                          style: campaignText(
-                            13,
-                            color: _tab == e.key ? Colors.white : ink,
-                            weight: _tab == e.key
-                                ? FontWeight.w700
-                                : FontWeight.w600,
-                          ),
-                        ),
-                      ),
+          ),
+          const SizedBox(height: 12),
+
+          // Tab Toggle: All customers / Groups
+          Row(
+            children: [
+              _tabPill(
+                index: 0,
+                label: 'All customers',
+                activeIcon: Icons.person_rounded,
+                inactiveIcon: Icons.person_outline_rounded,
+              ),
+              const SizedBox(width: 10),
+              _tabPill(
+                index: 1,
+                label: 'Groups',
+                activeIcon: Icons.people_alt_rounded,
+                inactiveIcon: Icons.people_alt_outlined,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Section Header: Title & Count Badge
+          Row(
+            children: [
+              Text(
+                _tab == 1 ? 'Your groups' : 'Your customers',
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 3.5,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0F2FE),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count ${_tab == 1 ? (count == 1 ? 'group' : 'groups') : (count == 1 ? 'customer' : 'customers')}',
+                  style: const TextStyle(
+                    fontFamily: 'Roboto',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0284C7),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: LinearProgressIndicator(
+                minHeight: 2.5,
+                color: Color(0xFF0077B6),
+                backgroundColor: Color(0xFFE0F2FE),
+              ),
+            ),
+
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                children: [
+                  Text(
+                    error,
+                    style: const TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 13,
+                      color: muted,
                     ),
+                  ),
+                  TextButton(
+                    onPressed: _tab == 1 ? _loadGroups : _loadCustomers,
+                    child: const Text('Retry'),
                   ),
                 ],
-              ],
+              ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  _tab == 1 ? 'Your groups' : 'Your customers',
-                  style: campaignText(14, weight: FontWeight.w700),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0F2FE),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$count ${_tab == 1 ? (count == 1 ? 'group' : 'groups') : (count == 1 ? 'customer' : 'customers')}',
-                    style: campaignText(
-                      11,
-                      color: const Color(0xFF0284C7),
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (loading)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 10),
-                child: LinearProgressIndicator(minHeight: 2),
-              ),
-            if (error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Column(
-                  children: [
-                    Text(error, style: campaignText(13, color: muted)),
-                    TextButton(
-                      onPressed: _tab == 1 ? _loadGroups : _loadCustomers,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-            if (!loading && error == null && count == 0) _empty(query),
-            if (!loading || count > 0)
-              ...(_tab == 1
-                  ? [
-                      for (var i = 0; i < groups.length; i++)
-                        _groupCard(groups[i], i),
-                    ]
-                  : [
-                      for (final customer in _customers)
-                        _customerCard(customer),
-                    ]),
-            if (_tab == 0 && _customers.length < _matches)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Center(
-                  child: TextButton(
-                    onPressed: _loadingCustomers
-                        ? null
-                        : () => _loadCustomers(more: true),
-                    child: const Text('Load more customers'),
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      );
 
-    final footerWidget = Padding(
-      padding: const EdgeInsets.fromLTRB(15, 6, 15, 8),
+          if (!loading && error == null && count == 0) _empty(query),
+
+          if (!loading || count > 0)
+            ...(_tab == 1
+                ? [
+                    for (var i = 0; i < groups.length; i++)
+                      _groupCard(groups[i], i),
+                  ]
+                : [
+                    for (final customer in _customers)
+                      _customerCard(customer),
+                  ]),
+
+          if (_tab == 0 && _customers.length < _matches)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Center(
+                child: TextButton(
+                  onPressed: _loadingCustomers
+                      ? null
+                      : () => _loadCustomers(more: true),
+                  child: const Text('Load more customers'),
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+
+    final footerWidget = Container(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Bottom Floating "+ Create group" / "+ Add customer" Button
           SizedBox(
             width: double.infinity,
-            child: CampaignPrimary(
-              _tab == 1 ? 'Create group' : 'Add customer',
-              icon: Icons.add_rounded,
-              onTap: _tab == 1 ? () => _editGroup() : _addCustomer,
+            height: 52,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                ),
+                borderRadius: BorderRadius.circular(26),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00B4D8).withValues(alpha: 0.45),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(26),
+                  onTap: _tab == 1 ? () => _editGroup() : _addCustomer,
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.add_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _tab == 1 ? 'Create group' : 'Add customer',
+                          style: const TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
+
+          // Bottom Navigation Bar (Unified with Campaigns screen)
           Container(
-            decoration: campaignCard(
-              radius: 15,
-              color: const Color(0xFFF5FAFE),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Row(
               children: [
-                _nav(
-                  'Home',
-                  Icons.home_outlined,
-                  widget.onBack ?? () => Navigator.maybePop(context),
+                _navItem(
+                  label: 'Home',
+                  icon: Icons.home_outlined,
+                  onTap: widget.onBack ?? () => Navigator.maybePop(context),
                 ),
-                _nav(
-                  'Campaigns',
-                  Icons.campaign_outlined,
-                  widget.onNavigateToCampaigns ??
+                _navItem(
+                  label: 'Campaigns',
+                  icon: Icons.campaign_outlined,
+                  onTap: widget.onNavigateToCampaigns ??
                       () => Navigator.maybePop(context),
                 ),
-                _nav(
-                  'Customers',
-                  Icons.people_alt_rounded,
-                  () {
+                _navItem(
+                  label: 'Customers',
+                  icon: Icons.people_alt_rounded,
+                  selected: true,
+                  onTap: () {
                     _search.clear();
                     _switchTab(0);
                   },
-                  selected: true,
                 ),
-                _nav('More', Icons.more_horiz_rounded, _more),
+                _navItem(
+                  label: 'More',
+                  icon: Icons.more_horiz_rounded,
+                  onTap: _more,
+                ),
               ],
             ),
           ),
@@ -572,219 +710,510 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     );
 
     if (widget.showHeader) {
-      return CustomerShell(
-        header: const PosScreenTopHeader(),
-        body: bodyWidget,
-        footer: footerWidget,
+      return ColoredBox(
+        color: const Color(0xFFEDF4FA),
+        child: CustomerShell(
+          header: const PosScreenTopHeader(),
+          body: bodyWidget,
+          footer: footerWidget,
+        ),
       );
     }
 
-    return CampaignShell(
-      body: bodyWidget,
-      footer: footerWidget,
+    return ColoredBox(
+      color: const Color(0xFFEDF4FA),
+      child: CampaignShell(
+        body: bodyWidget,
+        footer: footerWidget,
+      ),
     );
   }
 
-  Widget _metric(
-    String label,
-    String value,
-    IconData icon,
-    Color bg,
-    Color fg, {
+  Widget _metricCard({
+    required String label,
+    required String value,
+    required IconData icon,
+    required List<Color> gradient,
+    required Color iconColor,
+    required Color waveColor,
     VoidCallback? onTap,
-  }) =>
-      Expanded(
+  }) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            clipBehavior: Clip.antiAlias,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white),
-              boxShadow: const [studioShadow],
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.07),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  right: -16,
+                  bottom: -20,
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: waveColor.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: gradient,
+                        ),
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: iconColor.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Icon(icon, color: iconColor, size: 22),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              value,
+                              style: const TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F1E36),
+                                letterSpacing: -0.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tabPill({
+    required int index,
+    required String label,
+    required IconData activeIcon,
+    required IconData inactiveIcon,
+  }) {
+    final selected = _tab == index;
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _switchTab(index),
+          borderRadius: BorderRadius.circular(22),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            decoration: BoxDecoration(
+              gradient: selected
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                    )
+                  : null,
+              color: selected ? null : Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: selected
+                      ? const Color(0xFF0077B6).withValues(alpha: 0.35)
+                      : const Color(0xFF0B2545).withValues(alpha: 0.05),
+                  blurRadius: selected ? 10 : 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CampaignIconTile(
-                  icon,
-                  Colors.white.withValues(alpha: .45),
-                  fg,
-                  size: 37,
+                Icon(
+                  selected ? activeIcon : inactiveIcon,
+                  size: 16,
+                  color: selected ? Colors.white : const Color(0xFF475569),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(label, style: campaignText(12)),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          value,
-                          style: campaignText(24, weight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      color: selected ? Colors.white : const Color(0xFF0F1E36),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
-  Widget _meta(IconData icon, String value) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: muted, size: 14),
-          const SizedBox(width: 4),
-          Text(value, style: campaignText(11)),
-        ],
-      );
+  Widget _navItem({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool selected = false,
+  }) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              gradient: selected
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                    )
+                  : null,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF0077B6).withValues(alpha: 0.35),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color: selected ? Colors.white : const Color(0xFF475569),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'Roboto',
+                    fontSize: 10.5,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    color: selected ? Colors.white : const Color(0xFF475569),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _groupCard(AudienceGroupModel group, int index) {
-    final (icon, color, background) = _groupStyle(group, index);
     final count = group.totalNumbers;
     final isVip = group.name.toLowerCase().contains('vip');
 
+    // 3D icon styling for group
+    final (icon, gradient, iconColor, shadowColor) = isVip
+        ? (
+            Icons.workspace_premium_rounded,
+            const [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+            const Color(0xFFD97706),
+            const Color(0xFFD97706).withValues(alpha: 0.25),
+          )
+        : (
+            Icons.folder_rounded,
+            const [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
+            const Color(0xFF0284C7),
+            const Color(0xFF0284C7).withValues(alpha: 0.22),
+          );
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () => _openGroup(group),
-        borderRadius: BorderRadius.circular(15),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-          decoration: campaignCard(),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CampaignIconTile(icon, background, color, size: 44),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            group.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: campaignText(15, weight: FontWeight.w800),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isVip
-                                ? const Color(0xFFFFE3CA)
-                                : const Color(0xFFD7EBFD),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            isVip ? 'VIP' : 'Group',
-                            style: campaignText(
-                              11,
-                              color: isVip ? const Color(0xFFC05621) : ink,
-                              weight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          size: 18,
-                          color: ink,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${_format.format(count)} ${count == 1 ? 'number' : 'numbers'} · Audience Group',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: campaignText(
-                        12,
-                        color: muted,
-                        weight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _meta(
-                          Icons.people_alt_outlined,
-                          '${_format.format(count)} numbers',
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 5),
-                          child: Text(
-                            '|',
-                            style: TextStyle(color: borderBlue, fontSize: 11),
-                          ),
-                        ),
-                        _meta(
-                          Icons.calendar_today_outlined,
-                          _updated(group),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0F2FE),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            'Ready for campaigns',
-                            style: campaignText(
-                              11,
-                              color: const Color(0xFF0284C7),
-                              weight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        PopupMenuButton<String>(
-                          tooltip: 'Options for ${group.name}',
-                          iconSize: 18,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 10, minHeight: 10),
-                          icon: const Icon(Icons.more_horiz, color: muted, size: 18),
-                          onSelected: (value) {
-                            if (value == 'edit') {
-                              _editGroup(group);
-                            } else {
-                              _deleteGroup(group);
-                            }
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'edit', child: Text('Edit group')),
-                            PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Delete group'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        elevation: 0,
+        child: InkWell(
+          onTap: () => _openGroup(group),
+          borderRadius: BorderRadius.circular(22),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.9),
+                width: 1.2,
               ),
-            ],
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.06),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 3D Icon Badge
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: gradient,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: shadowColor,
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: iconColor, size: 26),
+                ),
+                const SizedBox(width: 12),
+
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Row 1: Name, Tag, Chevron
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              group.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F1E36),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isVip
+                                  ? const Color(0xFFFFEDD5)
+                                  : const Color(0xFFE0F2FE),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              isVip ? 'VIP' : 'Group',
+                              style: TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: isVip
+                                    ? const Color(0xFFEA580C)
+                                    : const Color(0xFF0284C7),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: Color(0xFF64748B),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+
+                      // Row 2: Metadata (Numbers | Updated)
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.people_alt_outlined,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_format.format(count)} ${count == 1 ? 'number' : 'numbers'}',
+                            style: const TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F1E36),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 7),
+                            child: Text(
+                              '|',
+                              style: TextStyle(
+                                color: Color(0xFFCBD5E1),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.calendar_today_outlined,
+                            size: 13,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _updated(group),
+                            style: const TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Row 3: Ready for campaigns pill & options button
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0F2FE),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.near_me_rounded,
+                                  size: 13,
+                                  color: Color(0xFF0284C7),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Ready for campaigns',
+                                  style: TextStyle(
+                                    fontFamily: 'Roboto',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0284C7),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF1F5F9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: PopupMenuButton<String>(
+                              tooltip: 'Options for ${group.name}',
+                              iconSize: 18,
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(
+                                Icons.more_horiz_rounded,
+                                color: Color(0xFF64748B),
+                                size: 18,
+                              ),
+                              onSelected: (value) {
+                                if (value == 'edit') {
+                                  _editGroup(group);
+                                } else {
+                                  _deleteGroup(group);
+                                }
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit group'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete group'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -796,123 +1225,197 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     final isMember = customer.totalOrders > 0;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-        decoration: campaignCard(),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const CampaignIconTile(
-              Icons.person_rounded,
-              Color(0xFFDCF0FF),
-              Color(0xFF1572C3),
-              size: 44,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          customer.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: campaignText(15, weight: FontWeight.w800),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isVip
-                              ? const Color(0xFFFFE3CA)
-                              : (isMember
-                                  ? const Color(0xFFCEF3DA)
-                                  : const Color(0xFFD7EBFD)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          isVip ? 'VIP' : (isMember ? 'Member' : 'New'),
-                          style: campaignText(
-                            11,
-                            color: isVip
-                                ? const Color(0xFFC05621)
-                                : (isMember ? const Color(0xFF15803D) : ink),
-                            weight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 18,
-                        color: ink,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    customer.phone,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: campaignText(
-                      12,
-                      color: muted,
-                      weight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      _meta(
-                        Icons.shopping_bag_outlined,
-                        '${customer.totalOrders} ${customer.totalOrders == 1 ? 'order' : 'orders'}',
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 5),
-                        child: Text(
-                          '|',
-                          style: TextStyle(color: borderBlue, fontSize: 11),
-                        ),
-                      ),
-                      _meta(
-                        Icons.verified_user_outlined,
-                        'Customer Profile',
-                      ),
-                    ],
-                  ),
-                  if (isMember) ...[
-                    const SizedBox(height: 5),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE0F2FE),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'Active Buyer',
-                        style: campaignText(
-                          11,
-                          color: const Color(0xFF0284C7),
-                          weight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        elevation: 0,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: () {},
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.9),
+                width: 1.2,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.06),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 3D Avatar Icon Badge
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.person_rounded,
+                    color: Color(0xFF0284C7),
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Customer Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              customer.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F1E36),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isVip
+                                  ? const Color(0xFFFFEDD5)
+                                  : (isMember
+                                      ? const Color(0xFFDCFCE7)
+                                      : const Color(0xFFE0F2FE)),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              isVip ? 'VIP' : (isMember ? 'Member' : 'New'),
+                              style: TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: isVip
+                                    ? const Color(0xFFEA580C)
+                                    : (isMember
+                                        ? const Color(0xFF15803D)
+                                        : const Color(0xFF0284C7)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: Color(0xFF64748B),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+
+                      // Phone Number
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.phone_outlined,
+                            size: 13,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            customer.phone,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Stats Row
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.shopping_bag_outlined,
+                            size: 13,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${customer.totalOrders} ${customer.totalOrders == 1 ? 'order' : 'orders'}',
+                            style: const TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F1E36),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 7),
+                            child: Text(
+                              '|',
+                              style: TextStyle(
+                                color: Color(0xFFCBD5E1),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0F2FE),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isMember ? 'Active Buyer' : 'Customer Profile',
+                              style: const TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0284C7),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1008,34 +1511,199 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
           ],
         ),
       );
+}
 
-  Widget _nav(
-    String label,
-    IconData icon,
-    VoidCallback tap, {
-    bool selected = false,
-  }) =>
-      Expanded(
-        child: InkWell(
-          onTap: tap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+/// 3D Customer Group Graphic with avatars and golden plus badge matching design mockup
+class _CustomerGroup3DGraphic extends StatelessWidget {
+  const _CustomerGroup3DGraphic();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 86,
+      height: 68,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          // Soft radial glow background
+          Container(
+            width: 82,
+            height: 64,
             decoration: BoxDecoration(
-              color: selected ? teal : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 22, color: selected ? Colors.white : ink),
-                Text(
-                  label,
-                  style: campaignText(11, color: selected ? Colors.white : ink),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(32),
+              gradient: RadialGradient(
+                colors: [
+                  const Color(0xFFE0F7FA).withValues(alpha: 0.9),
+                  const Color(0xFFE0F2FE).withValues(alpha: 0.5),
+                  Colors.white.withValues(alpha: 0.0),
+                ],
+              ),
             ),
           ),
-        ),
-      );
+
+          // Custom 3D Avatar Figures
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _CustomerGroup3DPainter(),
+            ),
+          ),
+
+          // Golden Plus Badge at bottom right
+          Positioned(
+            right: 4,
+            bottom: 6,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFBBF24), Color(0xFFD97706)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFD97706).withValues(alpha: 0.45),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.add_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerGroup3DPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width * 0.46;
+    final cy = size.height * 0.52;
+
+    // 1. Back Left Avatar
+    final backLeftHeadCenter = Offset(cx - 16, cy - 8);
+    final backLeftHeadPaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.3, -0.4),
+        radius: 0.8,
+        colors: const [Color(0xFF26C6DA), Color(0xFF007791)],
+      ).createShader(Rect.fromCircle(center: backLeftHeadCenter, radius: 6.5));
+    canvas.drawCircle(backLeftHeadCenter, 6.5, backLeftHeadPaint);
+
+    final backLeftBodyPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF00ACC1), Color(0xFF006064)],
+      ).createShader(Rect.fromLTWH(cx - 24, cy - 1, 16, 18));
+    final backLeftBodyPath = Path();
+    backLeftBodyPath.addRRect(
+      RRect.fromRectAndCorners(
+        Rect.fromLTWH(cx - 24, cy - 1, 16, 18),
+        topLeft: const Radius.circular(8),
+        topRight: const Radius.circular(8),
+      ),
+    );
+    canvas.drawPath(backLeftBodyPath, backLeftBodyPaint);
+
+    // 2. Back Right Avatar
+    final backRightHeadCenter = Offset(cx + 16, cy - 8);
+    final backRightHeadPaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.3, -0.4),
+        radius: 0.8,
+        colors: const [Color(0xFF26C6DA), Color(0xFF007791)],
+      ).createShader(Rect.fromCircle(center: backRightHeadCenter, radius: 6.5));
+    canvas.drawCircle(backRightHeadCenter, 6.5, backRightHeadPaint);
+
+    final backRightBodyPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF00ACC1), Color(0xFF006064)],
+      ).createShader(Rect.fromLTWH(cx + 8, cy - 1, 16, 18));
+    final backRightBodyPath = Path();
+    backRightBodyPath.addRRect(
+      RRect.fromRectAndCorners(
+        Rect.fromLTWH(cx + 8, cy - 1, 16, 18),
+        topLeft: const Radius.circular(8),
+        topRight: const Radius.circular(8),
+      ),
+    );
+    canvas.drawPath(backRightBodyPath, backRightBodyPaint);
+
+    // 3. Center Front Avatar Body
+    final frontBodyPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF00BCD4), Color(0xFF00838F)],
+      ).createShader(Rect.fromLTWH(cx - 14, cy + 3, 28, 24));
+
+    final frontBodyPath = Path();
+    frontBodyPath.moveTo(cx - 13, cy + 24);
+    frontBodyPath.quadraticBezierTo(cx - 12, cy + 5, cx, cy + 4);
+    frontBodyPath.quadraticBezierTo(cx + 12, cy + 5, cx + 13, cy + 24);
+    frontBodyPath.close();
+    canvas.drawPath(frontBodyPath, frontBodyPaint);
+
+    // Highlight on front body
+    final frontBodyHighlight = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.white.withValues(alpha: 0.35),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromLTWH(cx - 10, cy + 5, 20, 10));
+    final highlightPath = Path();
+    highlightPath.moveTo(cx - 10, cy + 12);
+    highlightPath.quadraticBezierTo(cx - 8, cy + 5, cx, cy + 5);
+    highlightPath.quadraticBezierTo(cx + 8, cy + 5, cx + 10, cy + 12);
+    canvas.drawPath(highlightPath, frontBodyHighlight);
+
+    // 4. Center Front Avatar Head
+    final frontHeadCenter = Offset(cx, cy - 5);
+    final frontHeadPaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.35, -0.45),
+        radius: 0.85,
+        colors: const [
+          Color(0xFF80DEEA),
+          Color(0xFF26C6DA),
+          Color(0xFF00838F),
+        ],
+      ).createShader(Rect.fromCircle(center: frontHeadCenter, radius: 8.5));
+
+    // Drop shadow under head
+    canvas.drawCircle(
+      frontHeadCenter.translate(0, 1.5),
+      8.5,
+      Paint()
+        ..color = const Color(0xFF004D40).withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+    );
+    canvas.drawCircle(frontHeadCenter, 8.5, frontHeadPaint);
+
+    // Specular highlight on front head
+    canvas.drawCircle(
+      frontHeadCenter.translate(-2.5, -2.5),
+      2.5,
+      Paint()..color = Colors.white.withValues(alpha: 0.45),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

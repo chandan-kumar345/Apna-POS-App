@@ -276,9 +276,11 @@ extension _MessageForm on _CampaignEditorState {
             .where((c) => c['id'] == d.channel)
             .firstOrNull?['name'] ??
         '';
-    final count = options.group(d.group)?['count'] as int? ?? 0;
+    final groupCount = options.group(d.group)?['count'] as int? ?? 0;
+    final manualCount = extractNormalizedPhones(manualPhones.text).length;
+    final totalCount = groupCount + manualCount;
     final label = campaignCategories[d.category] ?? '';
-    final cost = count * (d.category == 'UTILITY' ? .21 : .90) * 1.18;
+    final cost = totalCount * (d.category == 'UTILITY' ? .21 : .90) * 1.18;
     return _stack([
       Container(
         padding: const EdgeInsets.all(12),
@@ -324,7 +326,6 @@ extension _MessageForm on _CampaignEditorState {
           },
           (s) => change(() {
             d.group = s;
-            optedIn = false;
           }),
           hint: options.groups.isEmpty
               ? 'No audience groups yet'
@@ -335,23 +336,99 @@ extension _MessageForm on _CampaignEditorState {
           'Create an audience group in Customers.',
           style: campaignText(12, color: muted),
         ),
-      if (widget.approved)
+
+      // Enter mobile number (phone numbers text area with internal 91 prefix)
+      if (widget.approved && d.category != 'AUTHENTICATION') ...[
+        const SizedBox(height: 14),
+        Text(
+          'Enter mobile number',
+          style: campaignText(15, weight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFF29B6F6),
+              width: 1.4,
+            ),
+          ),
+          child: Stack(
+            children: [
+              TextField(
+                controller: manualPhones,
+                minLines: 2,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                onChanged: (_) => change(() {}),
+                style: campaignText(14, weight: FontWeight.w500),
+                decoration: const InputDecoration(
+                  hintText:
+                      'Enter mobile numbers\n(e.g. 9876543210, 9123456780)',
+                  hintStyle: TextStyle(
+                    fontFamily: 'Roboto',
+                    fontSize: 13,
+                    color: Color(0xFF94A3B8),
+                    height: 1.35,
+                  ),
+                  prefixIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 18),
+                    child: Icon(
+                      Icons.phone_outlined,
+                      color: Color(0xFF64748B),
+                      size: 20,
+                    ),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.fromLTRB(12, 14, 28, 14),
+                ),
+              ),
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: Icon(
+                  Icons.signal_cellular_alt_rounded,
+                  size: 14,
+                  color: Colors.grey.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 5),
         Row(
           children: [
-            Checkbox(
-              value: optedIn,
-              onChanged: count == 0
-                  ? null
-                  : (v) => change(() => optedIn = v ?? false),
+            const Icon(
+              Icons.info_outline_rounded,
+              size: 14,
+              color: Color(0xFF64748B),
             ),
-            Expanded(
+            const SizedBox(width: 4),
+            const Expanded(
               child: Text(
-                'These customers opted in to WhatsApp messages.',
-                style: campaignText(12, color: muted, weight: FontWeight.w500),
+                'Add multiple numbers separated by commas (,) or line breaks.',
+                style: TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 11,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$manualCount ${manualCount == 1 ? "number" : "numbers"}',
+              style: const TextStyle(
+                fontFamily: 'Roboto',
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF334155),
               ),
             ),
           ],
         ),
+      ],
       if (!widget.approved) const SizedBox(height: 10),
       Container(
         padding: const EdgeInsets.all(12),
@@ -457,11 +534,24 @@ extension _MessageForm on _CampaignEditorState {
             ? 'Approval is for individual, customer-requested verification codes.'
             : !widget.approved
             ? 'After Meta approves your template, choose when to send it from Campaigns.'
-            : count > 0
-            ? '$count contacts · Estimated wallet charge ₹${cost.toStringAsFixed(2)} including GST.'
-            : 'Select an opted-in audience to send.',
+            : totalCount > 0
+            ? '$totalCount contacts · Estimated wallet charge ₹${cost.toStringAsFixed(2)} including GST.'
+            : 'Select an option for audience to send.',
         style: campaignText(12, color: muted, weight: FontWeight.w400),
       ),
+      if (widget.approved && d.category != 'AUTHENTICATION') ...[
+        const SizedBox(height: 10),
+        CheckboxListTile(
+          value: optedIn,
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: Text(
+            'I confirm that recipients have consented to receive messages.',
+            style: campaignText(12, color: muted),
+          ),
+          onChanged: (v) => change(() => optedIn = v ?? false),
+        ),
+      ],
       if (d.later &&
           d.sendAt != null &&
           launchError?.startsWith('Choose a sending') == true) ...[

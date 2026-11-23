@@ -238,13 +238,20 @@ async function launch(businessId, key, input, userId) {
   check(c.template.category !== 'AUTHENTICATION', 'Auth templates deliver customer-requested verification codes only.');
   ready(c);
   check(input.confirmedOptIn === true, 'Confirm that the selected contacts opted in');
-  const groupId = id(input.groupId);
+  const phones = input.phones || [];
+  check(Array.isArray(phones) && phones.length <= 1000, 'Enter up to 1,000 numbers at a time.');
+  const manual = phones.map(phone => {
+    check(typeof phone === 'string' && /^\+?[\d ()-]{7,32}$/.test(phone) && whatsapp.isValidPhoneNumber(phone), 'Check the phone numbers entered.');
+    return { phone };
+  });
+
+  const groupId = (input.groupId && typeof input.groupId === 'string' && /^[a-f\d]{24}$/i.test(input.groupId)) ? input.groupId : null;
   const [group] = await Promise.all([
-    AudienceGroup.findOne({ _id: groupId, businessId }).lean(),
+    groupId ? AudienceGroup.findOne({ _id: groupId, businessId }).lean() : null,
     menuItem(businessId, c.rewardDetails.freeGiftProductId), menuItem(businessId, c.rewardDetails.buyProductId),
   ]);
-  const recipients = recipientsFor(group);
-  check(recipients.length, 'Choose a group with valid WhatsApp contacts');
+  const recipients = recipientsFor({ numbers: [...(group?.numbers || []), ...manual] });
+  check(recipients.length, 'Choose an audience group or enter mobile numbers to send');
   check(recipients.length === input.confirmedCount, 'The audience size changed. Reopen the review before sending.');
   const now = new Date();
   const mode = choice(input.scheduleMode || 'now', ['now', 'later']);
@@ -255,7 +262,7 @@ async function launch(businessId, key, input, userId) {
     'mobileStudio.sendAuthorizedAt': now, 'mobileStudio.confirmedBy': userId,
     'mobileStudio.groupId': groupId, 'mobileStudio.note': mode === 'later' ? 'Scheduled' : 'Queued for sending',
     schedule: { mode, scheduledAt: sendAt }, 'audience.recipientCount': recipients.length,
-    'audience.recipients': recipients, 'audience.groupName': group.name,
+    'audience.recipients': recipients, 'audience.groupName': group?.name || 'Custom Audience',
     'stats.totalRecipients': recipients.length, cost: estimate(c.template.category, recipients.length),
   } }, { new: true });
   const result = updated || await Campaign.findOne(filter);

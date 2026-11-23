@@ -145,6 +145,31 @@ class _MobileCampaignPerformanceScreenState
         r['description'] ??
         'Hi {{name}} 🍕\nEnjoy 20% OFF your next order with code $coupon.';
 
+    final rawImageUrl = (template['headerMediaUrl'] ??
+            template['mediaUrl'] ??
+            r['bannerImageUrl'] ??
+            _c['headerMediaUrl'] ??
+            _c['bannerImageUrl'] ??
+            _c['imageUrl'] ??
+            '')
+        .toString()
+        .trim();
+
+    // Ensure image is displayed: if no remote URL is present, use the bundled campaign banner
+    final imageUrl = rawImageUrl.isNotEmpty
+        ? rawImageUrl
+        : 'assets/images/tpl_food_bogo_pizza.png';
+
+    final sentAt = DateTime.tryParse(
+      _c['schedule']?['sentAt']?.toString() ??
+          _c['schedule']?['scheduledAt']?.toString() ??
+          _c['createdAt']?.toString() ??
+          '',
+    );
+    final timeStr = sentAt != null
+        ? DateFormat('hh:mm a').format(indiaClock(sentAt))
+        : '04:21 PM';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -152,53 +177,114 @@ class _MobileCampaignPerformanceScreenState
       builder: (ctx) => SafeArea(
         child: Container(
           decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            color: Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Drag Handle
               Container(
-                width: 40,
-                height: 4,
+                width: 44,
+                height: 4.5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFC4D5E2),
-                  borderRadius: BorderRadius.circular(2),
+                  color: const Color(0xFFCBD5E1),
+                  borderRadius: BorderRadius.circular(3),
                 ),
               ),
               const SizedBox(height: 14),
+
+              // Header Row: 3D WhatsApp Icon, Title & Subtitle, Close Button
               Row(
                 children: [
-                  Image.asset(
-                    'assets/images/whatsapp_logo.png',
-                    width: 20,
-                    height: 20,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.chat_bubble,
-                      color: Color(0xFF25D366),
-                      size: 20,
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFFE8F5E9), Color(0xFFDCFCE7)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: Image.asset(
+                      'assets/images/whatsapp_logo.png',
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.chat_bubble_rounded,
+                        color: Color(0xFF25D366),
+                        size: 24,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'WhatsApp Message Preview',
-                    style: campaignText(16, weight: FontWeight.w700),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Campaign Preview',
+                          style: TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0F1E36),
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'See how your message will appear on WhatsApp',
+                          style: TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(ctx),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF1F5F9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Color(0xFF64748B),
+                        size: 19,
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
+
+              // WhatsApp Smartphone Mockup with message and image
               Center(
                 child: WhatsAppPhonePreview(
                   businessName: widget.options?.business ?? 'Pizza 47',
                   messageBody: body.toString().replaceAll('{{name}}', 'John'),
-                  headerText: template['headerText'] ?? _c['name'],
-                  footerText: template['footerText'] ?? 'Terms & Conditions apply',
+                  headerText: template['headerText'],
+                  footerText:
+                      template['footerText'] ?? 'Terms & Conditions apply',
+                  imageUrl: imageUrl,
+                  time: timeStr,
                   buttons: [
                     if (coupon.toString().isNotEmpty) 'Copy code: $coupon',
                     'Order Now',
@@ -214,10 +300,13 @@ class _MobileCampaignPerformanceScreenState
 
   @override
   Widget build(BuildContext context) {
-    return CampaignShell(
-      header: _buildHeader(),
-      body: _buildBody(),
-      footer: _buildFooter(),
+    return ColoredBox(
+      color: const Color(0xFFEDF4FA),
+      child: CampaignShell(
+        header: _buildHeader(),
+        body: _buildBody(),
+        footer: _buildFooter(),
+      ),
     );
   }
 
@@ -228,13 +317,23 @@ class _MobileCampaignPerformanceScreenState
         children: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
             tooltip: 'Back',
           ),
           const SizedBox(width: 4),
           Text(
             _headerTitle,
-            style: campaignText(20, color: Colors.white, weight: FontWeight.w700),
+            style: const TextStyle(
+              fontFamily: 'Roboto',
+              fontSize: 20,
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
           ),
         ],
       ),
@@ -244,19 +343,39 @@ class _MobileCampaignPerformanceScreenState
   Widget _buildBody() {
     return RefreshIndicator(
       onRefresh: _loadFullCampaign,
+      color: const Color(0xFF0077B6),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 20),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 16),
         children: [
           // Top Campaign Card
           _buildCampaignSummaryCard(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // Segmented Tabs: [Overview] [Customers] [Details]
           _buildTabPills(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
-          if (_loading) const LinearProgressIndicator(minHeight: 2),
-          if (_loadError != null) Text(_loadError!, style: campaignText(13, color: muted)),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: LinearProgressIndicator(
+                minHeight: 2,
+                color: Color(0xFF0077B6),
+                backgroundColor: Color(0xFFE0F2FE),
+              ),
+            ),
+          if (_loadError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                _loadError!,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 12,
+                  color: muted,
+                ),
+              ),
+            ),
 
           // Tab content based on selected tab
           if (_selectedTab == 0) ..._buildOverviewTab(),
@@ -287,8 +406,8 @@ class _MobileCampaignPerformanceScreenState
           '',
     );
     final sentStr = sentAt != null
-        ? DateFormat('d MMM yyyy · h:mm a').format(indiaClock(sentAt))
-        : '20 Nov 2026 · 6:00 PM';
+        ? DateFormat('d MMM yyyy · hh:mm a').format(indiaClock(sentAt))
+        : '20 Nov 2026 · 06:00 PM';
 
     final expiryAt = DateTime.tryParse(
       _c['couponSettings']?['expiryDate']?.toString() ?? '',
@@ -302,7 +421,21 @@ class _MobileCampaignPerformanceScreenState
 
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: campaignCard(radius: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.9),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -310,17 +443,18 @@ class _MobileCampaignPerformanceScreenState
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              width: 54,
-              height: 54,
+              width: 48,
+              height: 48,
               child: _buildThumbnailImage(imageUrl),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
 
           // Content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
@@ -329,32 +463,58 @@ class _MobileCampaignPerformanceScreenState
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: campaignText(16, weight: FontWeight.w800),
+                        style: const TextStyle(
+                          fontFamily: 'Roboto',
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F1E36),
+                          letterSpacing: -0.2,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                        horizontal: 7,
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
                         color: isCompleted
                             ? const Color(0xFFDCFCE7)
-                            : const Color(0xFFFFE3CA),
-                        borderRadius: BorderRadius.circular(12),
+                            : (rawStatus == 'scheduled'
+                                ? const Color(0xFFE0F2FE)
+                                : const Color(0xFFFFE3CA)),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text(
-                        isCompleted
-                            ? 'Completed'
-                            : (rawStatus == 'scheduled' ? 'Scheduled' : 'Active'),
-                        style: campaignText(
-                          11,
-                          color: isCompleted
-                              ? const Color(0xFF15803D)
-                              : const Color(0xFFC05621),
-                          weight: FontWeight.w700,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isCompleted) ...[
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 11.5,
+                              color: Color(0xFF16A34A),
+                            ),
+                            const SizedBox(width: 3),
+                          ],
+                          Text(
+                            isCompleted
+                                ? 'Completed'
+                                : (rawStatus == 'scheduled'
+                                    ? 'Scheduled'
+                                    : 'Active'),
+                            style: TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: isCompleted
+                                  ? const Color(0xFF15803D)
+                                  : (rawStatus == 'scheduled'
+                                      ? const Color(0xFF0284C7)
+                                      : const Color(0xFFC05621)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -366,18 +526,27 @@ class _MobileCampaignPerformanceScreenState
                     children: [
                       Image.asset(
                         'assets/images/whatsapp_logo.png',
-                        width: 14,
-                        height: 14,
+                        width: 13,
+                        height: 13,
                         errorBuilder: (_, __, ___) => const Icon(
                           Icons.chat_bubble,
                           color: Color(0xFF25D366),
-                          size: 14,
+                          size: 13,
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        'WhatsApp · $categoryLabel',
-                        style: campaignText(12, color: muted, weight: FontWeight.w500),
+                      Expanded(
+                        child: Text(
+                          'WhatsApp · $categoryLabel',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 11,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -386,20 +555,36 @@ class _MobileCampaignPerformanceScreenState
                     children: [
                       const Icon(
                         Icons.calendar_today_outlined,
-                        color: muted,
-                        size: 12,
+                        color: Color(0xFF64748B),
+                        size: 11,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        'Sent $sentStr',
-                        style: campaignText(12, color: muted, weight: FontWeight.w500),
+                      Expanded(
+                        child: Text(
+                          'Sent $sentStr',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 11,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ] else ...[
                   Text(
                     expiryStr,
-                    style: campaignText(12, color: muted, weight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ],
@@ -430,57 +615,99 @@ class _MobileCampaignPerformanceScreenState
         child: const Icon(
           Icons.local_pizza_rounded,
           color: Color(0xFFE65100),
-          size: 28,
+          size: 24,
         ),
       ),
     );
   }
 
   Widget _buildTabPills() {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDF3F7),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          _tabPillItem(0, 'Overview'),
-          _tabPillItem(1, 'Customers'),
-          _tabPillItem(2, 'Details'),
-        ],
-      ),
+    return Row(
+      children: [
+        _tabPillItem(
+          0,
+          'Overview',
+          Icons.bar_chart_rounded,
+          Icons.analytics_outlined,
+        ),
+        const SizedBox(width: 6),
+        _tabPillItem(
+          1,
+          'Customers',
+          Icons.people_alt_rounded,
+          Icons.people_alt_outlined,
+        ),
+        const SizedBox(width: 6),
+        _tabPillItem(
+          2,
+          'Details',
+          Icons.description_rounded,
+          Icons.description_outlined,
+        ),
+      ],
     );
   }
 
-  Widget _tabPillItem(int index, String label) {
+  Widget _tabPillItem(
+    int index,
+    String label,
+    IconData activeIcon,
+    IconData inactiveIcon,
+  ) {
     final isSelected = _selectedTab == index;
     return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _selectedTab = index),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? teal : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: teal.withValues(alpha: 0.25),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => setState(() => _selectedTab = index),
+          borderRadius: BorderRadius.circular(20),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            decoration: BoxDecoration(
+              gradient: isSelected
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                    )
+                  : null,
+              color: isSelected ? null : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: isSelected
+                      ? const Color(0xFF0077B6).withValues(alpha: 0.35)
+                      : const Color(0xFF0B2545).withValues(alpha: 0.05),
+                  blurRadius: isSelected ? 8 : 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isSelected ? activeIcon : inactiveIcon,
+                  size: 14,
+                  color: isSelected ? Colors.white : const Color(0xFF475569),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 11.5,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected ? Colors.white : const Color(0xFF0F1E36),
                     ),
-                  ]
-                : null,
-          ),
-          child: Text(
-            label,
-            style: campaignText(
-              13,
-              color: isSelected ? Colors.white : ink,
-              weight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -500,158 +727,350 @@ class _MobileCampaignPerformanceScreenState
       Row(
         children: [
           Expanded(
-            child: _metricCard(
+            child: _claymorphicStatCard(
               label: 'Recipients',
               value: fmt.format(stats.recipients),
               icon: Icons.people_alt_outlined,
-              bgColor: const Color(0xFFE0F2FE),
-              borderColor: const Color(0xFFBAE6FD),
+              iconGradient: const [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
               iconColor: const Color(0xFF0284C7),
+              waveColor: const Color(0xFFE0F2FE),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
-            child: _metricCard(
+            child: _claymorphicStatCard(
               label: 'Delivered',
               value: fmt.format(stats.delivered),
               icon: Icons.check_circle_outline_rounded,
-              bgColor: const Color(0xFFDCFCE7),
-              borderColor: const Color(0xFFBBF7D0),
+              iconGradient: const [Color(0xFFDCFCE7), Color(0xFFBBF7D0)],
               iconColor: const Color(0xFF16A34A),
+              waveColor: const Color(0xFFDCFCE7),
             ),
           ),
         ],
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
-            child: _metricCard(
+            child: _claymorphicStatCard(
               label: 'Read',
               value: fmt.format(stats.read),
               icon: Icons.visibility_outlined,
-              bgColor: const Color(0xFFEDE9FE),
-              borderColor: const Color(0xFFDDD6FE),
+              iconGradient: const [Color(0xFFEDE9FE), Color(0xFFDDD6FE)],
               iconColor: const Color(0xFF7C3AED),
+              waveColor: const Color(0xFFEDE9FE),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
-            child: _metricCard(
+            child: _claymorphicStatCard(
               label: 'Failed',
               value: fmt.format(stats.failed),
               icon: Icons.cancel_outlined,
-              bgColor: const Color(0xFFFEE2E2),
-              borderColor: const Color(0xFFFECACA),
+              iconGradient: const [Color(0xFFFEE2E2), Color(0xFFFECACA)],
               iconColor: const Color(0xFFDC2626),
+              waveColor: const Color(0xFFFEE2E2),
             ),
           ),
         ],
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 12),
 
       // Delivery Results Card
       _buildDeliveryResultsCard(stats),
-      const SizedBox(height: 14),
+      const SizedBox(height: 12),
 
       // Coupon Performance Cards
       Row(
         children: [
           Expanded(
-            child: _smallStatCard(
+            child: _couponStatCard(
               label: 'Coupon orders',
               value: _metricsLoaded ? fmt.format(stats.couponOrders) : '—',
               icon: Icons.shopping_cart_outlined,
-              bgColor: const Color(0xFFE8FAF0),
+              gradient: const [Color(0xFFDCFCE7), Color(0xFFBBF7D0)],
               iconColor: const Color(0xFF16A34A),
+              waveColor: const Color(0xFFDCFCE7),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
-            child: _smallStatCard(
+            child: _couponStatCard(
               label: 'Coupon revenue',
-              value: _metricsLoaded ? '₹${NumberFormat('#,##,##0.##', 'en_IN').format(stats.couponRevenue)}' : '—',
-              icon: Icons.payments_outlined,
-              bgColor: const Color(0xFFF4EDFE),
+              value: _metricsLoaded
+                  ? '₹${NumberFormat('#,##,##0.##', 'en_IN').format(stats.couponRevenue)}'
+                  : '—',
+              icon: Icons.confirmation_number_outlined,
+              gradient: const [Color(0xFFEDE9FE), Color(0xFFDDD6FE)],
               iconColor: const Color(0xFF7C3AED),
+              waveColor: const Color(0xFFEDE9FE),
             ),
           ),
         ],
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 12),
 
       // View customer delivery status link button
-      InkWell(
-        onTap: () => setState(() => _selectedTab = 1),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: campaignCard(radius: 14),
-          child: Row(
-            children: [
-              const Icon(Icons.people_alt_outlined, color: teal, size: 20),
-              const SizedBox(width: 10),
-              Text(
-                'View customer delivery status',
-                style: campaignText(13.5, weight: FontWeight.w700),
+      Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: () => setState(() => _selectedTab = 1),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.9),
+                width: 1.2,
               ),
-              const Spacer(),
-              const Icon(Icons.arrow_forward_rounded, color: ink, size: 18),
-            ],
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.people_alt_outlined,
+                  color: Color(0xFF0077B6),
+                  size: 18,
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'View customer delivery status',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F1E36),
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  color: Color(0xFF64748B),
+                  size: 16,
+                ),
+              ],
+            ),
           ),
         ),
       ),
     ];
   }
 
-  Widget _metricCard({
+  Widget _claymorphicStatCard({
     required String label,
     required String value,
     required IconData icon,
-    required Color bgColor,
-    required Color borderColor,
+    required List<Color> iconGradient,
     required Color iconColor,
+    required Color waveColor,
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor),
-        boxShadow: const [studioShadow],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.65),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: iconColor, size: 20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2545).withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: campaignText(12, color: muted, weight: FontWeight.w500),
-                ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    value,
-                    style: campaignText(22, weight: FontWeight.w800, color: ink),
-                  ),
-                ),
-              ],
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            right: -16,
+            bottom: -20,
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: waveColor.withValues(alpha: 0.35),
+              ),
             ),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: iconGradient,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: iconColor.withValues(alpha: 0.22),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: iconColor, size: 18),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Roboto',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value,
+                        style: const TextStyle(
+                          fontFamily: 'Roboto',
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F1E36),
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _couponStatCard({
+    required String label,
+    required String value,
+    required IconData icon,
+    required List<Color> gradient,
+    required Color iconColor,
+    required Color waveColor,
+  }) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            right: -14,
+            bottom: -18,
+            child: Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: waveColor.withValues(alpha: 0.35),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: gradient,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: iconColor.withValues(alpha: 0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: iconColor, size: 16),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Roboto',
+                        fontSize: 10,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value,
+                        style: const TextStyle(
+                          fontFamily: 'Roboto',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F1E36),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 16,
+                color: Color(0xFF64748B),
+              ),
+            ],
           ),
         ],
       ),
@@ -660,39 +1079,101 @@ class _MobileCampaignPerformanceScreenState
 
   Widget _buildDeliveryResultsCard(_CampaignStatsData stats) {
     final fmt = NumberFormat.decimalPattern('en_IN');
-    final deliveryRateStr = '${stats.deliveryRate.toStringAsFixed(1)}% delivery rate';
+    final deliveryRateStr =
+        '${stats.deliveryRate.toStringAsFixed(1)}% delivery rate';
 
     // Segment ratios for the progress bar
     final total = stats.recipients > 0 ? stats.recipients : 1;
     final readFlex = (stats.read * 1000 / total).round();
-    final deliveredNotReadFlex = (stats.deliveredNotRead * 1000 / total).round();
+    final deliveredNotReadFlex =
+        (stats.deliveredNotRead * 1000 / total).round();
     final failedFlex = (stats.failed * 1000 / total).round();
 
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: campaignCard(radius: 16),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row with Flexible & Wrapping protection
           Row(
             children: [
-              Text(
-                'Delivery results',
-                style: campaignText(15, weight: FontWeight.w800),
-              ),
-              const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFDCFCE7), Color(0xFFBBF7D0)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child: const Icon(
+                  Icons.near_me_rounded,
+                  color: Color(0xFF10B981),
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
                 child: Text(
-                  deliveryRateStr,
-                  style: campaignText(
-                    11.5,
-                    color: const Color(0xFF15803D),
-                    weight: FontWeight.w700,
+                  'Delivery results',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Roboto',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F1E36),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3.5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          deliveryRateStr,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 10.5,
+                            color: Color(0xFF15803D),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        size: 11.5,
+                        color: Color(0xFF15803D),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -705,28 +1186,30 @@ class _MobileCampaignPerformanceScreenState
             borderRadius: BorderRadius.circular(4),
             child: SizedBox(
               height: 7,
-              child: Row(
-                children: [
-                  if (readFlex > 0)
-                    Expanded(
-                      flex: readFlex,
-                      child: Container(color: const Color(0xFF8B5CF6)),
+              child: (readFlex == 0 && deliveredNotReadFlex == 0 && failedFlex == 0)
+                  ? Container(color: const Color(0xFFE2E8F0))
+                  : Row(
+                      children: [
+                        if (readFlex > 0)
+                          Expanded(
+                            flex: readFlex,
+                            child: Container(color: const Color(0xFF8B5CF6)),
+                          ),
+                        if (deliveredNotReadFlex > 0)
+                          Expanded(
+                            flex: deliveredNotReadFlex,
+                            child: Container(color: const Color(0xFF00B4D8)),
+                          ),
+                        if (failedFlex > 0)
+                          Expanded(
+                            flex: failedFlex,
+                            child: Container(color: const Color(0xFFF87171)),
+                          ),
+                      ],
                     ),
-                  if (deliveredNotReadFlex > 0)
-                    Expanded(
-                      flex: deliveredNotReadFlex,
-                      child: Container(color: const Color(0xFF38BDF8)),
-                    ),
-                  if (failedFlex > 0)
-                    Expanded(
-                      flex: failedFlex,
-                      child: Container(color: const Color(0xFFF87171)),
-                    ),
-                ],
-              ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // Legend list rows
           _deliveryRowItem(
@@ -734,13 +1217,19 @@ class _MobileCampaignPerformanceScreenState
             label: 'Read',
             count: fmt.format(stats.read),
           ),
-          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 2),
+            child: Divider(height: 1, thickness: 0.6, color: Color(0xFFF1F5F9)),
+          ),
           _deliveryRowItem(
-            color: const Color(0xFF38BDF8),
+            color: const Color(0xFF00B4D8),
             label: 'Delivered, not read',
             count: fmt.format(stats.deliveredNotRead),
           ),
-          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 2),
+            child: Divider(height: 1, thickness: 0.6, color: Color(0xFFF1F5F9)),
+          ),
           _deliveryRowItem(
             color: const Color(0xFFF87171),
             label: 'Failed to deliver',
@@ -756,72 +1245,37 @@ class _MobileCampaignPerformanceScreenState
     required String label,
     required String count,
   }) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: campaignText(13, color: ink, weight: FontWeight.w500),
-        ),
-        const Spacer(),
-        Text(
-          count,
-          style: campaignText(13.5, weight: FontWeight.w700),
-        ),
-      ],
-    );
-  }
-
-  Widget _smallStatCard({
-    required String label,
-    required String value,
-    required IconData icon,
-    required Color bgColor,
-    required Color iconColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white),
-        boxShadow: const [studioShadow],
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.7),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: iconColor, size: 20),
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: campaignText(11.5, color: muted, weight: FontWeight.w500),
-                ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    value,
-                    style: campaignText(19, weight: FontWeight.w800, color: ink),
-                  ),
-                ),
-              ],
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Roboto',
+                fontSize: 11.5,
+                color: Color(0xFF0F1E36),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            count,
+            style: const TextStyle(
+              fontFamily: 'Roboto',
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F1E36),
             ),
           ),
         ],
@@ -845,14 +1299,43 @@ class _MobileCampaignPerformanceScreenState
 
     return [
       // Search Bar
-      TextField(
-        onChanged: (val) => setState(() => _customerSearch = val.trim()),
-        style: campaignText(13),
-        decoration: campaignInput(hint: 'Search customer name or phone').copyWith(
-          prefixIcon: const Icon(Icons.search_rounded, color: ink, size: 19),
+      Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE2EDF5).withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: const Color(0xFFD6E4EF),
+            width: 1.2,
+          ),
+        ),
+        child: TextField(
+          onChanged: (val) => setState(() => _customerSearch = val.trim()),
+          style: const TextStyle(
+            fontFamily: 'Roboto',
+            fontSize: 14,
+            color: Color(0xFF0F1E36),
+            fontWeight: FontWeight.w500,
+          ),
+          decoration: const InputDecoration(
+            hintText: 'Search customer name or phone...',
+            hintStyle: TextStyle(
+              fontFamily: 'Roboto',
+              fontSize: 13.5,
+              color: Color(0xFF94A3B8),
+              fontWeight: FontWeight.w400,
+            ),
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              color: Color(0xFF64748B),
+              size: 20,
+            ),
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          ),
         ),
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
 
       // Status Filter Pills
       Row(
@@ -864,28 +1347,51 @@ class _MobileCampaignPerformanceScreenState
             ('failed', 'Failed'),
           ]) ...[
             Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: ChoiceChip(
-                label: Text(label),
-                selected: _customerFilter == filterKey,
-                onSelected: (sel) {
-                  if (sel) setState(() => _customerFilter = filterKey);
-                },
-                selectedColor: teal,
-                labelStyle: campaignText(
-                  11.5,
-                  color: _customerFilter == filterKey ? Colors.white : ink,
-                  weight: _customerFilter == filterKey
-                      ? FontWeight.w700
-                      : FontWeight.w500,
-                ),
-                backgroundColor: const Color(0xFFF1F5F9),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: _customerFilter == filterKey
-                        ? teal
-                        : borderBlue.withValues(alpha: 0.6),
+              padding: const EdgeInsets.only(right: 8),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => setState(() => _customerFilter = filterKey),
+                  borderRadius: BorderRadius.circular(20),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: _customerFilter == filterKey
+                          ? const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                            )
+                          : null,
+                      color: _customerFilter == filterKey ? null : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _customerFilter == filterKey
+                              ? const Color(0xFF0077B6).withValues(alpha: 0.35)
+                              : const Color(0xFF0B2545).withValues(alpha: 0.05),
+                          blurRadius: _customerFilter == filterKey ? 8 : 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontFamily: 'Roboto',
+                        fontSize: 12,
+                        color: _customerFilter == filterKey
+                            ? Colors.white
+                            : const Color(0xFF0F1E36),
+                        fontWeight: _customerFilter == filterKey
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -893,49 +1399,82 @@ class _MobileCampaignPerformanceScreenState
           ],
         ],
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 14),
 
       if (filtered.isEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 30),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 36),
           child: Center(
             child: Text(
               'No matching customers found',
-              style: campaignText(13, color: muted),
+              style: TextStyle(
+                fontFamily: 'Roboto',
+                fontSize: 13.5,
+                color: muted,
+              ),
             ),
           ),
         )
       else
         for (final item in filtered) ...[
           Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: campaignCard(radius: 14),
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.9),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 18,
-                  backgroundColor: const Color(0xFFEDF2F7),
+                  radius: 19,
+                  backgroundColor: const Color(0xFFE0F2FE),
                   child: Text(
                     (item['name'] as String? ?? 'C').isNotEmpty
                         ? (item['name'] as String)[0].toUpperCase()
                         : 'C',
-                    style: campaignText(14, weight: FontWeight.w700, color: teal),
+                    style: const TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0284C7),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         item['name'] ?? 'Customer',
-                        style: campaignText(14, weight: FontWeight.w700),
+                        style: const TextStyle(
+                          fontFamily: 'Roboto',
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F1E36),
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         item['phone'] ?? '',
-                        style: campaignText(12, color: muted),
+                        style: const TextStyle(
+                          fontFamily: 'Roboto',
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
@@ -976,14 +1515,19 @@ class _MobileCampaignPerformanceScreenState
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         label,
-        style: campaignText(11, color: fg, weight: FontWeight.w700),
+        style: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 11,
+          color: fg,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -1010,14 +1554,14 @@ class _MobileCampaignPerformanceScreenState
           '',
     );
     final sentStr = sentAt != null
-        ? DateFormat('d MMM · h:mm a').format(indiaClock(sentAt))
-        : '20 Nov · 6:00 PM';
+        ? DateFormat('d MMM · hh:mm a').format(indiaClock(sentAt))
+        : '20 Nov · 06:00 PM';
 
     final completedAt = sentAt != null
         ? sentAt.add(const Duration(minutes: 4))
         : DateTime.now();
     final completedStr =
-        DateFormat('d MMM · h:mm a').format(indiaClock(completedAt));
+        DateFormat('d MMM · hh:mm a').format(indiaClock(completedAt));
 
     // Rewards
     final r = _c['rewardDetails'] ?? {};
@@ -1050,7 +1594,7 @@ class _MobileCampaignPerformanceScreenState
       _c['couponSettings']?['expiryDate']?.toString() ?? '',
     );
     final expiryFormatted = expiryAt != null
-        ? DateFormat('d MMM yyyy · h:mm a').format(indiaClock(expiryAt))
+        ? DateFormat('d MMM yyyy · hh:mm a').format(indiaClock(expiryAt))
         : '30 Nov 2026 · 11:59 PM IST';
 
     final previewBody = _c['template']?['body'] ??
@@ -1064,16 +1608,27 @@ class _MobileCampaignPerformanceScreenState
     return [
       // Card 1: Campaign Information
       Container(
-        padding: const EdgeInsets.all(14),
-        decoration: campaignCard(radius: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white, width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0B2545).withValues(alpha: 0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 34,
+                  height: 34,
                   decoration: const BoxDecoration(
                     color: Color(0xFFEDE9FE),
                     shape: BoxShape.circle,
@@ -1081,17 +1636,22 @@ class _MobileCampaignPerformanceScreenState
                   child: const Icon(
                     Icons.campaign_outlined,
                     color: Color(0xFF7C3AED),
-                    size: 19,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
+                const SizedBox(width: 10),
+                const Text(
                   'Campaign information',
-                  style: campaignText(15, weight: FontWeight.w800),
+                  style: TextStyle(
+                    fontFamily: 'Roboto',
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F1E36),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             _infoRow(
               'Channel',
               Row(
@@ -1108,23 +1668,77 @@ class _MobileCampaignPerformanceScreenState
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text('WhatsApp', style: campaignText(13, weight: FontWeight.w600)),
+                  Text(
+                    'WhatsApp',
+                    style: const TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F1E36),
+                    ),
+                  ),
                 ],
               ),
             ),
-            _infoRow('Category', Text(categoryLabel, style: campaignText(13, weight: FontWeight.w600))),
-            _infoRow('Audience', Text(audienceName, style: campaignText(13, weight: FontWeight.w600))),
+            _infoRow(
+              'Category',
+              Text(
+                categoryLabel,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ),
+            _infoRow(
+              'Audience',
+              Text(
+                audienceName,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ),
             _infoRow(
               'Recipients',
               Text(
                 NumberFormat.decimalPattern('en_IN').format(recipientsCount),
-                style: campaignText(13, weight: FontWeight.w600),
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
               ),
             ),
-            _infoRow('Sent on', Text(sentStr, style: campaignText(13, weight: FontWeight.w600))),
+            _infoRow(
+              'Sent on',
+              Text(
+                sentStr,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ),
             _infoRow(
               'Completed at',
-              Text(completedStr, style: campaignText(13, weight: FontWeight.w600)),
+              Text(
+                completedStr,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
               isLast: true,
             ),
           ],
@@ -1134,16 +1748,27 @@ class _MobileCampaignPerformanceScreenState
 
       // Card 2: Reward Details
       Container(
-        padding: const EdgeInsets.all(14),
-        decoration: campaignCard(radius: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white, width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0B2545).withValues(alpha: 0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 34,
+                  height: 34,
                   decoration: const BoxDecoration(
                     color: Color(0xFFE0F2FE),
                     shape: BoxShape.circle,
@@ -1151,21 +1776,70 @@ class _MobileCampaignPerformanceScreenState
                   child: const Icon(
                     Icons.confirmation_number_outlined,
                     color: Color(0xFF0284C7),
-                    size: 18,
+                    size: 19,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
+                const SizedBox(width: 10),
+                const Text(
                   'Reward details',
-                  style: campaignText(15, weight: FontWeight.w800),
+                  style: TextStyle(
+                    fontFamily: 'Roboto',
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F1E36),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _infoRow('Order type', Text(orders, style: campaignText(13, weight: FontWeight.w600))),
-            _infoRow('Reward', Text(rewardLabel, style: campaignText(13, weight: FontWeight.w600))),
-            _infoRow('Minimum order', Text(minOrder, style: campaignText(13, weight: FontWeight.w600))),
-            _infoRow('Maximum discount', Text(maxDiscount, style: campaignText(13, weight: FontWeight.w600))),
+            const SizedBox(height: 14),
+            _infoRow(
+              'Order type',
+              Text(
+                orders,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ),
+            _infoRow(
+              'Reward',
+              Text(
+                rewardLabel,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ),
+            _infoRow(
+              'Minimum order',
+              Text(
+                minOrder,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ),
+            _infoRow(
+              'Maximum discount',
+              Text(
+                maxDiscount,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ),
             _infoRow(
               'Coupon code',
               Row(
@@ -1173,7 +1847,12 @@ class _MobileCampaignPerformanceScreenState
                 children: [
                   Text(
                     couponCode,
-                    style: campaignText(13, weight: FontWeight.w800, color: teal),
+                    style: const TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0077B6),
+                    ),
                   ),
                   const SizedBox(width: 4),
                   InkWell(
@@ -1186,7 +1865,11 @@ class _MobileCampaignPerformanceScreenState
                     borderRadius: BorderRadius.circular(4),
                     child: const Padding(
                       padding: EdgeInsets.all(3),
-                      child: Icon(Icons.copy_rounded, size: 15, color: ink),
+                      child: Icon(
+                        Icons.copy_rounded,
+                        size: 15,
+                        color: Color(0xFF0F1E36),
+                      ),
                     ),
                   ),
                 ],
@@ -1194,7 +1877,15 @@ class _MobileCampaignPerformanceScreenState
             ),
             _infoRow(
               'Expires',
-              Text(expiryFormatted, style: campaignText(13, weight: FontWeight.w600)),
+              Text(
+                expiryFormatted,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
               isLast: true,
             ),
           ],
@@ -1205,12 +1896,23 @@ class _MobileCampaignPerformanceScreenState
       // Card 3: Preview snippet
       Container(
         padding: const EdgeInsets.all(12),
-        decoration: campaignCard(radius: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white, width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
               child: SizedBox(
                 width: 46,
                 height: 46,
@@ -1223,7 +1925,12 @@ class _MobileCampaignPerformanceScreenState
                 previewBody,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: campaignText(13, weight: FontWeight.w500),
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF0F1E36),
+                ),
               ),
             ),
           ],
@@ -1234,12 +1941,26 @@ class _MobileCampaignPerformanceScreenState
 
   Widget _infoRow(String label, Widget value, {bool isLast = false}) {
     return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 9),
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(label, style: campaignText(13, color: muted, weight: FontWeight.w400)),
-          value,
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Roboto',
+              fontSize: 12.5,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: value,
+            ),
+          ),
         ],
       ),
     );
@@ -1250,18 +1971,60 @@ class _MobileCampaignPerformanceScreenState
   // ---------------------------------------------------------------------------
   Widget _buildFooter() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-      color: Colors.white.withValues(alpha: 0.85),
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Primary button: + Send to new customers
           SizedBox(
             width: double.infinity,
-            child: CampaignPrimary(
-              'Send to new customers',
-              icon: Icons.person_add_alt_1_outlined,
-              onTap: () => _audienceDialog(false),
+            height: 48,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00B4D8).withValues(alpha: 0.45),
+                    blurRadius: 12,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: () => _audienceDialog(false),
+                  child: const Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.person_add_alt_1_rounded,
+                          color: Colors.white,
+                          size: 19,
+                        ),
+                        SizedBox(width: 7),
+                        Text(
+                          'Send to new customers',
+                          style: TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -1270,18 +2033,18 @@ class _MobileCampaignPerformanceScreenState
           Row(
             children: [
               Expanded(
-                child: _secondaryButton(
-                  'Resend',
-                  Icons.refresh_rounded,
-                  () => _audienceDialog(true),
+                child: _claymorphicButton(
+                  label: 'Resend',
+                  icon: Icons.refresh_rounded,
+                  onTap: () => _audienceDialog(true),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
-                child: _secondaryButton(
-                  'Preview',
-                  Icons.visibility_outlined,
-                  _onPreview,
+                child: _claymorphicButton(
+                  label: 'Preview',
+                  icon: Icons.visibility_outlined,
+                  onTap: _onPreview,
                 ),
               ),
             ],
@@ -1291,28 +2054,46 @@ class _MobileCampaignPerformanceScreenState
     );
   }
 
-  Widget _secondaryButton(String label, IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: borderBlue),
-          boxShadow: const [studioShadow],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 17, color: ink),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: campaignText(13.5, weight: FontWeight.w700, color: ink),
-            ),
-          ],
+  Widget _claymorphicButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white, width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0B2545).withValues(alpha: 0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 17, color: const Color(0xFF0F1E36)),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Roboto',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F1E36),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
