@@ -24,7 +24,8 @@ class MobileCampaignDashboard extends StatefulWidget {
       _MobileCampaignDashboardState();
 }
 
-class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
+class _MobileCampaignDashboardState extends State<MobileCampaignDashboard>
+    with SingleTickerProviderStateMixin {
   late final api = widget.api ?? MobileCampaignApi();
   final search = TextEditingController();
   Timer? debounce;
@@ -35,19 +36,102 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
   bool loading = true;
   String filter = 'all';
   String? error, optionsError;
+  late final AnimationController _shimmerController;
 
   @override
   void initState() {
     super.initState();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
     refresh();
   }
 
   @override
   void dispose() {
+    _shimmerController.dispose();
     debounce?.cancel();
     poll?.cancel();
     search.dispose();
     super.dispose();
+  }
+
+  Widget _shimmerBox(double height, {double? width, double radius = 12}) {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, child) {
+        return Container(
+          height: height,
+          width: width,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: const [
+                Color(0xFFE2E8F0),
+                Color(0xFFF8FAFC),
+                Color(0xFFE2E8F0),
+              ],
+              stops: [
+                (_shimmerController.value - 0.3).clamp(0.0, 1.0),
+                _shimmerController.value,
+                (_shimmerController.value + 0.3).clamp(0.0, 1.0),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _skeletonCampaignCard() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+              blurRadius: 16,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _shimmerBox(44, width: 44, radius: 14),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _shimmerBox(16, radius: 4)),
+                      const SizedBox(width: 12),
+                      _shimmerBox(20, width: 68, radius: 10),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _shimmerBox(12, width: 130, radius: 4),
+                  const SizedBox(height: 8),
+                  _shimmerBox(12, width: 180, radius: 4),
+                  const SizedBox(height: 10),
+                  _shimmerBox(22, width: 110, radius: 8),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> loadOptions() async {
@@ -123,34 +207,8 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
     load();
   }
 
-  static final List<CampaignJson> _sampleCampaigns = [
-    {
-      'id': 'sample_1',
-      'name': 'Apna POS – Ab Ek Smart ...',
-      'status': 'completed',
-      'template': {'category': 'MARKETING'},
-      'schedule': {'sentAt': '2026-11-23T16:21:00'},
-      'audience': {'recipientCount': 1221},
-      'stats': {'deliveryRate': 100.0},
-    },
-    {
-      'id': 'sample_2',
-      'name': 'Utility',
-      'status': 'approved',
-      'type': 'Promotional',
-      'mobileStudio': {'revision': 1},
-      'template': {'category': 'PROMOTIONAL'},
-      'schedule': {'scheduledAt': '2026-11-29T17:30:00'},
-      'audience': {'recipientCount': 350},
-    },
-  ];
-
   Future<void> edit([CampaignJson? existing]) async {
-    final effectiveExisting =
-        (existing?['id']?.toString().startsWith('sample_') ?? false)
-            ? null
-            : existing;
-    if (options == null || effectiveExisting?['status'] == 'approved') {
+    if (options == null || existing?['status'] == 'approved') {
       await loadOptions();
       if (!mounted || options == null) return;
     }
@@ -158,11 +216,11 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
       MaterialPageRoute(
         builder: (_) => CampaignEditor(
           api: api,
-          approved: effectiveExisting?['status'] == 'approved',
+          approved: existing?['status'] == 'approved',
           options: options!,
-          draft: effectiveExisting == null
+          draft: existing == null
               ? MobileCampaignDraft()
-              : MobileCampaignDraft.fromJson(effectiveExisting),
+              : MobileCampaignDraft.fromJson(existing),
         ),
       ),
     );
@@ -183,16 +241,6 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
   }
 
   Future<void> showCampaign(CampaignJson c) async {
-    if (c['id'] == 'sample_1') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sample campaign: Apna POS – Ab Ek Smart ...')),
-      );
-      return;
-    }
-    if (c['id'] == 'sample_2') {
-      await edit();
-      return;
-    }
     if (c['status'] == 'draft' ||
         (c['mobileStudio'] != null &&
             c['status'] == 'approved' &&
@@ -262,16 +310,11 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final displayRows = rows.isNotEmpty
-        ? rows
-        : (search.text.isEmpty && filter == 'all')
-            ? _sampleCampaigns
-            : <CampaignJson>[];
+    final isInitialLoading = loading && rows.isEmpty;
+    final displayRows = rows;
 
-    final displaySent = (rows.isNotEmpty || sent > 0) ? sent : 6;
-    final displayReadRate = (rows.isNotEmpty || sent > 0)
-        ? (sent == 0 ? '0%' : '${(100 * read / sent).toStringAsFixed(1)}%')
-        : '33.3%';
+    final displaySent = sent;
+    final displayReadRate = sent == 0 ? '0%' : '${(100 * read / sent).toStringAsFixed(1)}%';
 
     return Container(
       color: const Color(0xFFEDF3FA),
@@ -304,14 +347,18 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                               ),
                               const SizedBox(width: 8),
                             ],
-                            const Text(
-                              'Campaigns',
-                              style: TextStyle(
-                                fontFamily: 'Roboto',
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF0F1E36),
-                                letterSpacing: -0.4,
+                            const Flexible(
+                              child: Text(
+                                'Campaigns',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Roboto',
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F1E36),
+                                  letterSpacing: -0.4,
+                                ),
                               ),
                             ),
                           ],
@@ -344,6 +391,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                       icon: Icons.near_me_rounded,
                       gradient: const [Color(0xFFF3EEFE), Color(0xFFE6DCFD)],
                       iconColor: const Color(0xFF8B5CF6),
+                      isLoading: isInitialLoading,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -355,6 +403,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                       gradient: const [Color(0xFFF0FDF4), Color(0xFFDCFCE7)],
                       iconColor: const Color(0xFF10B981),
                       showBarChart: true,
+                      isLoading: isInitialLoading,
                     ),
                   ),
                 ],
@@ -465,72 +514,80 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
               ),
               const SizedBox(height: 14),
 
-              if (loading)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: LinearProgressIndicator(
-                    minHeight: 2.5,
-                    color: Color(0xFF0077B6),
-                    backgroundColor: Color(0xFFE0F2FE),
-                  ),
-                ),
-
-              if (error != null || optionsError != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Column(
-                    children: [
-                      Text(error ?? optionsError!, style: campaignText(13)),
-                      TextButton(onPressed: refresh, child: const Text('Retry')),
-                    ],
-                  ),
-                ),
-
-              if (!loading && error == null && displayRows.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 36),
-                  child: Center(
-                    child: Text(
-                      filter == 'all' && search.text.isEmpty
-                          ? 'Your campaigns will appear here'
-                          : 'No matching campaigns',
-                      style: campaignText(14, color: muted),
+              if (isInitialLoading) ...[
+                _skeletonCampaignCard(),
+                _skeletonCampaignCard(),
+                _skeletonCampaignCard(),
+              ] else ...[
+                if (loading)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: LinearProgressIndicator(
+                      minHeight: 2.5,
+                      color: Color(0xFF0077B6),
+                      backgroundColor: Color(0xFFE0F2FE),
                     ),
                   ),
-                ),
 
-              for (final c in displayRows) _campaignRow(c),
-
-              if (rows.length < total && !loading && rows.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Center(
-                    child: TextButton(
-                      onPressed: () => load(more: true),
-                      child: const Text('Load more campaigns'),
+                if (error != null || optionsError != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Column(
+                      children: [
+                        Text(error ?? optionsError!, style: campaignText(13)),
+                        TextButton(onPressed: refresh, child: const Text('Retry')),
+                      ],
                     ),
                   ),
-                ),
 
-              if (displayRows.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.info_outline_rounded,
-                        size: 14,
-                        color: muted,
+                if (!loading && error == null && displayRows.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 36),
+                    child: Center(
+                      child: Text(
+                        filter == 'all' && search.text.isEmpty
+                            ? 'Your campaigns will appear here'
+                            : 'No matching campaigns',
+                        style: campaignText(14, color: muted),
                       ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'Tap a campaign to view performance.',
-                        style: campaignText(12, color: muted, weight: FontWeight.w400),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+
+                for (final c in displayRows) _campaignRow(c),
+
+                if (rows.length < total && !loading && rows.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Center(
+                      child: TextButton(
+                        onPressed: () => load(more: true),
+                        child: const Text('Load more campaigns'),
+                      ),
+                    ),
+                  ),
+
+                if (displayRows.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.info_outline_rounded,
+                          size: 14,
+                          color: muted,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            'Tap a campaign to view performance.',
+                            style: campaignText(11.5, color: muted, weight: FontWeight.w400),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
@@ -654,6 +711,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
     required List<Color> gradient,
     required Color iconColor,
     bool showBarChart = false,
+    bool isLoading = false,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -699,69 +757,74 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
               children: [
                 Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontFamily: 'Roboto',
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF64748B),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          value,
-                          style: const TextStyle(
-                            fontFamily: 'Roboto',
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F1E36),
-                            letterSpacing: -0.3,
+                const SizedBox(height: 3),
+                if (isLoading)
+                  _shimmerBox(22, width: 50, radius: 5)
+                else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            value,
+                            style: const TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F1E36),
+                              letterSpacing: -0.3,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    if (showBarChart) ...[
-                      const SizedBox(width: 6),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Container(
-                            width: 3.5,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981),
-                              borderRadius: BorderRadius.circular(2),
+                      if (showBarChart) ...[
+                        const SizedBox(width: 6),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              width: 3.5,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 2.5),
-                          Container(
-                            width: 3.5,
-                            height: 13,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981),
-                              borderRadius: BorderRadius.circular(2),
+                            const SizedBox(width: 2.5),
+                            Container(
+                              width: 3.5,
+                              height: 13,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 2.5),
-                          Container(
-                            width: 3.5,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981),
-                              borderRadius: BorderRadius.circular(2),
+                            const SizedBox(width: 2.5),
+                            Container(
+                              width: 3.5,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
               ],
             ),
           ),
@@ -785,7 +848,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 8.5, horizontal: 6),
           decoration: BoxDecoration(
             gradient: selected
                 ? const LinearGradient(
@@ -811,10 +874,10 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
             children: [
               Icon(
                 icon,
-                size: 15,
+                size: 14,
                 color: selected ? Colors.white : const Color(0xFF475569),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
               Flexible(
                 child: Text(
                   label,
@@ -822,7 +885,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'Roboto',
-                    fontSize: 12.5,
+                    fontSize: 12,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     color: selected ? Colors.white : const Color(0xFF0F1E36),
                   ),
@@ -859,10 +922,33 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
     );
     final note = c['mobileStudio']?['note'] ?? '';
     final category = campaignCategories[(c['template']?['category'] ?? c['type'] ?? '').toString().toUpperCase()] ?? (c['type']?.toString().isNotEmpty == true ? c['type'].toString() : 'Marketing');
+    final stats = (c['stats'] as Map<String, dynamic>?) ?? {};
+    final num sentCount = (stats['messagesSent'] ?? stats['sent'] ?? 0) as num;
+    final num deliveredCount = (stats['delivered'] ?? 0) as num;
+    final num failedCount = (stats['failed'] ?? 0) as num;
     final recipientsCount = c['audience']?['recipientCount'] ??
         c['audience']?['count'] ??
-        (c['stats']?['totalRecipients'] ?? 0);
-    final deliveryRate = (c['stats']?['deliveryRate'] as num?)?.toDouble() ?? 100.0;
+        ((stats['totalRecipients'] as num?)?.toInt() ?? 0);
+
+    final num totalAttempted = (stats['totalRecipients'] as num?)?.toInt() ??
+        (recipientsCount > 0 ? recipientsCount : (sentCount + failedCount));
+
+    double deliveryRate;
+    if (totalAttempted > 0) {
+      if (failedCount > 0) {
+        final num successful = (totalAttempted - failedCount).clamp(0, totalAttempted);
+        deliveryRate = (successful / totalAttempted) * 100.0;
+      } else if (deliveredCount > 0) {
+        deliveryRate = (deliveredCount / totalAttempted) * 100.0;
+      } else if (sentCount > 0) {
+        deliveryRate = (sentCount / totalAttempted) * 100.0;
+      } else {
+        deliveryRate = 0.0;
+      }
+    } else {
+      deliveryRate = (stats['deliveryRate'] as num?)?.toDouble() ?? 0.0;
+    }
+    deliveryRate = deliveryRate.clamp(0.0, 100.0);
 
     final useMegaphoneBadge = isApproved ||
         (c['type']?.toString().toLowerCase() == 'promotional') ||
@@ -878,7 +964,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
           onTap: () => showCampaign(c),
           borderRadius: BorderRadius.circular(22),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
@@ -901,7 +987,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                       const _MegaphoneSquircleBadge()
                     else
                       const _DiscountTagBadge(),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
 
                     // Right campaign information column
                     Expanded(
@@ -918,17 +1004,17 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontFamily: 'Roboto',
-                                    fontSize: 15,
+                                    fontSize: 14.5,
                                     fontWeight: FontWeight.w800,
                                     color: Color(0xFF0F1E36),
                                     letterSpacing: -0.2,
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 5),
                               // Status pill badge matching mockup
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: isCompleted
                                       ? const Color(0xFFDCFCE7)
@@ -944,8 +1030,8 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                                   children: [
                                     if (isCompleted) ...[
                                       Container(
-                                        width: 6,
-                                        height: 6,
+                                        width: 5.5,
+                                        height: 5.5,
                                         decoration: const BoxDecoration(
                                           color: Color(0xFF16A34A),
                                           shape: BoxShape.circle,
@@ -955,7 +1041,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                                     ] else if (isApproved) ...[
                                       const Icon(
                                         Icons.verified_rounded,
-                                        size: 12,
+                                        size: 11.5,
                                         color: Color(0xFF2563EB),
                                       ),
                                       const SizedBox(width: 3),
@@ -964,7 +1050,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                                       label,
                                       style: TextStyle(
                                         fontFamily: 'Roboto',
-                                        fontSize: 11,
+                                        fontSize: 10.5,
                                         fontWeight: FontWeight.w700,
                                         color: isCompleted
                                             ? const Color(0xFF15803D)
@@ -981,7 +1067,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                               const SizedBox(width: 2),
                               const Icon(
                                 Icons.chevron_right_rounded,
-                                size: 18,
+                                size: 17,
                                 color: Color(0xFF94A3B8),
                               ),
                             ],
@@ -993,24 +1079,28 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                             children: [
                               Image.asset(
                                 'assets/images/whatsapp_logo.png',
-                                width: 14,
-                                height: 14,
+                                width: 13.5,
+                                height: 13.5,
                                 errorBuilder: (_, __, ___) => const Icon(
                                   Icons.chat_bubble_outline_rounded,
-                                  size: 13,
+                                  size: 12.5,
                                   color: Color(0xFF25D366),
                                 ),
                               ),
                               const SizedBox(width: 5),
-                              Text(
-                                isApproved
-                                    ? 'Promotional  •  WhatsApp'
-                                    : 'WhatsApp  •  $category',
-                                style: const TextStyle(
-                                  fontFamily: 'Roboto',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFF64748B),
+                              Expanded(
+                                child: Text(
+                                  isApproved
+                                      ? 'Promotional  •  WhatsApp'
+                                      : 'WhatsApp  •  $category',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontFamily: 'Roboto',
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFF64748B),
+                                  ),
                                 ),
                               ),
                             ],
@@ -1019,52 +1109,65 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
 
                           // Row 3: Audience + Date (if approved) or Sent Date
                           if (isApproved)
-                            Row(
+                            Wrap(
+                              spacing: 5,
+                              runSpacing: 3,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                const Icon(
-                                  Icons.people_alt_outlined,
-                                  size: 13,
-                                  color: Color(0xFF64748B),
-                                ),
-                                const SizedBox(width: 4),
-                                RichText(
-                                  text: TextSpan(
-                                    style: const TextStyle(
-                                      fontFamily: 'Roboto',
-                                      fontSize: 11.5,
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.people_alt_outlined,
+                                      size: 12.5,
                                       color: Color(0xFF64748B),
                                     ),
-                                    children: [
-                                      const TextSpan(text: 'Audience: '),
-                                      TextSpan(
-                                        text: NumberFormat.decimalPattern('en_IN').format(recipientsCount),
+                                    const SizedBox(width: 3.5),
+                                    RichText(
+                                      text: TextSpan(
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF0F1E36),
+                                          fontFamily: 'Roboto',
+                                          fontSize: 11,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                        children: [
+                                          const TextSpan(text: 'Audience: '),
+                                          TextSpan(
+                                            text: NumberFormat.decimalPattern('en_IN').format(recipientsCount),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF0F1E36),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Text('|', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 10.5)),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_today_outlined,
+                                      size: 11.5,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    const SizedBox(width: 3.5),
+                                    Flexible(
+                                      child: Text(
+                                        at != null
+                                            ? DateFormat('d MMM yyyy, h:mm a').format(indiaClock(at))
+                                            : '29 Nov 2026, 5:30 PM',
+                                        style: const TextStyle(
+                                          fontFamily: 'Roboto',
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                          color: Color(0xFF64748B),
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                const Text('|', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
-                                const SizedBox(width: 6),
-                                const Icon(
-                                  Icons.calendar_today_outlined,
-                                  size: 12,
-                                  color: Color(0xFF64748B),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  at != null
-                                      ? DateFormat('d MMM yyyy, h:mm a').format(indiaClock(at))
-                                      : '29 Nov 2026, 5:30 PM',
-                                  style: const TextStyle(
-                                    fontFamily: 'Roboto',
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF64748B),
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             )
@@ -1073,17 +1176,19 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                               children: [
                                 const Icon(
                                   Icons.calendar_today_outlined,
-                                  size: 12,
+                                  size: 11.5,
                                   color: Color(0xFF64748B),
                                 ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  '${isCompleted ? "Sent: " : ""}${DateFormat("d MMM yyyy, h:mm a").format(indiaClock(at))}',
-                                  style: const TextStyle(
-                                    fontFamily: 'Roboto',
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF64748B),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    '${isCompleted ? "Sent: " : ""}${DateFormat("d MMM yyyy, h:mm a").format(indiaClock(at))}',
+                                    style: const TextStyle(
+                                      fontFamily: 'Roboto',
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFF64748B),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1092,10 +1197,13 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                           // Row 4: Stats Row (Delivered pill + Audience count)
                           if (isCompleted) ...[
                             const SizedBox(height: 6),
-                            Row(
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2.5),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFE0F2FE),
                                     borderRadius: BorderRadius.circular(8),
@@ -1105,7 +1213,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                                     children: [
                                       const Icon(
                                         Icons.check_circle_rounded,
-                                        size: 12,
+                                        size: 11.5,
                                         color: Color(0xFF0284C7),
                                       ),
                                       const SizedBox(width: 3.5),
@@ -1113,7 +1221,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                                         'Delivered: ${deliveryRate.toStringAsFixed(1)}%',
                                         style: const TextStyle(
                                           fontFamily: 'Roboto',
-                                          fontSize: 11,
+                                          fontSize: 10.5,
                                           fontWeight: FontWeight.w700,
                                           color: Color(0xFF0284C7),
                                         ),
@@ -1121,33 +1229,36 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                const Text('|', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  Icons.people_alt_outlined,
-                                  size: 13,
-                                  color: Color(0xFF64748B),
-                                ),
-                                const SizedBox(width: 4),
-                                RichText(
-                                  text: TextSpan(
-                                    style: const TextStyle(
-                                      fontFamily: 'Roboto',
-                                      fontSize: 11.5,
+                                const Text('|', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 10.5)),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.people_alt_outlined,
+                                      size: 12.5,
                                       color: Color(0xFF64748B),
                                     ),
-                                    children: [
-                                      const TextSpan(text: 'Audience: '),
-                                      TextSpan(
-                                        text: NumberFormat.decimalPattern('en_IN').format(recipientsCount),
+                                    const SizedBox(width: 3.5),
+                                    RichText(
+                                      text: TextSpan(
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF0F1E36),
+                                          fontFamily: 'Roboto',
+                                          fontSize: 11,
+                                          color: Color(0xFF64748B),
                                         ),
+                                        children: [
+                                          const TextSpan(text: 'Audience: '),
+                                          TextSpan(
+                                            text: NumberFormat.decimalPattern('en_IN').format(recipientsCount),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF0F1E36),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1161,7 +1272,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                 // Button for approved campaign ("Send campaign")
                 if (isApproved &&
                     c['template']?['category'] != 'AUTHENTICATION') ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 11),
                   Material(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -1171,7 +1282,7 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                       onTap: () => edit(c),
                       child: Container(
                         width: double.infinity,
-                        height: 40,
+                        height: 38,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(20),
@@ -1192,17 +1303,21 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                           children: [
                             Icon(
                               Icons.near_me_outlined,
-                              size: 16,
+                              size: 15,
                               color: Color(0xFF0077B6),
                             ),
                             SizedBox(width: 6),
-                            Text(
-                              'Send campaign',
-                              style: TextStyle(
-                                fontFamily: 'Roboto',
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0077B6),
+                            Flexible(
+                              child: Text(
+                                'Send campaign',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Roboto',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0077B6),
+                                ),
                               ),
                             ),
                           ],
@@ -1230,16 +1345,6 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                     ),
                   ),
 
-                if (note.isNotEmpty && (raw != 'approved' || note != 'Approved by Meta. Ready to send.'))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      note,
-                      style: campaignText(11, color: muted),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
               ],
             ),
           ),
@@ -1293,6 +1398,8 @@ class _MobileCampaignDashboardState extends State<MobileCampaignDashboard> {
                 const SizedBox(height: 2),
                 Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'Roboto',
                     fontSize: 10.5,

@@ -14,8 +14,8 @@ async function recount(filter) {
     'stats.messagesSent': countStatuses(['sent', 'delivered', 'read']),
     'stats.delivered': countStatuses(['delivered', 'read']), 'stats.read': countStatuses(['read']),
     'stats.failed': countStatuses(['failed']),
-  } }, { $set: { 'stats.deliveryRate': { $cond: [{ $gt: ['$stats.messagesSent', 0] },
-    { $round: [{ $multiply: [{ $divide: ['$stats.delivered', '$stats.messagesSent'] }, 100] }, 1] }, 0] } } }]);
+  } }, { $set: { 'stats.deliveryRate': { $cond: [{ $gt: [{ $add: ['$stats.messagesSent', '$stats.failed'] }, 0] },
+    { $round: [{ $multiply: [{ $divide: [{ $cond: [{ $gt: ['$stats.delivered', 0] }, '$stats.delivered', '$stats.messagesSent'] }, { $add: ['$stats.messagesSent', '$stats.failed'] }] }, 100] }, 1] }, 0] } } }]);
 }
 
 async function receipt(campaign, update) {

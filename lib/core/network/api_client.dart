@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../security/secure_storage_service.dart';
+import '../services/network_service.dart';
 import 'api_endpoints.dart';
 import 'api_exception.dart';
 import 'interceptors/auth_interceptor.dart';
@@ -37,6 +38,14 @@ class ApiClient {
     }
   }
 
+  bool _isConnectionIssue(DioException e) {
+    return e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        (e.error != null && e.error.toString().toLowerCase().contains('socketexception'));
+  }
+
   Future<Response<dynamic>> _executeWithRetry(
     Future<Response<dynamic>> Function() request,
   ) async {
@@ -44,13 +53,7 @@ class ApiClient {
     try {
       return await request();
     } on DioException catch (e) {
-      final isConnectionIssue = e.type == DioExceptionType.connectionError ||
-          e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.sendTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          (e.error != null && e.error.toString().toLowerCase().contains('socketexception'));
-
-      if (isConnectionIssue) {
+      if (_isConnectionIssue(e)) {
         // Fast parallel re-scan to discover active server endpoint
         await ApiEndpoints.initialize(forceRecheck: true);
         _syncBaseUrl();
@@ -58,6 +61,7 @@ class ApiClient {
         try {
           return await request();
         } catch (_) {
+          NetworkService.notifyConnectionFailureIfActive();
           rethrow;
         }
       }
@@ -116,6 +120,9 @@ class ApiClient {
       final response = await _dio.post(path, data: data);
       return response.data;
     } on DioException catch (error) {
+      if (_isConnectionIssue(error)) {
+        NetworkService.notifyConnectionFailureIfActive();
+      }
       throw ApiException.fromDioException(error);
     }
   }

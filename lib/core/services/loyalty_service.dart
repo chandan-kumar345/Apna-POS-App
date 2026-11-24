@@ -17,10 +17,8 @@ class LoyaltyService {
   final DatabaseService _db = DatabaseService();
 
   LoyaltyBrandingModel? _cachedBranding;
-  LoyaltyPerformanceModel? _cachedPerformance;
 
   LoyaltyBrandingModel? get cachedBranding => _cachedBranding;
-  LoyaltyPerformanceModel? get cachedPerformance => _cachedPerformance;
 
   /// Default fallback programs if fresh offline or first launch
   LoyaltyBrandingModel getDefaultLoyaltyBranding() {
@@ -61,14 +59,7 @@ class LoyaltyService {
             final cleanPrograms = parsed.programs
                 .where((p) => p.id != 'prog_cashback_5' && p.id != 'prog_cashback_50')
                 .toList();
-            _cachedBranding = LoyaltyBrandingModel(
-              companyName: parsed.companyName,
-              companyLogo: parsed.companyLogo,
-              members: parsed.members,
-              totalCashback: parsed.totalCashback,
-              redemptions: parsed.redemptions,
-              programs: cleanPrograms,
-            );
+            _cachedBranding = parsed.copyWith(programs: cleanPrograms);
             await _persistBrandingToPrefs(_cachedBranding!);
             return _cachedBranding!;
           }
@@ -83,14 +74,7 @@ class LoyaltyService {
       final cleanPrograms = local.programs
           .where((p) => p.id != 'prog_cashback_5' && p.id != 'prog_cashback_50')
           .toList();
-      _cachedBranding = LoyaltyBrandingModel(
-        companyName: local.companyName,
-        companyLogo: local.companyLogo,
-        members: local.members,
-        totalCashback: local.totalCashback,
-        redemptions: local.redemptions,
-        programs: cleanPrograms,
-      );
+      _cachedBranding = local.copyWith(programs: cleanPrograms);
       return _cachedBranding!;
     }
 
@@ -99,204 +83,54 @@ class LoyaltyService {
     return defaultData;
   }
 
+
+
   final Map<String, LoyaltyPerformanceModel> _performanceCache = {};
 
-  /// Fetch performance metrics (Fast Cache-First & Dynamic Refresh)
-  Future<LoyaltyPerformanceModel> fetchLoyaltyPerformance({
+  /// Fetch performance & transaction metrics for a program and date range
+  Future<LoyaltyPerformanceModel?> fetchProgramPerformance({
     bool forceRefresh = false,
-    String? dateRange,
+    String dateRange = 'Last 30 Days',
     String? programId,
   }) async {
-    final cacheKey = '${dateRange ?? 'default'}_${programId ?? 'all'}';
+    final cacheKey = '${dateRange}_${programId ?? 'all'}';
     if (!forceRefresh && _performanceCache.containsKey(cacheKey)) {
-      _cachedPerformance = _performanceCache[cacheKey];
-      return _cachedPerformance!;
+      return _performanceCache[cacheKey];
     }
-    if (!forceRefresh && dateRange == null && programId == null && _cachedPerformance != null) {
-      return _cachedPerformance!;
-    }
-
-    LoyaltyPerformanceModel? resultModel;
 
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
         final queryParams = <String, dynamic>{
-          'dateRange': ?dateRange,
-          if (programId != null && programId != 'all') 'programId': programId,
+          'dateRange': dateRange,
+          if (programId != null && programId.isNotEmpty && programId != 'all')
+            'programId': programId,
         };
         final response = await _apiClient.get(
           ApiEndpoints.loyaltyPerformance,
-          queryParameters: queryParams.isNotEmpty ? queryParams : null,
+          queryParameters: queryParams,
         );
         if (response != null) {
           final data = (response is Map<String, dynamic> && response.containsKey('data'))
               ? response['data']
               : response;
           if (data is Map<String, dynamic>) {
-            resultModel = LoyaltyPerformanceModel.fromJson(data);
+            final parsed = LoyaltyPerformanceModel.fromJson(data);
+            _performanceCache[cacheKey] = parsed;
+            return parsed;
           }
         }
       }
     } catch (e) {
-      debugPrint('[LoyaltyService.fetchLoyaltyPerformance] API error: $e');
+      debugPrint('[LoyaltyService.fetchProgramPerformance] API error: $e');
     }
 
-    // Merge with locally created visit config if needed
-    final base = resultModel ?? _performanceCache[cacheKey] ?? _cachedPerformance ?? const LoyaltyPerformanceModel();
-    final syncedModel = await _ensureProgramInPerformance(base);
-
-    _performanceCache[cacheKey] = syncedModel;
-    if (dateRange == null && (programId == null || programId == 'all')) _cachedPerformance = syncedModel;
-    return syncedModel;
-  }
-
-  /// Ensure locally created VisitRewardConfig and branding programs are represented in program library
-  Future<LoyaltyPerformanceModel> _ensureProgramInPerformance(LoyaltyPerformanceModel base) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final configJsonStr = prefs.getString('apna_pos_visit_reward_config');
-
-      final Map<String, ProgramLibraryItemModel> consolidatedMap = {};
-
-      // 1. Add any programs returned by backend
-      for (final p in base.programLibrary) {
-        consolidatedMap[p.id] = p;
-      }
-
-      // 2. Add/sync VisitRewardConfig if present
-      if (configJsonStr != null && configJsonStr.isNotEmpty) {
-        try {
-          final configMap = jsonDecode(configJsonStr) as Map<String, dynamic>?;
-          if (configMap != null && configMap['isConfigured'] == true) {
-            final config = VisitRewardConfig.fromJson(configMap);
-            final progName = config.programName.isNotEmpty
-                ? config.programName
-                : (_db.restaurant?.name ?? _db.currentUser?.companyName ?? 'THE ROYAL GARDENIA');
-
-            final orderTypes = config.orderType.isNotEmpty
-                ? config.orderType.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
-                : const ['DineIn', 'TakeAway'];
-
-            final starterStage = config.rewardStages.isNotEmpty ? config.rewardStages.first : null;
-            final starterRewardTitle = starterStage != null
-                ? (starterStage.freeItemName.isNotEmpty ? starterStage.freeItemName : '🎁 Level 1 Offer (₹${starterStage.rewardValue.toInt()} off)')
-                : '🎁 Level 1 Offer';
-            final starterRewardSubtext = starterStage != null
-                ? '${starterStage.visitCount} Cookie'
-                : '200 Cookie';
-
-            final isProgActive = config.isActive && config.status != 'inactive' && config.status != 'draft';
-            final progStatus = isProgActive ? 'active' : (config.status.isNotEmpty ? config.status : 'inactive');
-
-            consolidatedMap['prog_visit_made'] = ProgramLibraryItemModel(
-              id: 'prog_visit_made',
-              name: progName,
-              status: progStatus,
-              createDate: '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
-              category: 'Visit Made',
-              channel: 'Store Visit',
-              orderTypes: orderTypes,
-              bannerImageUrl: config.bannerImageUrl,
-              logoUrl: config.logoUrl,
-              pointsName: 'Cookie',
-              pointsPerVisit: config.pointsPerVisit,
-              slogan: config.slogan.isNotEmpty ? config.slogan : 'Get rewarded on every purchase',
-              bgGradientStart: config.bgGradientStart.isNotEmpty ? config.bgGradientStart : '#4A082F',
-              bgGradientEnd: config.bgGradientEnd.isNotEmpty ? config.bgGradientEnd : '#8E1449',
-              rewardColorStart: '#0F766E',
-              rewardColorEnd: '#064E3B',
-              starterRewardTitle: starterRewardTitle,
-              starterRewardSubtext: starterRewardSubtext,
-              isActive: isProgActive,
-            );
-          }
-        } catch (_) {}
-      }
-
-      // 3. Add any active programs from cached branding
-      if (_cachedBranding != null) {
-        for (final bp in _cachedBranding!.programs) {
-          if (!consolidatedMap.containsKey(bp.id)) {
-            final isBActive = bp.isActive;
-            final bCategory = bp.type == LoyaltyType.visitMade
-                ? 'Visit Made'
-                : bp.type == LoyaltyType.amountSpent
-                    ? 'Amount Spent'
-                    : 'Cashback';
-            final colors = bp.gradientColors;
-
-            consolidatedMap[bp.id] = ProgramLibraryItemModel(
-              id: bp.id,
-              name: bp.title.isNotEmpty ? bp.title : _cachedBranding!.companyName,
-              status: isBActive ? 'active' : 'inactive',
-              category: bCategory,
-              channel: 'Store Visit',
-              pointsName: bp.rewardCurrency,
-              slogan: bp.description,
-              bgGradientStart: colors.isNotEmpty ? colors.first : '#4A082F',
-              bgGradientEnd: colors.length > 1 ? colors[1] : '#8E1449',
-              isActive: isBActive,
-            );
-          }
-        }
-      }
-
-      final currentLib = consolidatedMap.values.toList();
-      final activeCount = currentLib.where((p) => p.status.toLowerCase() == 'active' || (p.isActive && p.status.toLowerCase() != 'draft' && p.status.toLowerCase() != 'inactive')).length;
-      final inactiveCount = currentLib.where((p) => p.status.toLowerCase() == 'inactive' || (!p.isActive && p.status.toLowerCase() != 'draft')).length;
-      final draftCount = currentLib.where((p) => p.status.toLowerCase() == 'draft').length;
-      final totalCount = currentLib.length;
-
-      // Health Score: If base had 0 but we have active programs, provide healthy baseline
-      int healthScore = base.healthScore;
-      String healthStatus = base.healthScoreStatus;
-      if (healthScore == 0 && activeCount > 0) {
-        healthScore = 85;
-        healthStatus = 'Good • Active loyalty engagement';
-      }
-
-      return LoyaltyPerformanceModel(
-        activeProgramsCount: activeCount,
-        inactiveProgramsCount: inactiveCount,
-        draftProgramsCount: draftCount,
-        totalProgramsCount: totalCount,
-        healthScore: healthScore,
-        healthScoreStatus: healthStatus,
-        dateRangeText: base.dateRangeText,
-        totalRevenue: base.totalRevenue,
-        totalRedemptions: base.totalRedemptions,
-        totalParticipants: base.totalParticipants,
-        redemptionRate: base.redemptionRate,
-        pointsRedeemed: base.pointsRedeemed,
-        pointsIssued: base.pointsIssued,
-        avgRewardPerRedemption: base.avgRewardPerRedemption,
-        chartData: base.chartData,
-        topRedeemingCustomers: base.topRedeemingCustomers,
-        rewardScoreboard: base.rewardScoreboard,
-        recentActivity: base.recentActivity,
-        programLibrary: currentLib,
-        totalMembers: base.totalMembers,
-        activeMembers: base.activeMembers,
-        rewardsClaimed: base.rewardsClaimed,
-        repeatVisitRate: base.repeatVisitRate,
-        totalPointsIssued: base.totalPointsIssued,
-        totalCashbackGiven: base.totalCashbackGiven,
-        loyaltyRevenue: base.loyaltyRevenue,
-        roiPercentage: base.roiPercentage,
-      );
-    } catch (e) {
-      debugPrint('[LoyaltyService._ensureProgramInPerformance] error: $e');
-      return base;
-    }
+    return _performanceCache[cacheKey];
   }
 
   /// Delete a loyalty program via API and update local cache
   Future<bool> deleteLoyaltyProgram(String programId) async {
     try {
-      _performanceCache.clear();
-      _cachedPerformance = null;
-
       final prefs = await SharedPreferences.getInstance();
       if (programId == 'prog_visit_made' || programId.contains('visit')) {
         await prefs.remove('apna_pos_visit_reward_config');
@@ -309,14 +143,7 @@ class LoyaltyService {
 
       if (_cachedBranding != null) {
         final updatedList = _cachedBranding!.programs.where((p) => p.id != programId).toList();
-        _cachedBranding = LoyaltyBrandingModel(
-          companyName: _cachedBranding!.companyName,
-          companyLogo: _cachedBranding!.companyLogo,
-          members: _cachedBranding!.members,
-          totalCashback: _cachedBranding!.totalCashback,
-          redemptions: _cachedBranding!.redemptions,
-          programs: updatedList,
-        );
+        _cachedBranding = _cachedBranding!.copyWith(programs: updatedList);
         await _persistBrandingToPrefs(_cachedBranding!);
       }
       return true;
@@ -350,14 +177,7 @@ class LoyaltyService {
         } else {
           updatedList.add(program);
         }
-        _cachedBranding = LoyaltyBrandingModel(
-          companyName: _cachedBranding!.companyName,
-          companyLogo: _cachedBranding!.companyLogo,
-          members: _cachedBranding!.members,
-          totalCashback: _cachedBranding!.totalCashback,
-          redemptions: _cachedBranding!.redemptions,
-          programs: updatedList,
-        );
+        _cachedBranding = _cachedBranding!.copyWith(programs: updatedList);
         await _persistBrandingToPrefs(_cachedBranding!);
       }
 
@@ -382,14 +202,7 @@ class LoyaltyService {
         final updatedList = List<LoyaltyProgramModel>.from(_cachedBranding!.programs);
         updatedList.removeWhere((p) => p.id == program.id);
         updatedList.add(program);
-        _cachedBranding = LoyaltyBrandingModel(
-          companyName: _cachedBranding!.companyName,
-          companyLogo: _cachedBranding!.companyLogo,
-          members: _cachedBranding!.members,
-          totalCashback: _cachedBranding!.totalCashback,
-          redemptions: _cachedBranding!.redemptions,
-          programs: updatedList,
-        );
+        _cachedBranding = _cachedBranding!.copyWith(programs: updatedList);
         await _persistBrandingToPrefs(_cachedBranding!);
       }
       return true;
@@ -402,9 +215,6 @@ class LoyaltyService {
   /// Toggle / update status of a program in the program library
   Future<bool> updateProgramStatus(String programId, {required bool isActive, String? status}) async {
     try {
-      _performanceCache.clear();
-      _cachedPerformance = null;
-
       final prefs = await SharedPreferences.getInstance();
       final configJsonStr = prefs.getString('apna_pos_visit_reward_config');
       if (configJsonStr != null && configJsonStr.isNotEmpty) {
@@ -423,14 +233,7 @@ class LoyaltyService {
           }
           return p;
         }).toList();
-        _cachedBranding = LoyaltyBrandingModel(
-          companyName: _cachedBranding!.companyName,
-          companyLogo: _cachedBranding!.companyLogo,
-          members: _cachedBranding!.members,
-          totalCashback: _cachedBranding!.totalCashback,
-          redemptions: _cachedBranding!.redemptions,
-          programs: updatedPrograms,
-        );
+        _cachedBranding = _cachedBranding!.copyWith(programs: updatedPrograms);
         await _persistBrandingToPrefs(_cachedBranding!);
       }
 
@@ -456,8 +259,6 @@ class LoyaltyService {
   /// Save VisitRewardConfig (cached locally & synchronized with backend API)
   Future<bool> saveVisitRewardConfig(VisitRewardConfig config) async {
     try {
-      _performanceCache.clear();
-      _cachedPerformance = null;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('apna_pos_visit_reward_config', jsonEncode(config.toJson()));
 
@@ -711,6 +512,8 @@ class LoyaltyService {
         'members': branding.members,
         'totalCashback': branding.totalCashback,
         'redemptions': branding.redemptions,
+        'revenue': branding.revenue,
+        'revenueGrowthPercent': branding.revenueGrowthPercent,
         'programs': branding.programs.map((p) => p.toJson()).toList(),
       };
       await prefs.setString('apna_pos_cached_loyalty_branding', jsonEncode(map));

@@ -149,6 +149,8 @@ const loyaltyProgramSchema = new mongoose.Schema(
       members: { type: Number, default: 0 },
       totalCashback: { type: Number, default: 0 },
       redemptions: { type: Number, default: 0 },
+      revenue: { type: Number, default: 0 },
+      revenueGrowthPercent: { type: Number, default: null },
     },
     visitConfig: { type: visitRewardConfigSchema, default: () => ({}) },
     programs: [singleProgramSchema],

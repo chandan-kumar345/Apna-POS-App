@@ -2,6 +2,92 @@ import 'package:flutter/material.dart';
 import '../services/network_service.dart';
 import '../database/database_service.dart';
 
+/// Shared online/offline dot indicator used inside header badges.
+/// Displays a pulsing green dot when internet is active and turns red when disconnected.
+class ConnectionStatusDot extends StatefulWidget {
+  final double size;
+  final bool showTooltip;
+
+  const ConnectionStatusDot({
+    super.key,
+    this.size = 10.5,
+    this.showTooltip = true,
+  });
+
+  @override
+  State<ConnectionStatusDot> createState() => _ConnectionStatusDotState();
+}
+
+class _ConnectionStatusDotState extends State<ConnectionStatusDot>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  late final AnimationController _pulseController;
+  final NetworkService _networkService = NetworkService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _networkService.checkNow();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: _networkService.isOnlineNotifier,
+      builder: (context, isOnline, _) {
+        final Color dotColor = isOnline
+            ? const Color(0xFF22C55E)
+            : const Color(0xFFEF4444);
+
+        final Widget dot = AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, _) {
+            return Container(
+              width: widget.size,
+              height: widget.size,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: dotColor.withValues(alpha: 0.45 + (_pulseController.value * 0.35)),
+                    blurRadius: 6 + (_pulseController.value * 3),
+                    spreadRadius: _pulseController.value * 1.2,
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+
+        if (!widget.showTooltip) return dot;
+
+        return Tooltip(
+          message: isOnline ? 'Online • Internet Connected' : 'Offline • No Internet Connection',
+          child: dot,
+        );
+      },
+    );
+  }
+}
+
 /// Interactive Header Badge that displays real-time Online/Offline status & Cloud Sync indicators.
 class GlassConnectionStatusBadge extends StatefulWidget {
   final bool compact;
@@ -17,26 +103,18 @@ class GlassConnectionStatusBadge extends StatefulWidget {
   State<GlassConnectionStatusBadge> createState() => _GlassConnectionStatusBadgeState();
 }
 
-class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseController;
+class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge> {
   final NetworkService _networkService = NetworkService();
   final DatabaseService _db = DatabaseService();
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-
     _db.addListener(_onDbUpdate);
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _db.removeListener(_onDbUpdate);
     super.dispose();
   }
@@ -287,26 +365,7 @@ class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
                   alignment: Alignment.center,
                   children: [
                     // Animated pulsing dot
-                    AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        return Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: dotColor,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: dotColor.withOpacity(0.4 + (_pulseController.value * 0.4)),
-                                blurRadius: 6 + (_pulseController.value * 3),
-                                spreadRadius: _pulseController.value * 1.5,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                    const ConnectionStatusDot(size: 10, showTooltip: false),
 
                     // Sync spinner if actively syncing
                     if (isSyncing)

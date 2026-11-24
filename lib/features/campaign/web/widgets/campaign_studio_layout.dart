@@ -830,9 +830,17 @@ class CampaignStudioLayout extends StatelessWidget {
     final sentCount = campaign.stats.messagesSent;
     final deliveredCount = campaign.stats.delivered;
     final readCount = campaign.stats.read;
+    final failedCount = campaign.stats.failed;
     final recipientCount = campaign.audience.recipientCount;
+    final totalAttempted = recipientCount > 0 ? recipientCount : (sentCount + failedCount);
 
-    final deliveryPct = sentCount > 0 ? ((deliveredCount / sentCount) * 100).clamp(0.0, 100.0) : 0.0;
+    final deliveryPct = totalAttempted > 0
+        ? (failedCount > 0
+            ? ((totalAttempted - failedCount) / totalAttempted * 100.0).clamp(0.0, 100.0)
+            : (deliveredCount > 0
+                ? ((deliveredCount / totalAttempted) * 100.0).clamp(0.0, 100.0)
+                : (sentCount > 0 ? 100.0 : 0.0)))
+        : (sentCount > 0 ? ((deliveredCount / sentCount) * 100).clamp(0.0, 100.0) : 0.0);
     final readPct = deliveredCount > 0 ? ((readCount / deliveredCount) * 100).clamp(0.0, 100.0) : 0.0;
 
     return Material(

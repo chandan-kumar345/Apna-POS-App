@@ -9,7 +9,6 @@ import '../../core/navigation/merchant_web_router.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
-import '../../core/widgets/connection_status_badge.dart';
 import '../../core/widgets/liquid_wallet_balance_popup.dart';
 import '../pos/pos_register_screen.dart';
 import '../tables/table_management_screen.dart';
@@ -1880,59 +1879,59 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                           child: Row(
                             children: [
                               // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Circular Brand Logo (Toggles Sidebar)
-                                  InkWell(
-                                    onTap: _toggleSidebar,
-                                    borderRadius: BorderRadius.circular(22),
-                                    child: Container(
-                                      width: 44,
-                                      height: 44,
-                                      padding: const EdgeInsets.all(2.0),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.white,
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 1.5)),
-                                        ],
-                                      ),
-                                      child: ClipOval(
-                                        child: _buildCompanyProfileLogo(40),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    // Circular Brand Logo (Toggles Sidebar)
+                                    InkWell(
+                                      onTap: _toggleSidebar,
+                                      borderRadius: BorderRadius.circular(22),
+                                      child: Container(
+                                        width: 44,
+                                        height: 44,
+                                        padding: const EdgeInsets.all(2.0),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 1.5)),
+                                          ],
+                                        ),
+                                        child: ClipOval(
+                                          child: _buildCompanyProfileLogo(40),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 9),
+                                    const SizedBox(width: 9),
 
-                                  // HIGHLIGHTED COMPANY NAME WITH DROPDOWN IF STAFF MEMBERS EXIST
-                                  GlassCompanyNameBadge(
-                                    name: companyTitle,
-                                    hasDropdown: db.staffList.where((s) => !db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email)).isNotEmpty,
-                                    isDropdownOpen: _isStaffDropdownOpen,
-                                    isNeumorphic: false,
-                                    onTap: () {
-                                      final hasStaff = db.staffList.any((s) => !db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email));
-                                      if (hasStaff) {
-                                        _openStaffProfileDropdown();
-                                      } else {
-                                        _toggleSidebar();
-                                      }
-                                    },
-                                  ),
-                                ],
+                                    // HIGHLIGHTED COMPANY NAME WITH LIVE STATUS DOT & STAFF DROPDOWN IF STAFF EXIST
+                                    Flexible(
+                                      child: GlassCompanyNameBadge(
+                                        name: companyTitle,
+                                        hasDropdown: db.staffList.where((s) => !db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email)).isNotEmpty,
+                                        isDropdownOpen: _isStaffDropdownOpen,
+                                        isNeumorphic: false,
+                                        onTap: () {
+                                          final hasStaff = db.staffList.any((s) => !db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email));
+                                          if (hasStaff) {
+                                            _openStaffProfileDropdown();
+                                          } else {
+                                            _toggleSidebar();
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const Spacer(),
-                            // ONLINE / OFFLINE STATUS DOT INDICATOR
-                            const GlassConnectionStatusBadge(isDarkTheme: true),
-                            const SizedBox(width: 9),
-                            // WALLET KHAZANA BUTTON
-                            _buildWalletButton(isNeumorphic: false),
-                            const SizedBox(width: 9),
-                            // NOTIFICATION BELL BUTTON
-                            _buildNotificationBellButton(isNeumorphic: false),
-                          ],
-                        ),
+                              const SizedBox(width: 9),
+                              // WALLET KHAZANA BUTTON
+                              _buildWalletButton(isNeumorphic: false),
+                              const SizedBox(width: 9),
+                              // NOTIFICATION BELL BUTTON
+                              _buildNotificationBellButton(isNeumorphic: false),
+                            ],
+                          ),
                       ),
                       secondChild: const SizedBox.shrink(),
                       crossFadeState: (_selectedIndex == 1 && _isPosFullScreen)

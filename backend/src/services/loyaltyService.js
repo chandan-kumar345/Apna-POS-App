@@ -31,6 +31,27 @@ class LoyaltyService {
     return Array.from(set).filter(Boolean);
   }
 
+  _normalizePhoneTail(phone) {
+    if (!phone) return '';
+    const digits = String(phone).replace(/\D/g, '');
+    return digits.length > 10 ? digits.slice(-10) : digits;
+  }
+
+  _formatShortDate(dateValue) {
+    if (!dateValue) return '';
+    try {
+      const dt = new Date(dateValue);
+      if (isNaN(dt.getTime())) return '';
+      return dt.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch (_) {
+      return '';
+    }
+  }
+
   /**
    * Find CustomerLoyalty across phone variants and automatically consolidate any duplicates.
    */
@@ -195,48 +216,217 @@ class LoyaltyService {
       }
     }
 
-    // Dynamic live metrics
+    // Dynamic live metrics & per-program attribution
     const bObjectId = mongoose.isValidObjectId(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
-    const realMembersCount = await CustomerLoyalty.countDocuments({ businessId }).catch(() => 0);
 
-    const [realRedeemAgg, realEarnAgg] = await Promise.all([
-      LoyaltyTransaction.aggregate([
-        { $match: { businessId: bObjectId, type: 'redeem' } },
-        {
-          $group: {
-            _id: null,
-            totalDiscount: { $sum: '$discountAmount' },
-            count: { $sum: 1 },
-          },
-        },
-      ]).catch(() => []),
-      CustomerLoyalty.aggregate([
-        { $match: { businessId: bObjectId } },
-        {
-          $group: {
-            _id: null,
-            totalCashback: { $sum: '$totalCashbackEarned' },
-          },
-        },
-      ]).catch(() => []),
+    const [customerLoyaltyDocs, allTxs] = await Promise.all([
+      CustomerLoyalty.find({ businessId: bObjectId })
+        .select('customerPhone totalCashbackEarned totalCashbackRedeemed totalPointsEarned totalPointsRedeemed totalVisits cashbackBalance pointsBalance')
+        .lean()
+        .catch(() => []),
+      LoyaltyTransaction.find({ businessId: bObjectId })
+        .select('type programId customerPhone orderId orderNumber points discountAmount stageId createdAt')
+        .lean()
+        .catch(() => []),
     ]);
 
-    const redemptionsCount = realRedeemAgg.length > 0 ? (realRedeemAgg[0].count || 0) : 0;
-    const totalCashbackGiven = (realRedeemAgg.length > 0 && realRedeemAgg[0].totalDiscount > 0)
-      ? realRedeemAgg[0].totalDiscount
-      : (realEarnAgg.length > 0 ? (realEarnAgg[0].totalCashback || 0) : 0);
+    const memberTailSet = new Set();
+    const engagedPhoneVariantsSet = new Set();
+    let earnedCashbackTotal = 0;
+
+    for (const cl of customerLoyaltyDocs) {
+      const tail = this._normalizePhoneTail(cl.customerPhone);
+      if (tail) memberTailSet.add(tail);
+      earnedCashbackTotal += Number(cl.totalCashbackEarned) || 0;
+
+      const isEngaged =
+        (Number(cl.totalVisits) || 0) > 0 ||
+        (Number(cl.totalCashbackEarned) || 0) > 0 ||
+        (Number(cl.totalPointsEarned) || 0) > 0 ||
+        (Number(cl.totalCashbackRedeemed) || 0) > 0 ||
+        (Number(cl.totalPointsRedeemed) || 0) > 0 ||
+        (Number(cl.cashbackBalance) || 0) > 0 ||
+        (Number(cl.pointsBalance) || 0) > 0;
+
+      if (isEngaged && cl.customerPhone) {
+        this._getPhoneVariants(cl.customerPhone).forEach((v) => engagedPhoneVariantsSet.add(v));
+      }
+    }
+
+    const redeemTxs = [];
+    const earnTxs = [];
+    const linkedOrderIds = [];
+    const linkedOrderNumbers = new Set();
+    let earnCashbackTxTotal = 0;
+    let redeemedDiscountTotal = 0;
+
+    for (const tx of allTxs) {
+      if (tx.customerPhone) {
+        this._getPhoneVariants(tx.customerPhone).forEach((v) => engagedPhoneVariantsSet.add(v));
+      }
+      if (tx.orderId && mongoose.Types.ObjectId.isValid(tx.orderId)) {
+        linkedOrderIds.push(new mongoose.Types.ObjectId(tx.orderId));
+      }
+      if (tx.orderNumber && String(tx.orderNumber).trim()) {
+        linkedOrderNumbers.add(String(tx.orderNumber).trim());
+      }
+      if (tx.type === 'redeem') {
+        redeemTxs.push(tx);
+        redeemedDiscountTotal += Number(tx.discountAmount) || 0;
+      } else if (tx.type === 'earn') {
+        earnTxs.push(tx);
+        earnCashbackTxTotal += Number(tx.discountAmount) || 0;
+      }
+    }
+
+    const realMembersCount = memberTailSet.size > 0 ? memberTailSet.size : customerLoyaltyDocs.length;
+    const redemptionsCount = redeemTxs.length;
+    const totalCashbackIssued = Math.max(earnedCashbackTotal, earnCashbackTxTotal);
+    const totalCashbackGiven = totalCashbackIssued > 0 ? totalCashbackIssued : redeemedDiscountTotal;
+
+    // Calculate Loyalty-Attributed Revenue & Period Growth %
+    let loyaltyRevenue = 0;
+    let revenueGrowthPercent = null;
+    const orderOrConditions = [];
+    if (linkedOrderIds.length > 0) {
+      orderOrConditions.push({ _id: { $in: linkedOrderIds } });
+    }
+    if (linkedOrderNumbers.size > 0) {
+      orderOrConditions.push({ orderNumber: { $in: Array.from(linkedOrderNumbers) } });
+    }
+    if (engagedPhoneVariantsSet.size > 0) {
+      orderOrConditions.push({ customerPhone: { $in: Array.from(engagedPhoneVariantsSet) } });
+    }
+
+    if (orderOrConditions.length > 0) {
+      const loyaltyOrders = await Order.find({
+        businessId: bObjectId,
+        status: { $in: ['completed', 'settled'] },
+        $or: orderOrConditions,
+      })
+        .select('totalAmount completedAt createdAt')
+        .lean()
+        .catch(() => []);
+
+      const nowMs = Date.now();
+      const d30 = 30 * 24 * 60 * 60 * 1000;
+      const d7 = 7 * 24 * 60 * 60 * 1000;
+      let curr30 = 0;
+      let prev30 = 0;
+      let curr7 = 0;
+      let prev7 = 0;
+
+      for (const ord of loyaltyOrders) {
+        const amt = Number(ord.totalAmount) || 0;
+        loyaltyRevenue += amt;
+        const ts = new Date(ord.completedAt || ord.createdAt || nowMs).getTime();
+        if (ts >= nowMs - d30) {
+          curr30 += amt;
+        } else if (ts >= nowMs - 2 * d30) {
+          prev30 += amt;
+        }
+        if (ts >= nowMs - d7) {
+          curr7 += amt;
+        } else if (ts >= nowMs - 2 * d7) {
+          prev7 += amt;
+        }
+      }
+
+      if (prev30 > 0) {
+        revenueGrowthPercent = Math.round(((curr30 - prev30) / prev30) * 100);
+      } else if (prev7 > 0) {
+        revenueGrowthPercent = Math.round(((curr7 - prev7) / prev7) * 100);
+      }
+    }
+
+    // Hydrate per-program live statistics dynamically
+    const rawProgramsList = Array.isArray(loyaltyDoc.programs) ? loyaltyDoc.programs : [];
+    const cashbackProgramsList = rawProgramsList.filter(
+      (pr) => pr.type !== 'visit_made' && pr.id !== 'prog_visit_made'
+    );
+    const primaryCashbackProg =
+      cashbackProgramsList.find((pr) => pr.isActive !== false && pr.status !== 'inactive' && pr.status !== 'draft') ||
+      (cashbackProgramsList.length > 0 ? cashbackProgramsList[0] : null);
+
+    const hydratedPrograms = rawProgramsList.map((rawProg) => {
+      const p = rawProg.toObject ? rawProg.toObject() : { ...rawProg };
+      const isVisitProg = p.type === 'visit_made' || p.id === 'prog_visit_made';
+
+      let matchingTxs = allTxs.filter((tx) => tx.programId && tx.programId === p.id);
+
+      // Legacy fallback for historical transactions recorded without programId on cashback programs
+      if (matchingTxs.length === 0) {
+        if (isVisitProg) {
+          matchingTxs = allTxs.filter(
+            (tx) => (!tx.programId || tx.programId === 'prog_visit_made') && tx.stageId !== 'cashback_custom'
+          );
+        } else if (primaryCashbackProg && primaryCashbackProg.id === p.id) {
+          matchingTxs = allTxs.filter(
+            (tx) =>
+              (tx.type === 'earn' && Number(tx.discountAmount) > 0 && (!tx.programId || tx.programId === 'prog_visit_made')) ||
+              (tx.type === 'redeem' && tx.stageId === 'cashback_custom')
+          );
+        }
+      }
+
+      const uniqueProgCustomers = new Set(
+        matchingTxs.map((tx) => this._normalizePhoneTail(tx.customerPhone)).filter(Boolean)
+      ).size;
+      const progEarnTxs = matchingTxs.filter((tx) => tx.type === 'earn');
+      const progRedeemTxs = matchingTxs.filter((tx) => tx.type === 'redeem');
+
+      const txCashbackEarned = progEarnTxs.reduce((s, tx) => s + (Number(tx.discountAmount) || 0), 0);
+      const txCashbackRedeemed = progRedeemTxs.reduce((s, tx) => s + (Number(tx.discountAmount) || 0), 0);
+      const txCashbackGiven = txCashbackEarned > 0 ? txCashbackEarned : txCashbackRedeemed;
+
+      let computedRate = 0;
+      if (isVisitProg) {
+        const ptsIssued = progEarnTxs.reduce((s, tx) => s + (Number(tx.points) || 0), 0);
+        const ptsRedeemed = progRedeemTxs.reduce((s, tx) => s + Math.abs(Number(tx.points) || 0), 0);
+        computedRate = ptsIssued > 0 ? Math.min(100, Number(((ptsRedeemed / ptsIssued) * 100).toFixed(1))) : 0;
+      } else {
+        computedRate = txCashbackEarned > 0
+          ? Math.min(100, Number(((txCashbackRedeemed / txCashbackEarned) * 100).toFixed(1)))
+          : (progRedeemTxs.length > 0 ? 100 : 0);
+      }
+
+      const ordersCount = Math.max(progEarnTxs.length, Number(p.stats?.ordersCount || 0));
+      const cashbackGiven = Math.max(txCashbackGiven, Number(p.stats?.cashbackGiven || 0));
+      const membersCount = Math.max(uniqueProgCustomers, Number(p.stats?.membersCount || 0));
+      const redemptionRate = computedRate > 0 ? computedRate : Number(p.stats?.redemptionRate || 0);
+      const fallbackStarted = p.startedDate && String(p.startedDate).trim()
+        ? p.startedDate
+        : this._formatShortDate(p.createdAt || loyaltyDoc.createdAt);
+
+      return {
+        ...p,
+        startedDate: fallbackStarted,
+        membersCount,
+        ordersCount,
+        cashbackGiven,
+        redemptionRate,
+        stats: {
+          ordersCount,
+          cashbackGiven,
+          redemptionRate,
+          membersCount,
+        },
+      };
+    });
 
     const dynamicMetrics = {
       members: realMembersCount,
       totalCashback: totalCashbackGiven,
       redemptions: redemptionsCount,
+      revenue: Math.round(loyaltyRevenue),
+      revenueGrowthPercent,
     };
 
     return {
       companyName: loyaltyDoc.companyName || dynamicCompanyName,
       companyLogo: loyaltyDoc.companyLogo || dynamicCompanyLogo,
       dashboardMetrics: dynamicMetrics,
-      programs: loyaltyDoc.programs || [],
+      programs: hydratedPrograms,
       visitConfig: loyaltyDoc.visitConfig,
       isConfigured: true,
     };
@@ -668,9 +858,9 @@ class LoyaltyService {
       customerLoyalty.cashbackBalance = (customerLoyalty.cashbackBalance || 0) + totalCashbackAwarded;
       customerLoyalty.totalCashbackEarned = (customerLoyalty.totalCashbackEarned || 0) + totalCashbackAwarded;
 
-      if (loyaltyDoc && loyaltyDoc.dashboardMetrics) {
+      if (loyaltyDoc) {
+        if (!loyaltyDoc.dashboardMetrics) loyaltyDoc.dashboardMetrics = {};
         loyaltyDoc.dashboardMetrics.totalCashback = (loyaltyDoc.dashboardMetrics.totalCashback || 0) + totalCashbackAwarded;
-        loyaltyDoc.dashboardMetrics.redemptions = (loyaltyDoc.dashboardMetrics.redemptions || 0) + 1;
         loyaltyDoc.markModified('dashboardMetrics');
         loyaltyDoc.markModified('programs');
         await loyaltyDoc.save();
@@ -700,12 +890,14 @@ class LoyaltyService {
       msg = `[APNA POS] Congratulations! You earned ${pointsAwarded} ${pointsName} on your order at ${programName}. Total balance: ${customerLoyalty.pointsBalance} ${pointsName}.`;
     }
 
+    const earnProgramId = appliedCashbackPrograms.length > 0 ? appliedCashbackPrograms[0].id : 'prog_visit_made';
     await LoyaltyTransaction.create({
       businessId,
       customerPhone: cleanPhone,
       orderId: order._id || (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null),
       orderNumber: order.orderNumber || '',
       type: 'earn',
+      programId: earnProgramId,
       points: pointsAwarded > 0 ? pointsAwarded : totalCashbackAwarded,
       discountAmount: totalCashbackAwarded,
       balanceAfter: customerLoyalty.pointsBalance,
@@ -995,13 +1187,22 @@ class LoyaltyService {
 
     await customerLoyalty.save();
 
-    // Increment redemptions counter on LoyaltyProgram doc
+    // Increment redemptions counter on LoyaltyProgram doc & attribute programId
+    let redeemProgramId = 'prog_visit_made';
     try {
       const loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
-      if (loyaltyDoc && loyaltyDoc.dashboardMetrics) {
-        loyaltyDoc.dashboardMetrics.redemptions = (loyaltyDoc.dashboardMetrics.redemptions || 0) + 1;
-        loyaltyDoc.markModified('dashboardMetrics');
-        await loyaltyDoc.save();
+      if (loyaltyDoc) {
+        if (loyaltyDoc.dashboardMetrics) {
+          loyaltyDoc.dashboardMetrics.redemptions = (loyaltyDoc.dashboardMetrics.redemptions || 0) + 1;
+          loyaltyDoc.markModified('dashboardMetrics');
+          await loyaltyDoc.save();
+        }
+        if (isCashback && Array.isArray(loyaltyDoc.programs)) {
+          const cbProg = loyaltyDoc.programs.find(
+            (p) => p.type !== 'visit_made' && p.id !== 'prog_visit_made' && p.isActive !== false && p.status !== 'inactive'
+          ) || loyaltyDoc.programs.find((p) => p.type !== 'visit_made' && p.id !== 'prog_visit_made');
+          if (cbProg?.id) redeemProgramId = cbProg.id;
+        }
       }
     } catch (_) {}
 
@@ -1016,6 +1217,7 @@ class LoyaltyService {
       orderId: orderId && mongoose.Types.ObjectId.isValid(orderId) ? orderId : null,
       orderNumber: orderNumber || '',
       type: 'redeem',
+      programId: redeemProgramId,
       points: -points,
       balanceAfter: isCashback ? customerLoyalty.cashbackBalance : customerLoyalty.pointsBalance,
       stageId: stageId || (isCashback ? 'cashback_custom' : ''),
@@ -1053,6 +1255,9 @@ class LoyaltyService {
     } else if (dateRangeStr === 'Last 30 Days') {
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0);
       label = 'Last 30 Days';
+    } else if (dateRangeStr === 'Last 90 Days') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 89, 0, 0, 0, 0);
+      label = 'Last 90 Days';
     } else if (dateRangeStr === 'This Month') {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       label = 'This Month';
@@ -1155,16 +1360,35 @@ class LoyaltyService {
     const dateMatch = isAllTime ? {} : { createdAt: { $gte: startDate, $lte: endDate } };
 
     const selectedProgramId = query.programId && query.programId !== 'all' ? query.programId : null;
-    const programTxMatch = selectedProgramId ? { $or: [{ programId: selectedProgramId }, { stageId: { $exists: true, $ne: '' } }] } : {};
+    let programTxMatch = {};
+    if (selectedProgramId) {
+      if (selectedProgramId === 'prog_visit_made' || selectedProgramId.includes('visit')) {
+        programTxMatch = { $or: [{ programId: selectedProgramId }, { stageId: { $ne: 'cashback_custom' }, discountAmount: 0 }] };
+      } else {
+        programTxMatch = {
+          $or: [
+            { programId: selectedProgramId },
+            { stageId: 'cashback_custom' },
+            { type: 'earn', discountAmount: { $gt: 0 } },
+          ],
+        };
+      }
+    }
+
+    const spanMs = startDate && endDate ? (endDate.getTime() - startDate.getTime() + 1) : 0;
+    const prevStart = !isAllTime && spanMs > 0 ? new Date(startDate.getTime() - spanMs) : null;
+    const prevEnd = !isAllTime && spanMs > 0 ? new Date(startDate.getTime() - 1) : null;
 
     // Parallel Aggregation Pipeline
     const [
       totalParticipants,
       uniqueRedeemersRaw,
+      uniqueProgramCustomersRaw,
       earnAggRaw,
       redeemAggRaw,
       loyaltyDocRaw,
       totalSalesRaw,
+      prevSalesRaw,
       topAggRaw,
       recentTxDocsRaw,
       dailySalesRaw,
@@ -1176,10 +1400,13 @@ class LoyaltyService {
       // 2. Unique customers who have redeemed in date range
       LoyaltyTransaction.distinct('customerPhone', { businessId, type: 'redeem', ...dateMatch, ...programTxMatch }).catch(() => []),
 
-      // 3. Points issued & earn count in date range
+      // 2b. Unique customers who earned/redeemed in date range for this program
+      LoyaltyTransaction.distinct('customerPhone', { businessId, ...dateMatch, ...programTxMatch }).catch(() => []),
+
+      // 3. Points/cashback issued & earn count in date range
       LoyaltyTransaction.aggregate([
         { $match: { businessId, type: 'earn', ...dateMatch, ...programTxMatch } },
-        { $group: { _id: null, totalPoints: { $sum: '$points' }, count: { $sum: 1 } } },
+        { $group: { _id: null, totalPoints: { $sum: '$points' }, totalCashback: { $sum: '$discountAmount' }, count: { $sum: 1 } } },
       ]).catch(() => []),
 
       // 4. Points redeemed, discount amount & redeem count in date range
@@ -1204,6 +1431,14 @@ class LoyaltyService {
         { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
       ]).catch(() => []),
 
+      // 6b. Previous period revenue for growth comparison
+      prevStart && prevEnd
+        ? Order.aggregate([
+            { $match: { businessId, status: { $in: ['completed', 'settled'] }, createdAt: { $gte: prevStart, $lte: prevEnd } } },
+            { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+          ]).catch(() => [])
+        : Promise.resolve([]),
+
       // 7. Top 10 redeeming customers
       LoyaltyTransaction.aggregate([
         { $match: { businessId, type: 'redeem', ...dateMatch, ...programTxMatch } },
@@ -1219,11 +1454,11 @@ class LoyaltyService {
         { $limit: 10 },
       ]).catch(() => []),
 
-      // 8. Recent 10 transactions
-      LoyaltyTransaction.find({ businessId, ...programTxMatch })
+      // 8. Recent transactions (up to 50 for full table + View All)
+      LoyaltyTransaction.find({ businessId, ...dateMatch, ...programTxMatch })
         .sort({ createdAt: -1 })
-        .limit(10)
-        .populate('orderId', 'orderType totalAmount orderNumber createdAt')
+        .limit(50)
+        .populate('orderId', 'orderType totalAmount subtotal orderNumber createdAt')
         .lean()
         .catch(() => []),
 
@@ -1319,6 +1554,7 @@ class LoyaltyService {
 
     // 2. Metrics & Points Totals
     const pointsIssued = earnAggRaw.length > 0 ? Number(earnAggRaw[0].totalPoints) || 0 : 0;
+    const totalCashbackEarnedAmount = earnAggRaw.length > 0 ? Number(earnAggRaw[0].totalCashback) || 0 : 0;
     const totalEarnTxs = earnAggRaw.length > 0 ? Number(earnAggRaw[0].count) || 0 : 0;
     const pointsRedeemed = redeemAggRaw.length > 0 ? Number(redeemAggRaw[0].totalPoints) || 0 : 0;
     const totalRedeemTxs = redeemAggRaw.length > 0 ? Number(redeemAggRaw[0].count) || 0 : 0;
@@ -1328,7 +1564,21 @@ class LoyaltyService {
     const redemptionRate = `${redemptionRateNum.toFixed(2)}%`;
     const avgRewardPerRedemption = totalRedeemTxs > 0 ? Math.round(totalDiscountAmount / totalRedeemTxs) : 0;
     const totalRevenue = totalSalesRaw.length > 0 ? Number(totalSalesRaw[0].total) || 0 : 0;
+    const totalOrdersCount = totalSalesRaw.length > 0 ? Number(totalSalesRaw[0].count) || 0 : 0;
+    const prevRevenue = prevSalesRaw.length > 0 ? Number(prevSalesRaw[0].total) || 0 : 0;
+    const revenueGrowthPercent = prevRevenue > 0
+      ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 1000) / 10
+      : null;
     const uniqueRedeemingCount = Array.isArray(uniqueRedeemersRaw) ? uniqueRedeemersRaw.length : 0;
+    const programCustomersCount = Array.isArray(uniqueProgramCustomersRaw) ? uniqueProgramCustomersRaw.length : 0;
+
+    const cashbackGivenTotal = totalCashbackEarnedAmount > 0 ? totalCashbackEarnedAmount : totalDiscountAmount;
+    const cashbackRedemptionRateNum = cashbackGivenTotal > 0
+      ? Math.min(100, (totalDiscountAmount / cashbackGivenTotal) * 100)
+      : (totalEarnTxs > 0 ? Math.min(100, (totalRedeemTxs / totalEarnTxs) * 100) : 0);
+    const avgRevenuePerRedemption = totalRedeemTxs > 0
+      ? Math.round(totalRevenue / totalRedeemTxs)
+      : (totalEarnTxs > 0 ? Math.round(totalRevenue / totalEarnTxs) : 0);
 
     // 3. Dynamic Health Score Calculation
     const { score: healthScore, status: healthScoreStatus } = this.calculateLoyaltyHealthScore({
@@ -1440,9 +1690,14 @@ class LoyaltyService {
     const recentActivity = (recentTxDocsRaw || []).map((tx) => {
       const isRedeem = tx.type === 'redeem';
       const phone = String(tx.customerPhone || '').trim();
-      const orderType = (tx.orderId && tx.orderId.orderType) ? tx.orderId.orderType : 'Quick Payment';
-      const dateStr = tx.createdAt
-        ? new Date(tx.createdAt).toLocaleString('en-US', {
+      const orderObj = tx.orderId && typeof tx.orderId === 'object' ? tx.orderId : null;
+      const orderType = orderObj?.orderType || 'Quick Payment';
+      const orderNumber = tx.orderNumber || orderObj?.orderNumber || (orderObj?._id ? String(orderObj._id).slice(-6).toUpperCase() : '');
+      const orderValue = Number(orderObj?.totalAmount ?? orderObj?.subtotal ?? 0);
+      const cashbackAmount = Number(tx.discountAmount > 0 ? tx.discountAmount : Math.abs(tx.points || 0));
+      const txDate = tx.createdAt ? new Date(tx.createdAt) : null;
+      const dateStr = txDate
+        ? txDate.toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
@@ -1453,11 +1708,18 @@ class LoyaltyService {
         : '';
 
       return {
+        id: String(tx._id || ''),
         customerPhone: phone, // FULL UNMASKED PHONE NUMBER
         action: isRedeem ? 'Redeem' : 'Earn',
+        status: isRedeem ? 'Redeemed' : 'Earned',
         points: isRedeem ? `${tx.points}` : `+${tx.points}`,
         orderType: orderType,
+        orderId: orderObj?._id ? String(orderObj._id) : '',
+        orderNumber: orderNumber,
+        orderValue: orderValue,
+        cashbackAmount: cashbackAmount,
         date: dateStr,
+        createdAt: txDate ? txDate.toISOString() : '',
       };
     });
 
@@ -1582,6 +1844,20 @@ class LoyaltyService {
           draft: draftCount,
         },
         programs: programLibrary,
+      },
+
+      // Cashback program details metrics
+      cashbackMetrics: {
+        totalCustomers: selectedProgramId ? programCustomersCount : totalParticipants,
+        ordersCount: totalEarnTxs > 0 ? totalEarnTxs : (selectedProgramId ? totalRedeemTxs : totalOrdersCount),
+        cashbackGiven: cashbackGivenTotal,
+        cashbackRedeemed: totalDiscountAmount,
+        redemptionRate: Number(cashbackRedemptionRateNum.toFixed(2)),
+        totalRevenue,
+        revenueGrowthPercent,
+        avgRevenuePerRedemption,
+        dateRangeStart: startDate ? startDate.toISOString() : '',
+        dateRangeEnd: endDate ? endDate.toISOString() : '',
       },
 
       // Top-level aliases for direct access and backward compatibility

@@ -357,9 +357,9 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                   children: [
                     Row(
                       children: [
-                        if (widget.onBack != null) ...[
+                        if (widget.onBack == null && Navigator.of(context).canPop()) ...[
                           IconButton(
-                            onPressed: widget.onBack,
+                            onPressed: () => Navigator.of(context).pop(),
                             icon: const Icon(
                               Icons.arrow_back_rounded,
                               color: Color(0xFF0F1E36),
@@ -408,36 +408,45 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                 value: _totalCustomers == null
                     ? '—'
                     : _format.format(_totalCustomers),
-                icon: Icons.people_alt_rounded,
-                gradient: const [Color(0xFFEDE9FE), Color(0xFFDDD6FE)],
-                iconColor: const Color(0xFF8B5CF6),
-                waveColor: const Color(0xFFEDE9FE),
+                icon: Icons.people_outline_rounded,
+                bgGradient: const [Color(0xFFF6F3FF), Color(0xFFEDE9FE)],
+                iconGradient: const [Color(0xFFEDE9FE), Color(0xFFDDD6FE)],
+                iconColor: const Color(0xFF7C3AED),
+                waveColor: const Color(0xFFDDD6FE),
                 onTap: () => _switchTab(0),
               ),
               const SizedBox(width: 12),
               _metricCard(
                 label: 'Groups',
                 value: '${_groups?.length ?? 0}',
-                icon: Icons.folder_rounded,
-                gradient: const [Color(0xFFDCFCE7), Color(0xFFBBF7D0)],
-                iconColor: const Color(0xFF10B981),
-                waveColor: const Color(0xFFDCFCE7),
+                icon: Icons.folder_outlined,
+                bgGradient: const [Color(0xFFF0FDF4), Color(0xFFDCFCE7)],
+                iconGradient: const [Color(0xFFDCFCE7), Color(0xFFBBF7D0)],
+                iconColor: const Color(0xFF16A34A),
+                waveColor: const Color(0xFFBBF7D0),
                 onTap: () => _switchTab(1),
               ),
             ],
           ),
           const SizedBox(height: 14),
 
-          // Search Input Bar
+          // Search Input Bar (Bright crisp white capsule matching design kit)
           Container(
             height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFFE2EDF5).withValues(alpha: 0.65),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: const Color(0xFFD6E4EF),
+                color: Colors.white.withValues(alpha: 0.95),
                 width: 1.2,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: TextField(
               controller: _search,
@@ -733,7 +742,8 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     required String label,
     required String value,
     required IconData icon,
-    required List<Color> gradient,
+    required List<Color> bgGradient,
+    required List<Color> iconGradient,
     required Color iconColor,
     required Color waveColor,
     VoidCallback? onTap,
@@ -743,17 +753,24 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           child: Container(
             clipBehavior: Clip.antiAlias,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white, width: 1.2),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: bgGradient,
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.9),
+                width: 1.5,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0B2545).withValues(alpha: 0.07),
+                  color: const Color(0xFF0B2545).withValues(alpha: 0.06),
                   blurRadius: 14,
                   offset: const Offset(0, 4),
                 ),
@@ -763,11 +780,11 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
               clipBehavior: Clip.none,
               children: [
                 Positioned(
-                  right: -16,
-                  bottom: -20,
+                  right: -18,
+                  bottom: -22,
                   child: Container(
-                    width: 70,
-                    height: 70,
+                    width: 76,
+                    height: 76,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: waveColor.withValues(alpha: 0.35),
@@ -777,18 +794,18 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                 Row(
                   children: [
                     Container(
-                      width: 44,
-                      height: 44,
+                      width: 46,
+                      height: 46,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: gradient,
+                          colors: iconGradient,
                         ),
-                        borderRadius: BorderRadius.circular(15),
+                        borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: iconColor.withValues(alpha: 0.2),
+                            color: iconColor.withValues(alpha: 0.22),
                             blurRadius: 8,
                             offset: const Offset(0, 3),
                           ),
@@ -804,11 +821,13 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                         children: [
                           Text(
                             label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontFamily: 'Roboto',
                               fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F1E36),
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -819,10 +838,10 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                               value,
                               style: const TextStyle(
                                 fontFamily: 'Roboto',
-                                fontSize: 22,
+                                fontSize: 24,
                                 fontWeight: FontWeight.w900,
                                 color: Color(0xFF0F1E36),
-                                letterSpacing: -0.4,
+                                letterSpacing: -0.5,
                               ),
                             ),
                           ),
@@ -851,11 +870,11 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _switchTab(index),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
             decoration: BoxDecoration(
               gradient: selected
                   ? const LinearGradient(
@@ -865,7 +884,11 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                     )
                   : null,
               color: selected ? null : Colors.white,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white,
+                width: 1.2,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: selected
@@ -970,10 +993,10 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
     final count = group.totalNumbers;
     final isVip = group.name.toLowerCase().contains('vip');
 
-    // 3D icon styling for group
+    // 3D icon styling for group matching design mockup
     final (icon, gradient, iconColor, shadowColor) = isVip
         ? (
-            Icons.workspace_premium_rounded,
+            Icons.military_tech_rounded,
             const [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
             const Color(0xFFD97706),
             const Color(0xFFD97706).withValues(alpha: 0.25),
@@ -989,15 +1012,15 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         elevation: 0,
         child: InkWell(
           onTap: () => _openGroup(group),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.9),
                 width: 1.2,
@@ -1005,7 +1028,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF0B2545).withValues(alpha: 0.06),
-                  blurRadius: 14,
+                  blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -1015,8 +1038,8 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
               children: [
                 // 3D Icon Badge
                 Container(
-                  width: 50,
-                  height: 50,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -1032,7 +1055,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                       ),
                     ],
                   ),
-                  child: Icon(icon, color: iconColor, size: 26),
+                  child: Icon(icon, color: iconColor, size: 28),
                 ),
                 const SizedBox(width: 12),
 
@@ -1051,8 +1074,8 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontFamily: 'Roboto',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w900,
                                 color: Color(0xFF0F1E36),
                               ),
                             ),
@@ -1061,7 +1084,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
-                              vertical: 3,
+                              vertical: 3.5,
                             ),
                             decoration: BoxDecoration(
                               color: isVip
@@ -1084,19 +1107,19 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                           const SizedBox(width: 4),
                           const Icon(
                             Icons.chevron_right_rounded,
-                            size: 20,
+                            size: 22,
                             color: Color(0xFF64748B),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 6),
 
                       // Row 2: Metadata (Numbers | Updated)
                       Row(
                         children: [
                           const Icon(
-                            Icons.people_alt_outlined,
-                            size: 14,
+                            Icons.people_outline_rounded,
+                            size: 15,
                             color: Color(0xFF64748B),
                           ),
                           const SizedBox(width: 4),
@@ -1104,7 +1127,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                             '${_format.format(count)} ${count == 1 ? 'number' : 'numbers'}',
                             style: const TextStyle(
                               fontFamily: 'Roboto',
-                              fontSize: 12,
+                              fontSize: 12.5,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF0F1E36),
                             ),
@@ -1125,30 +1148,34 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                             color: Color(0xFF64748B),
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            _updated(group),
-                            style: const TextStyle(
-                              fontFamily: 'Roboto',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF64748B),
+                          Expanded(
+                            child: Text(
+                              _updated(group),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF64748B),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
 
                       // Row 3: Ready for campaigns pill & options button
                       Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 4,
+                              horizontal: 10,
+                              vertical: 4.5,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE0F2FE),
-                              borderRadius: BorderRadius.circular(10),
+                              color: const Color(0xFFE0F7FA),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1175,9 +1202,13 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                           Container(
                             width: 32,
                             height: 32,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF1F5F9),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
                               shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.0,
+                              ),
                             ),
                             child: PopupMenuButton<String>(
                               tooltip: 'Options for ${group.name}',
@@ -1228,15 +1259,15 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         elevation: 0,
         child: InkWell(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           onTap: () {},
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.9),
                 width: 1.2,
@@ -1244,7 +1275,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF0B2545).withValues(alpha: 0.06),
-                  blurRadius: 14,
+                  blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -1254,8 +1285,8 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
               children: [
                 // 3D Avatar Icon Badge
                 Container(
-                  width: 50,
-                  height: 50,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
@@ -1274,7 +1305,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                   child: const Icon(
                     Icons.person_rounded,
                     color: Color(0xFF0284C7),
-                    size: 26,
+                    size: 28,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1293,8 +1324,8 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontFamily: 'Roboto',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w900,
                                 color: Color(0xFF0F1E36),
                               ),
                             ),
@@ -1303,7 +1334,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
-                              vertical: 3,
+                              vertical: 3.5,
                             ),
                             decoration: BoxDecoration(
                               color: isVip
@@ -1330,12 +1361,12 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                           const SizedBox(width: 4),
                           const Icon(
                             Icons.chevron_right_rounded,
-                            size: 20,
+                            size: 22,
                             color: Color(0xFF64748B),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 6),
 
                       // Phone Number
                       Row(
@@ -1346,20 +1377,22 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                             color: Color(0xFF64748B),
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            customer.phone,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'Roboto',
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                              fontWeight: FontWeight.w500,
+                          Expanded(
+                            child: Text(
+                              customer.phone,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'Roboto',
+                                fontSize: 12.5,
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
 
                       // Stats Row
                       Row(
@@ -1374,7 +1407,7 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                             '${customer.totalOrders} ${customer.totalOrders == 1 ? 'order' : 'orders'}',
                             style: const TextStyle(
                               fontFamily: 'Roboto',
-                              fontSize: 11.5,
+                              fontSize: 12,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF0F1E36),
                             ),
@@ -1391,11 +1424,11 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 2,
+                              horizontal: 8,
+                              vertical: 2.5,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE0F2FE),
+                              color: const Color(0xFFE0F7FA),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -1516,6 +1549,23 @@ class _MobileCustomersScreenState extends State<MobileCustomersScreen> {
 /// 3D Customer Group Graphic with avatars and golden plus badge matching design mockup
 class _CustomerGroup3DGraphic extends StatelessWidget {
   const _CustomerGroup3DGraphic();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 95,
+      height: 68,
+      child: Image.asset(
+        'assets/images/customers_hero_3d_feathered.png',
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const _CustomerGroup3DFallback(),
+      ),
+    );
+  }
+}
+
+class _CustomerGroup3DFallback extends StatelessWidget {
+  const _CustomerGroup3DFallback();
 
   @override
   Widget build(BuildContext context) {

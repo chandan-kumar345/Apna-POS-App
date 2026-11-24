@@ -5,7 +5,6 @@ import '../../../core/database/database_service.dart';
 import '../../../core/models/loyalty_program_model.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/services/loyalty_service.dart';
-import 'loyalty_performance_screen.dart';
 
 class SelectableProductItem {
   final String id;
@@ -511,7 +510,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Button 1: Go to Inactive Section (Redirects directly to Inactive tab)
+              // Back to Loyalty Hub Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -525,45 +524,18 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                   onPressed: () {
                     Navigator.pop(ctx);
                     widget.onCompleted?.call();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const LoyaltyPerformanceScreen(initialLibraryFilter: 2),
-                      ),
-                    );
+                    Navigator.pop(context);
                   },
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'Go to Inactive Section',
+                        'Back to Loyalty Hub',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                       SizedBox(width: 6),
                       Icon(Icons.arrow_forward_rounded, size: 16, color: Colors.white),
                     ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // Button 2: Back to Loyalty Hub
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF64748B),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    widget.onCompleted?.call();
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    'Back to Loyalty Hub',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),

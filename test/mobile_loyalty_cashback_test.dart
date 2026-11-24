@@ -15,49 +15,98 @@ void main() {
   }
 
   group('Loyalty Cashback Screens Tests', () {
-    testWidgets('Screen 1: LoyaltyLandingScreen renders dashboard with header, hero card, metrics and programs', (tester) async {
+    testWidgets('Screen 1: LoyaltyLandingScreen renders redesigned dashboard with dynamic metrics and programs', (tester) async {
       tester.view.physicalSize = const Size(412, 915);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(buildTestWidget(const LoyaltyLandingScreen()));
+      final dynamicBranding = LoyaltyBrandingModel(
+        companyName: 'Pizza 47',
+        companyLogo: '',
+        members: 7,
+        totalCashback: 156,
+        redemptions: 3,
+        revenue: 5420,
+        revenueGrowthPercent: 18,
+        programs: [
+          LoyaltyProgramModel(
+            id: 'prog_cashback_1',
+            type: LoyaltyType.cashback,
+            title: 'Cashback on Every Order',
+            description: 'Give cashback to customers on their orders.',
+            earningRule: 'Get 5% cashback on all orders',
+            validity: '01 Oct 2026 – 23 Nov 2026',
+            startedDate: '01 Oct 2026',
+            membersCount: 5,
+            ordersCount: 6,
+            cashbackGiven: 156,
+            isActive: true,
+          ),
+          LoyaltyProgramModel(
+            id: 'prog_inactive_1',
+            type: LoyaltyType.cashback,
+            title: 'Weekend Bonus Cashback',
+            description: 'Extra rewards on weekend orders.',
+            earningRule: 'Get ₹50 cashback',
+            validity: '31 Dec 2026',
+            membersCount: 2,
+            isActive: false,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        buildTestWidget(LoyaltyLandingScreen(initialBranding: dynamicBranding)),
+      );
       await tester.pumpAndSettle();
 
-      // Top bar elements (POS Screen Top Header with P4 avatar and Pizza 47 title)
+      // Top bar elements (POS Screen Top Header)
       expect(find.text('P4'), findsOneWidget);
       expect(find.text('Pizza 47'), findsWidgets);
 
-      // Header title & subtitle
+      // Hero Banner Header title & subtitle
       expect(find.text('Loyalty Program'), findsOneWidget);
-      expect(find.text('Build customer loyalty with cashback, points & rewards.'), findsOneWidget);
+      expect(
+        find.text('Boost customer loyalty with cashback,\nrewards & more.'),
+        findsOneWidget,
+      );
 
-      // Hero card
+      // Cashback Rewards Banner Card
       expect(find.text('Cashback Rewards'), findsOneWidget);
-      expect(find.text('Give instant or future cashback on every order.'), findsOneWidget);
+      expect(
+        find.text('Give instant or future cashback on every order.'),
+        findsOneWidget,
+      );
 
-      // 3 Stat Cards
+      // 4 Dynamic Metric Cards
       expect(find.text('Members'), findsOneWidget);
-      expect(find.text('3,420'), findsOneWidget);
+      expect(find.text('7'), findsOneWidget);
       expect(find.text('Total Cashback'), findsOneWidget);
-      expect(find.text('₹1,24,560'), findsOneWidget);
+      expect(find.text('₹156'), findsOneWidget);
       expect(find.text('Redemptions'), findsOneWidget);
-      expect(find.text('2,860'), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('Revenue'), findsOneWidget);
+      expect(find.text('₹5,420'), findsOneWidget);
+      expect(find.text('+18%'), findsOneWidget);
 
-      // Active programs
-      expect(find.text('Active Programs (2)'), findsOneWidget);
-      expect(find.text('5% Cashback Program'), findsOneWidget);
-      expect(find.text('Get 5% cashback on all orders'), findsOneWidget);
-      expect(find.text('₹50 Cashback on ₹500'), findsOneWidget);
+      // Active programs section & dynamic metadata
+      expect(find.text('Active Programs (1)'), findsOneWidget);
+      expect(find.text('View All'), findsOneWidget);
+      expect(find.text('Cashback on Every Order'), findsOneWidget);
+      expect(find.text('Give cashback to customers on their orders.'), findsOneWidget);
+      expect(find.text('Valid till: 23 Nov 2026'), findsOneWidget);
+      expect(find.text('Used by: 5 customers'), findsOneWidget);
 
-      // Action button
+      // Inactive program hidden until View All is tapped
+      expect(find.text('Weekend Bonus Cashback'), findsNothing);
+      await tester.tap(find.text('View All'));
+      await tester.pumpAndSettle();
+      expect(find.text('All Programs (2)'), findsOneWidget);
+      expect(find.text('Weekend Bonus Cashback'), findsOneWidget);
+
+      // Bottom CTA Button
       expect(find.text('Create Loyalty Program'), findsOneWidget);
-
-      // Bottom nav bar
-      expect(find.text('Home'), findsOneWidget);
-      expect(find.text('Campaigns'), findsOneWidget);
-      expect(find.text('Loyalty'), findsOneWidget);
-      expect(find.text('Customers'), findsOneWidget);
-      expect(find.text('More'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('Screen 2: CreateLoyaltyProgramScreen renders stepper wizard and interactive steps', (tester) async {
@@ -156,19 +205,25 @@ void main() {
       expect(find.text('01 Nov 2026 – 31 Dec 2026'), findsOneWidget);
       expect(find.text('All Customers'), findsOneWidget);
 
-      // Program performance card
-      expect(find.text('Program Performance'), findsOneWidget);
+      // KPI Metrics Grid
+      expect(find.text('Total Customers'), findsOneWidget);
+      expect(find.text('3,420'), findsOneWidget);
       expect(find.text('Orders'), findsOneWidget);
       expect(find.text('2,860'), findsOneWidget);
       expect(find.text('Cashback Given'), findsOneWidget);
       expect(find.text('₹1,24,560'), findsOneWidget);
       expect(find.text('Redemption Rate'), findsOneWidget);
-      expect(find.text('78.4%'), findsOneWidget);
+      expect(find.text('78.40%'), findsOneWidget);
+      expect(find.text('Revenue'), findsOneWidget);
+      expect(find.text('Avg. Revenue / Redemption'), findsOneWidget);
 
-      // 4 Action buttons
-      expect(find.text('Edit\nProgram'), findsOneWidget);
-      expect(find.text('View\nReports'), findsOneWidget);
-      expect(find.text('Eligible\nCustomers'), findsOneWidget);
+      // Recent Transactions table
+      expect(find.text('Recent Transactions'), findsOneWidget);
+      expect(find.text('View All'), findsOneWidget);
+
+      // 3 Action buttons
+      expect(find.text('Edit Program'), findsOneWidget);
+      expect(find.text('Eligible Customers'), findsWidgets);
       expect(find.text('Deactivate'), findsOneWidget);
     });
   });

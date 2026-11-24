@@ -213,6 +213,25 @@ class LoyaltyProgramModel {
     );
   }
 
+  String get formattedValidTill {
+    final raw = validity.trim();
+    if (raw.isNotEmpty) {
+      if (raw.contains('–')) {
+        final end = raw.split('–').last.trim();
+        if (end.isNotEmpty) return end;
+      }
+      if (raw.contains(' - ')) {
+        final end = raw.split(' - ').last.trim();
+        if (end.isNotEmpty) return end;
+      }
+      return raw;
+    }
+    if (startedDate.trim().isNotEmpty) {
+      return startedDate.trim();
+    }
+    return 'Ongoing';
+  }
+
   List<Color> get parsedGradientColors {
     if (gradientColors.isEmpty) {
       return [const Color(0xFF08435E), const Color(0xFF166E8D)];
@@ -340,6 +359,8 @@ class LoyaltyBrandingModel {
   final int members;
   final double totalCashback;
   final int redemptions;
+  final double revenue;
+  final double? revenueGrowthPercent;
 
   LoyaltyBrandingModel({
     required this.companyName,
@@ -348,7 +369,32 @@ class LoyaltyBrandingModel {
     this.members = 0,
     this.totalCashback = 0.0,
     this.redemptions = 0,
+    this.revenue = 0.0,
+    this.revenueGrowthPercent,
   });
+
+  LoyaltyBrandingModel copyWith({
+    String? companyName,
+    String? companyLogo,
+    List<LoyaltyProgramModel>? programs,
+    int? members,
+    double? totalCashback,
+    int? redemptions,
+    double? revenue,
+    double? revenueGrowthPercent,
+    bool clearGrowth = false,
+  }) {
+    return LoyaltyBrandingModel(
+      companyName: companyName ?? this.companyName,
+      companyLogo: companyLogo ?? this.companyLogo,
+      programs: programs ?? this.programs,
+      members: members ?? this.members,
+      totalCashback: totalCashback ?? this.totalCashback,
+      redemptions: redemptions ?? this.redemptions,
+      revenue: revenue ?? this.revenue,
+      revenueGrowthPercent: clearGrowth ? null : (revenueGrowthPercent ?? this.revenueGrowthPercent),
+    );
+  }
 
   factory LoyaltyBrandingModel.fromJson(Map<String, dynamic> json) {
     final rawPrograms = json['programs'] as List?;
@@ -368,6 +414,9 @@ class LoyaltyBrandingModel {
       members: (metrics?['members'] as num?)?.toInt() ?? (json['members'] as num?)?.toInt() ?? 0,
       totalCashback: (metrics?['totalCashback'] as num?)?.toDouble() ?? (json['totalCashback'] as num?)?.toDouble() ?? 0.0,
       redemptions: (metrics?['redemptions'] as num?)?.toInt() ?? (json['redemptions'] as num?)?.toInt() ?? 0,
+      revenue: (metrics?['revenue'] as num?)?.toDouble() ?? (json['revenue'] as num?)?.toDouble() ?? 0.0,
+      revenueGrowthPercent: (metrics?['revenueGrowthPercent'] as num?)?.toDouble() ??
+          (json['revenueGrowthPercent'] as num?)?.toDouble(),
     );
   }
 }
@@ -439,27 +488,100 @@ class RewardScoreboardItem {
 }
 
 class RecentActivityModel {
+  final String id;
   final String customerPhone;
   final String action; // 'Redeem' or 'Earn'
+  final String status; // 'Redeemed' or 'Earned'
   final String points; // '-100' or '+38'
   final String orderType; // 'Quick Payment', 'Takeaway', 'Dine-in'
+  final String orderId;
+  final String orderNumber;
+  final double orderValue;
+  final double cashbackAmount;
   final String date; // 'Aug 20, 2025 3:10 PM'
+  final String createdAt;
 
   const RecentActivityModel({
+    this.id = '',
     required this.customerPhone,
     required this.action,
+    this.status = '',
     required this.points,
     required this.orderType,
+    this.orderId = '',
+    this.orderNumber = '',
+    this.orderValue = 0.0,
+    this.cashbackAmount = 0.0,
     required this.date,
+    this.createdAt = '',
   });
 
   factory RecentActivityModel.fromJson(Map<String, dynamic> json) {
+    final action = json['action']?.toString() ?? 'Earn';
+    final isRedeem = action.toLowerCase().contains('redeem') ||
+        (json['status']?.toString().toLowerCase().contains('redeem') ?? false);
+    final rawCashback = (json['cashbackAmount'] as num?)?.toDouble();
+    final fallbackPts = double.tryParse(
+          (json['points']?.toString() ?? '0').replaceAll(RegExp(r'[^0-9.]'), ''),
+        ) ??
+        0.0;
+
     return RecentActivityModel(
+      id: json['id']?.toString() ?? '',
       customerPhone: json['customerPhone']?.toString() ?? '+91XXXXXXX00',
-      action: json['action']?.toString() ?? 'Earn',
+      action: action,
+      status: json['status']?.toString().isNotEmpty == true
+          ? json['status'].toString()
+          : (isRedeem ? 'Redeemed' : 'Earned'),
       points: json['points']?.toString() ?? '+0',
       orderType: json['orderType']?.toString() ?? 'Dine-in',
+      orderId: json['orderId']?.toString() ?? '',
+      orderNumber: json['orderNumber']?.toString() ?? '',
+      orderValue: (json['orderValue'] as num?)?.toDouble() ?? 0.0,
+      cashbackAmount: rawCashback ?? fallbackPts,
       date: json['date']?.toString() ?? '',
+      createdAt: json['createdAt']?.toString() ?? '',
+    );
+  }
+}
+
+class CashbackMetricsModel {
+  final int totalCustomers;
+  final int ordersCount;
+  final double cashbackGiven;
+  final double cashbackRedeemed;
+  final double redemptionRate;
+  final double totalRevenue;
+  final double? revenueGrowthPercent;
+  final double avgRevenuePerRedemption;
+  final String dateRangeStart;
+  final String dateRangeEnd;
+
+  const CashbackMetricsModel({
+    this.totalCustomers = 0,
+    this.ordersCount = 0,
+    this.cashbackGiven = 0.0,
+    this.cashbackRedeemed = 0.0,
+    this.redemptionRate = 0.0,
+    this.totalRevenue = 0.0,
+    this.revenueGrowthPercent,
+    this.avgRevenuePerRedemption = 0.0,
+    this.dateRangeStart = '',
+    this.dateRangeEnd = '',
+  });
+
+  factory CashbackMetricsModel.fromJson(Map<String, dynamic> json) {
+    return CashbackMetricsModel(
+      totalCustomers: (json['totalCustomers'] as num?)?.toInt() ?? 0,
+      ordersCount: (json['ordersCount'] as num?)?.toInt() ?? 0,
+      cashbackGiven: (json['cashbackGiven'] as num?)?.toDouble() ?? 0.0,
+      cashbackRedeemed: (json['cashbackRedeemed'] as num?)?.toDouble() ?? 0.0,
+      redemptionRate: (json['redemptionRate'] as num?)?.toDouble() ?? 0.0,
+      totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
+      revenueGrowthPercent: (json['revenueGrowthPercent'] as num?)?.toDouble(),
+      avgRevenuePerRedemption: (json['avgRevenuePerRedemption'] as num?)?.toDouble() ?? 0.0,
+      dateRangeStart: json['dateRangeStart']?.toString() ?? '',
+      dateRangeEnd: json['dateRangeEnd']?.toString() ?? '',
     );
   }
 }
@@ -563,6 +685,7 @@ class LoyaltyPerformanceModel {
   final double totalCashbackGiven;
   final double loyaltyRevenue;
   final String roiPercentage;
+  final CashbackMetricsModel cashbackMetrics;
 
   const LoyaltyPerformanceModel({
     this.activeProgramsCount = 0,
@@ -592,6 +715,7 @@ class LoyaltyPerformanceModel {
     this.totalCashbackGiven = 0.0,
     this.loyaltyRevenue = 0.0,
     this.roiPercentage = '0%',
+    this.cashbackMetrics = const CashbackMetricsModel(),
   });
 
   factory LoyaltyPerformanceModel.fromJson(Map<String, dynamic> json) {
@@ -661,6 +785,17 @@ class LoyaltyPerformanceModel {
             .toList() ??
         [];
 
+    final cbSec = json['cashbackMetrics'] as Map<String, dynamic>?;
+    final cbMetrics = cbSec != null
+        ? CashbackMetricsModel.fromJson(cbSec)
+        : CashbackMetricsModel(
+            totalCustomers: participants.toInt(),
+            ordersCount: redemptions.toInt(),
+            cashbackGiven: (json['totalCashbackGiven'] as num?)?.toDouble() ?? 0.0,
+            totalRevenue: revenue.toDouble(),
+            avgRevenuePerRedemption: avgReward.toDouble(),
+          );
+
     return LoyaltyPerformanceModel(
       activeProgramsCount: activeCount.toInt(),
       inactiveProgramsCount: inactiveCount.toInt(),
@@ -689,6 +824,7 @@ class LoyaltyPerformanceModel {
       totalCashbackGiven: (json['totalCashbackGiven'] as num?)?.toDouble() ?? 0.0,
       loyaltyRevenue: revenue.toDouble(),
       roiPercentage: json['roiPercentage']?.toString() ?? '0%',
+      cashbackMetrics: cbMetrics,
     );
   }
 }

@@ -11,7 +11,6 @@ import '../../core/services/upload_service.dart';
 import '../../core/services/whatsapp_chat_service.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
-import '../../core/widgets/connection_status_badge.dart';
 import 'widgets/whatsapp_template_picker_dialog.dart';
 import '../../core/services/order_alert_permission_service.dart';
 
@@ -2021,10 +2020,6 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             ),
           ),
           const SizedBox(width: 8),
-
-          // ONLINE / OFFLINE STATUS DOT INDICATOR (Same as POS)
-          const GlassConnectionStatusBadge(isDarkTheme: true, compact: true),
-          const SizedBox(width: 10),
 
           // Glass circular action button: Refresh Chats
           _buildGlassHeaderButton(

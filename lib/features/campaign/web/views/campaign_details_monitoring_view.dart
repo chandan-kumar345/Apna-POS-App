@@ -480,13 +480,20 @@ class _CampaignDetailsMonitoringViewState extends State<CampaignDetailsMonitorin
       isNarrow: isNarrow,
     );
 
+    final totalAttempted = stats.messagesSent + stats.failed;
+    final double calculatedDeliveryRate = totalAttempted > 0
+        ? (stats.failed > 0
+            ? ((totalAttempted - stats.failed) / totalAttempted * 100.0)
+            : (stats.delivered > 0 ? (stats.delivered / totalAttempted * 100.0) : (stats.messagesSent > 0 ? 100.0 : 0.0)))
+        : (stats.deliveryRate > 0 ? stats.deliveryRate : 0.0);
+
     final deliveredCard = _buildMetricCard(
       'Delivered',
       '${stats.delivered}',
       Icons.done_all_rounded,
       const Color(0xFF10B981),
       const Color(0xFFECFDF5),
-      badge: '${stats.deliveryRate > 0 ? stats.deliveryRate.toStringAsFixed(1) : (stats.messagesSent > 0 ? "100.0" : "0.0")}%',
+      badge: '${calculatedDeliveryRate.clamp(0.0, 100.0).toStringAsFixed(1)}%',
       isNarrow: isNarrow,
     );
 
