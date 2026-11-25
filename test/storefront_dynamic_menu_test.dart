@@ -12,9 +12,9 @@ import 'package:apna_pos/core/services/network_service.dart';
 import 'package:apna_pos/core/theme/glass_theme.dart';
 import 'package:apna_pos/features/storefront/screens/customer_storefront_screen.dart';
 import 'package:apna_pos/features/storefront/services/storefront_service.dart';
+import 'package:apna_pos/features/storefront/widgets/online_order_flow_widgets.dart';
 import 'package:apna_pos/features/storefront/widgets/storefront_menu_view.dart';
 import 'package:apna_pos/features/storefront/widgets/storefront_product_detail_sheet.dart';
-import 'package:apna_pos/features/storefront/widgets/storefront_checkout_flow_sheet.dart';
 
 Map<String, dynamic> menuFixture({bool online = true}) => {
   'restaurant': {
@@ -91,12 +91,26 @@ void main() {
   });
   late List<Interceptor> originals;
   late Map<String, dynamic> response;
+  late List<Map<String, dynamic>> couponsResponse;
   Completer<void>? menuGate;
   bool notFound = false;
   final requests = <RequestOptions>[];
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     response = menuFixture();
+    couponsResponse = [
+      {
+        '_id': 'cp_first15',
+        'code': 'FIRST15',
+        'title': 'Flat 15% OFF',
+        'description': 'on your first online order',
+        'discountType': 'percentage',
+        'discountValue': 15,
+        'minCartAmount': 199,
+        'maxDiscountAmount': 150,
+        'isActive': true,
+      },
+    ];
     menuGate = null;
     notFound = false;
     requests.clear();
@@ -117,6 +131,35 @@ void main() {
                   statusCode: 404,
                   data: {'message': 'Storefront business not found'},
                 ),
+              ),
+            );
+            return;
+          }
+          if (options.path.endsWith('/coupons')) {
+            handler.resolve(
+              Response(
+                requestOptions: options,
+                statusCode: 200,
+                data: {'success': true, 'data': couponsResponse},
+              ),
+            );
+            return;
+          }
+          if (options.path.endsWith('/order')) {
+            handler.resolve(
+              Response(
+                requestOptions: options,
+                statusCode: 201,
+                data: {
+                  'success': true,
+                  'data': {
+                    'orderId': '507f1f77bcf86cd799439011',
+                    'orderNumber': 'ONL-TEST-101',
+                    'businessId': 'river',
+                    'status': 'pending',
+                    'paymentStatus': 'pending',
+                  },
+                },
               ),
             );
             return;
@@ -189,6 +232,10 @@ void main() {
       final context = key.currentContext!;
       await Future.wait([
         precacheImage(
+          const AssetImage('assets/images/storefront_promo_pizza_hd.jpg'),
+          context,
+        ),
+        precacheImage(
           const AssetImage('assets/images/tpl_food_diwali_pizza.png'),
           context,
         ),
@@ -219,22 +266,41 @@ void main() {
   }
 
   test('a new QR cannot inherit a cached table from another code', () async {
-    response['table'] = {'isValid': true, 'tableCode': 'T01', 'isTableOrdering': true};
+    response['table'] = {
+      'isValid': true,
+      'tableCode': 'T01',
+      'isTableOrdering': true,
+    };
     final service = StorefrontService();
-    final initial = await service.loadStorefront('qr-cache-fixture', tableCode: 'T01');
+    final initial = await service.loadStorefront(
+      'qr-cache-fixture',
+      tableCode: 'T01',
+    );
     expect(initial.tableInfo?.tableCode, 'T01');
     notFound = true;
-    final other = await service.loadStorefront('qr-cache-fixture', tableCode: 'T02');
+    final other = await service.loadStorefront(
+      'qr-cache-fixture',
+      tableCode: 'T02',
+    );
     expect(other.tableInfo?.tableCode, 'T02');
     expect(other.tableInfo?.isValid, isFalse);
-    final same = await service.loadStorefront('qr-cache-fixture', tableCode: 'T01');
+    final same = await service.loadStorefront(
+      'qr-cache-fixture',
+      tableCode: 'T01',
+    );
     expect(same.tableInfo?.isValid, isTrue);
     final normal = await service.loadStorefront('qr-cache-fixture');
     expect(normal.tableInfo, isNull);
   });
 
-  testWidgets('a valid QR route opens the redesigned table home', (tester) async {
-    response['table'] = {'isValid': true, 'tableCode': 'T01', 'isTableOrdering': true};
+  testWidgets('a valid QR route opens the redesigned table home', (
+    tester,
+  ) async {
+    response['table'] = {
+      'isValid': true,
+      'tableCode': 'T01',
+      'isTableOrdering': true,
+    };
     final key = GlobalKey();
     await mount(tester, slug: 'qr-layout-fixture', tableCode: 'T01', key: key);
     expect(requests.any((r) => r.queryParameters['T'] == 'T01'), isTrue);
@@ -255,7 +321,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('branding loads before menu and menu renders actual API data', (
+  testWidgets('branding loads before menu and home renders dynamic API data', (
     tester,
   ) async {
     final key = GlobalKey();
@@ -269,8 +335,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(StorefrontMenuView), findsOneWidget);
     expect(find.text('COMBO DELIGHT BOX'), findsOneWidget);
-    expect(find.text('All (2)'), findsOneWidget);
+    expect(find.text('Offers'), findsOneWidget);
+    expect(find.text('Favorites'), findsOneWidget);
+    expect(find.text('Support'), findsOneWidget);
+    expect(find.text('Popular Picks'), findsOneWidget);
+    expect(find.text('View All'), findsOneWidget);
     expect(find.text('Achari Paneer Pizza'), findsOneWidget);
+    expect(find.text('Flat 15% OFF'), findsOneWidget);
     expect(find.text('4.6'), findsNothing);
     expect(tester.takeException(), isNull);
     await capture(tester, key, 'restaurant-menu-390');
@@ -278,30 +349,91 @@ void main() {
   });
 
   testWidgets(
-    'search, categories, product customization and cart work with API items',
+    'search, categories, customization, cart, address, login and payment flow work with API items',
     (tester) async {
-      await mount(tester);
+      final key = GlobalKey();
+      await mount(tester, key: key);
       await tester.pumpAndSettle();
+      await capture(tester, key, 'delivery-01-home');
+
+      // Screen 1 -> Screen 2 (Our Menu)
+      await tester.tap(find.text('View All'));
+      await tester.pumpAndSettle();
+      expect(find.text('Our Menu'), findsOneWidget);
+
+      // Search filters dynamically
       await tester.enterText(find.byType(TextField).first, 'lime');
       await tester.pump();
       expect(find.text('Fresh Lime'), findsOneWidget);
       expect(find.text('Achari Paneer Pizza'), findsNothing);
+
+      // Reset search & tap category pill
       await tester.enterText(find.byType(TextField).first, '');
       tester.testTextInput.hide();
       await tester.tap(find.text('Paneer Pizza').first);
       await tester.pumpAndSettle();
-      expect(find.text('Paneer Pizza (1)'), findsOneWidget);
+      expect(find.text('1 item'), findsOneWidget);
       expect(find.text('Fresh Lime'), findsNothing);
-      await tester.ensureVisible(find.text('+ ADD').first);
-      await tester.tap(find.text('+ ADD').first);
+
+      // Reset to All category so full grouped menu renders
+      await tester.tap(find.text('All').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Fresh Lime'), findsOneWidget);
+
+      // Open product detail sheet & add to cart
+      await tester.ensureVisible(find.text('Achari Paneer Pizza').first);
+      await tester.tap(find.text('Achari Paneer Pizza').first);
       await tester.pumpAndSettle();
       expect(find.byType(StorefrontProductDetailSheet), findsOneWidget);
       await tester.tap(find.textContaining('Add to Cart').last);
       await tester.pumpAndSettle();
+      await capture(tester, key, 'delivery-02-menu');
+
+      // Floating View Cart bar -> Screen 3 Your Cart
       expect(find.text('View Cart'), findsOneWidget);
       await tester.tap(find.text('View Cart'));
       await tester.pumpAndSettle();
-      expect(find.byType(StorefrontCheckoutFlowSheet), findsOneWidget);
+      expect(find.text('Your Cart'), findsOneWidget);
+      expect(find.text('Enter Delivery Address'), findsOneWidget);
+      expect(find.text('Bill Summary'), findsOneWidget);
+      expect(find.text('GST (5%)'), findsOneWidget);
+
+      // Enter delivery address
+      await tester.tap(find.text('Enter Delivery Address'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('delivery-address-input')),
+        '42 Park Lane, Sector 18',
+      );
+      await tester.pumpAndSettle();
+      await capture(tester, key, 'delivery-06-address');
+      await tester.tap(find.text('Confirm Delivery Address'));
+      await tester.pumpAndSettle();
+      expect(find.text('42 Park Lane, Sector 18'), findsOneWidget);
+      await capture(tester, key, 'delivery-03-cart');
+
+      // Proceed to Checkout -> Screen 4 Login popup
+      await tester.tap(find.text('Proceed to Checkout'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OnlineLoginModalSheet), findsOneWidget);
+      expect(find.text('Login to Continue'), findsOneWidget);
+      expect(find.text('Send OTP'), findsOneWidget);
+      await capture(tester, key, 'delivery-04-login');
+
+      // Continue as Guest -> Screen 5 Payment Method popup
+      await tester.tap(find.text('Continue as Guest'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '9876543210');
+      await tester.tap(find.text('Continue to Payment'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OnlinePaymentModalSheet), findsOneWidget);
+      expect(find.text('Select Payment Method'), findsOneWidget);
+      expect(find.text('Pay via UPI'), findsOneWidget);
+      expect(find.text('Credit / Debit Card'), findsOneWidget);
+      expect(find.text('Net Banking'), findsOneWidget);
+      expect(find.text('Cash on Delivery'), findsOneWidget);
+      await capture(tester, key, 'delivery-05-payment');
+
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -324,7 +456,9 @@ void main() {
       await tester.pumpAndSettle();
       await refresh;
       expect(find.text('Closed'), findsOneWidget);
-      expect(find.text('+ ADD'), findsNothing);
+      await tester.tap(find.text('View All'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -357,7 +491,10 @@ void main() {
       size: const Size(320, 740),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('+ ADD').first);
+    expect(find.text('\$249'), findsOneWidget);
+    await tester.tap(find.text('View All'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add').first);
     expect(find.text('\$249'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await capture(tester, key, 'restaurant-menu-320');
@@ -384,6 +521,83 @@ void main() {
             .length,
         2,
       );
+    },
+  );
+
+  testWidgets(
+    'delivery address popup renders visible dark text under dark merchant theme',
+    (tester) async {
+      final key = GlobalKey();
+      await mount(
+        tester,
+        slug: 'dark-theme-address',
+        key: key,
+        merchantTheme: true,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('View All'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Achari Paneer Pizza').first);
+      await tester.tap(find.text('Achari Paneer Pizza').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Add to Cart').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('View Cart'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enter Delivery Address'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DeliveryAddressBottomSheet), findsOneWidget);
+      expect(find.text('Delivery Address'), findsOneWidget);
+      expect(find.text('House / Flat No., Building, Street *'), findsOneWidget);
+      expect(find.text('Landmark (Optional)'), findsOneWidget);
+      expect(find.text('Pincode'), findsOneWidget);
+
+      final addressField = tester.widget<TextField>(
+        find.byKey(const ValueKey('delivery-address-input')),
+      );
+      expect(addressField.style?.color, const Color(0xFF090D16));
+      expect(addressField.decoration?.hintStyle?.color, const Color(0xFF475569));
+
+      final sheetCtx = tester.element(find.byType(DeliveryAddressBottomSheet));
+      expect(Theme.of(sheetCtx).brightness, Brightness.light);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('delivery-address-input')),
+        '42 Park Lane, Sector 18',
+      );
+      await tester.pumpAndSettle();
+      await capture(tester, key, 'delivery-06-address-dark-parent');
+
+      await tester.tap(find.text('Confirm Delivery Address'));
+      await tester.pumpAndSettle();
+      expect(find.text('42 Park Lane, Sector 18'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'wide tablet/desktop viewport wraps customer storefront inside centered mobile frame',
+    (tester) async {
+      final key = GlobalKey();
+      await mount(
+        tester,
+        slug: 'wrapped-tablet-frame',
+        key: key,
+        size: const Size(900, 820),
+        merchantTheme: true,
+      );
+      await tester.pumpAndSettle();
+
+      final scaffoldBox = tester.getSize(find.byType(Scaffold).first);
+      expect(scaffoldBox.width, lessThanOrEqualTo(430));
+      expect(find.text('Popular Picks'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await capture(tester, key, 'delivery-07-wrapped-tablet');
+      await tester.pumpWidget(const SizedBox.shrink());
     },
   );
 }

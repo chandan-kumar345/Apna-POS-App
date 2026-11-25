@@ -196,11 +196,17 @@ void main() {
         FlutterError.onError = oldHandler;
       }
 
-      // Verify that Delivery and Pickup switcher pills appear
-      expect(find.text('Delivery'), findsOneWidget);
-      expect(find.text('Pickup'), findsOneWidget);
+      // Verify Home quick actions and Popular Picks render cleanly
+      expect(find.text('Offers'), findsOneWidget);
+      expect(find.text('Favorites'), findsOneWidget);
+      expect(find.text('Support'), findsOneWidget);
+      expect(find.text('Popular Picks'), findsOneWidget);
+      expect(find.text('View All'), findsOneWidget);
 
-      // Verify search field exists below header
+      // Navigate to Menu and verify search field exists without overflow
+      await tester.tap(find.text('Menu'));
+      await tester.pumpAndSettle();
+      expect(find.text('Our Menu'), findsOneWidget);
       expect(find.byType(TextField), findsWidgets);
 
       // Zero RenderFlex overflows

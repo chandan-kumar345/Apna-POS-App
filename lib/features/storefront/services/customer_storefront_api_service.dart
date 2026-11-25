@@ -4,8 +4,10 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/database/database_service.dart';
+import '../../../core/models/coupon_model.dart';
 import '../../../core/models/order_model.dart';
 import '../../../core/models/restaurant_model.dart';
+import '../../../core/services/coupon_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../models/storefront_model.dart';
@@ -74,6 +76,13 @@ class CustomerStorefrontApiService {
 
   final Map<String, ConfirmTablePhone> _verification = {};
 
+  String _phoneKey(String restaurantId, String phone) {
+    final digits = phone
+        .replaceAll(RegExp(r'\D'), '')
+        .replaceFirst(RegExp(r'^91(?=\d{10}$)'), '');
+    return '$restaurantId|$digits';
+  }
+
   Future<String> sendOtp(String phone, {required String restaurantId}) async {
     final business = restaurantId;
     if (business.isEmpty) {
@@ -82,7 +91,7 @@ class CustomerStorefrontApiService {
     final challenge = await TableQrPhoneAuth(
       restaurantId: business,
     ).send(phone);
-    final key = '$business|${phone.replaceAll(RegExp(r'\D'), '')}';
+    final key = _phoneKey(business, phone);
     _verification[key] = (code, {name}) async {
       final customer = await challenge.confirm!(code, name: name);
       final prefs = await SharedPreferences.getInstance();
@@ -97,17 +106,84 @@ class CustomerStorefrontApiService {
     String phone,
     String otp, {
     required String restaurantId,
+    String? name,
   }) async {
-    final key = '$restaurantId|${phone.replaceAll(RegExp(r'\D'), '')}';
+    final key = _phoneKey(restaurantId, phone);
     final verify = _verification[key];
     if (verify == null) return null;
     try {
-      final customer = await verify(otp);
+      final customer = await verify(otp, name: name);
       _verification.remove(key);
       return customer;
     } catch (_) {
       return null;
     }
+  }
+
+  /// Fetch active storefront coupons dynamically for a restaurant.
+  Future<List<CouponModel>> fetchStorefrontCoupons(
+    String restaurantId, {
+    bool preview = false,
+  }) async {
+    final localCoupons = CouponService().cachedCoupons;
+    if (preview && _db.restaurant?.id == restaurantId && localCoupons.isNotEmpty) {
+      return localCoupons.where((c) => c.isActive).toList();
+    }
+    if (restaurantId.trim().isEmpty) return const [];
+    try {
+      final res = await ApiClient().get(
+        '/storefront/${Uri.encodeComponent(restaurantId)}/coupons',
+      );
+      if (res is Map && res['data'] is List) {
+        return (res['data'] as List)
+            .whereType<Map>()
+            .map((row) => CouponModel.fromJson(Map<String, dynamic>.from(row)))
+            .where((c) => c.isActive)
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('[CustomerStorefrontApiService] fetchStorefrontCoupons: $e');
+    }
+    if (_db.restaurant?.id == restaurantId && localCoupons.isNotEmpty) {
+      return localCoupons.where((c) => c.isActive).toList();
+    }
+    return const [];
+  }
+
+  /// Validate a coupon code and calculate discount quote against live backend.
+  Future<Map<String, dynamic>?> quoteStorefrontCoupon({
+    required String restaurantId,
+    required String code,
+    required double subtotal,
+    required String orderType,
+    required List<StorefrontCartItem> cartItems,
+    String? customerPhone,
+  }) async {
+    if (restaurantId.trim().isEmpty || code.trim().isEmpty) return null;
+    final response = await ApiClient().post(
+      '/storefront/${Uri.encodeComponent(restaurantId)}/coupon-quote',
+      data: {
+        'code': code.trim().toUpperCase(),
+        'subtotal': subtotal,
+        'customerPhone': customerPhone,
+        'orderType': orderType,
+        'cartItems': cartItems
+            .map(
+              (line) => {
+                'productId': line.item.productId,
+                'price': line.unitPrice,
+                'name': line.item.name,
+                'category': line.item.category,
+                'quantity': line.quantity,
+              },
+            )
+            .toList(),
+      },
+    );
+    if (response is Map && response['data'] is Map) {
+      return Map<String, dynamic>.from(response['data'] as Map);
+    }
+    return null;
   }
 
   /// Get active logged-in customer profile
@@ -235,6 +311,25 @@ class CustomerStorefrontApiService {
       );
     }).toList();
 
+    final bool isTableDineIn =
+        isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
+    final lowerPay = paymentMethod.trim().toLowerCase();
+    final bool isCash =
+        lowerPay.contains('cash') || lowerPay == 'cod';
+    final bool resolvedIsPaid = isTableDineIn ? false : !isCash;
+    final String resolvedPaymentStatus = isTableDineIn
+        ? 'pending'
+        : (resolvedIsPaid ? 'paid' : 'pending');
+    final String resolvedPaymentMethod = isTableDineIn
+        ? 'Pay at Counter / Table'
+        : isCash
+        ? 'Cash on Delivery'
+        : lowerPay.contains('card')
+        ? 'Credit / Debit Card'
+        : lowerPay.contains('net')
+        ? 'Net Banking'
+        : 'UPI';
+
     // 2. Build Tracking Model
     var trackingModel = CustomerOrderTrackingModel(
       orderId: orderId,
@@ -250,30 +345,12 @@ class CustomerStorefrontApiService {
       tax: tax,
       discount: discount,
       grandTotal: grandTotal,
-      paymentMethod:
-          (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty))
-          ? 'Pay at Counter / Table'
-          : paymentMethod,
-      paymentStatus:
-          (isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty))
-          ? 'Pending'
-          : (paymentMethod == 'Cash on Delivery' ? 'Pending' : 'Paid'),
+      paymentMethod: resolvedPaymentMethod,
+      paymentStatus: isTableDineIn ? 'Pending' : (isCash ? 'Pending' : 'Paid'),
       deliveryAddress: resolvedAddress,
       deliveryInstructions: deliveryInstructions,
       createdAt: now,
     );
-
-    final bool isTableDineIn =
-        isDineIn || (tableNumber != null && tableNumber.trim().isNotEmpty);
-    final bool resolvedIsPaid = isTableDineIn
-        ? false
-        : (paymentMethod != 'Cash on Delivery');
-    final String resolvedPaymentStatus = isTableDineIn
-        ? 'pending'
-        : (resolvedIsPaid ? 'paid' : 'pending');
-    final String resolvedPaymentMethod = isTableDineIn
-        ? 'Pay at Counter / Table'
-        : (paymentMethod.toLowerCase().contains('cash') ? 'Cash' : 'UPI');
 
     try {
       final savedOrder = await StorefrontOrderService().submit(

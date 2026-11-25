@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/order_model.dart';
@@ -14,6 +15,7 @@ import '../services/storefront_service.dart';
 import '../services/customer_storefront_api_service.dart';
 import '../widgets/storefront_product_detail_sheet.dart';
 import '../widgets/storefront_menu_view.dart';
+import '../widgets/online_order_flow_widgets.dart';
 import '../../../core/models/restaurant_model.dart';
 import '../widgets/storefront_checkout_flow_sheet.dart';
 import 'table_qr_order_screen.dart';
@@ -41,7 +43,8 @@ class CustomerStorefrontScreen extends StatefulWidget {
 
 class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   final StorefrontService _service = StorefrontService();
-  final CustomerStorefrontApiService _customerService = CustomerStorefrontApiService();
+  final CustomerStorefrontApiService _customerService =
+      CustomerStorefrontApiService();
   CustomerProfileModel? _currentCustomer;
   final TextEditingController _searchController = TextEditingController();
   final PageController _bannerController = PageController();
@@ -80,17 +83,52 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
     _startBannerTimer();
   }
 
-  void _loadCustomerSession() async {
+  Future<void> _loadCustomerSession({String? restaurantId}) async {
     try {
-      final c = await _customerService.getCurrentCustomer();
+      final c = await _customerService.getCurrentCustomer(
+        restaurantId: restaurantId,
+      );
       if (c != null && mounted) {
         setState(() {
           _currentCustomer = c;
           if (c.addresses.isNotEmpty && _deliveryAddress.isEmpty) {
-            _deliveryAddress = c.addresses.firstWhere((a) => a.isDefault, orElse: () => c.addresses.first).fullAddress;
+            _deliveryAddress = c.addresses
+                .firstWhere(
+                  (a) => a.isDefault,
+                  orElse: () => c.addresses.first,
+                )
+                .fullAddress;
           }
         });
       }
+    } catch (_) {}
+  }
+
+  Future<void> _loadFavoriteState(String restaurantId) async {
+    if (restaurantId.trim().isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final fav = prefs.getBool('storefront_fav_$restaurantId') ?? false;
+      final savedAddr = prefs.getString('storefront_addr_$restaurantId') ?? '';
+      if (mounted) {
+        setState(() {
+          _isFavorite = fav;
+          if (_deliveryAddress.isEmpty && savedAddr.isNotEmpty) {
+            _deliveryAddress = savedAddr;
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFavorite() async {
+    final next = !_isFavorite;
+    setState(() => _isFavorite = next);
+    final restId = _data?.restaurant.id ?? '';
+    if (restId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('storefront_fav_$restId', next);
     } catch (_) {}
   }
 
@@ -126,6 +164,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       _loadGeneration++;
       _data = null;
       _loadingRestaurant = null;
+      _currentCustomer = null;
       _activeTableCode = widget.tableCode;
       _cartItems.clear();
       _selectedCategory = 'All';
@@ -154,7 +193,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         (widget.slug == 'preview' ||
             widget.slug.toLowerCase() == local.storefrontSlug.toLowerCase() ||
             widget.slug.toLowerCase() ==
-                local.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-'))) {
+                local.name
+                    .toLowerCase()
+                    .replaceAll(RegExp(r'[^a-z0-9]+'), '-'))) {
       _loadingRestaurant = local;
     }
     if (_loadingRestaurant == null && _data == null && !widget.isPreviewMode) {
@@ -162,8 +203,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         _service
             .loadBranding(widget.slug)
             .then((restaurant) {
-              if (mounted && generation == _loadGeneration && _data == null)
+              if (mounted && generation == _loadGeneration && _data == null) {
                 setState(() => _loadingRestaurant = restaurant);
+              }
             })
             .catchError((Object error) {}),
       );
@@ -189,26 +231,32 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         } else if (!_isTableSession) {
           final services = data.restaurant.services;
           if (_orderType == OrderType.delivery &&
-              !services.contains('Delivery'))
+              !services.contains('Delivery')) {
             _orderType = services.contains('Takeaway')
                 ? OrderType.takeaway
                 : OrderType.dineIn;
+          }
           if (_orderType == OrderType.takeaway &&
-              !services.contains('Takeaway'))
+              !services.contains('Takeaway')) {
             _orderType = services.contains('Delivery')
                 ? OrderType.delivery
                 : OrderType.dineIn;
+          }
         }
-        if (!data.categories.contains(_selectedCategory))
+        if (!data.categories.contains(_selectedCategory)) {
           _selectedCategory = 'All';
+        }
         if (_activeBannerIndex >= data.banners.length) _activeBannerIndex = 0;
       });
+      unawaited(_loadCustomerSession(restaurantId: data.restaurant.id));
+      unawaited(_loadFavoriteState(data.restaurant.id));
     } catch (error) {
-      if (mounted && generation == _loadGeneration)
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _isLoading = false;
           _loadError = 'We could not load this restaurant. Please try again.';
         });
+      }
     }
   }
 
@@ -301,41 +349,60 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       (_data?.isOnline ?? false) &&
       (_isTableSession || (_data?.restaurant.services.isNotEmpty ?? false));
 
+  double _calculateDeliveryFee(RestaurantModel restaurant, double subtotal) {
+    if (_orderType != OrderType.delivery || subtotal <= 0) return 0.0;
+    if (restaurant.freeDeliveryEnabled &&
+        restaurant.freeDeliveryMinOrder > 0 &&
+        subtotal >= restaurant.freeDeliveryMinOrder) {
+      return 0.0;
+    }
+    return restaurant.deliveryBaseCharge > 0
+        ? restaurant.deliveryBaseCharge
+        : 0.0;
+  }
+
+  double _calculateTaxAmount(RestaurantModel restaurant, double subtotal) {
+    if (subtotal <= 0 || restaurant.billingType == 'Non-GST') return 0.0;
+    final rate = restaurant.taxRate;
+    if (rate <= 0) return 0.0;
+    return subtotal * (rate / 100.0);
+  }
+
   void _openCustomizationModal(MenuItemModel item) {
+    const deliveryBlue = Color(0xFF2563EB);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StorefrontProductDetailSheet(
         item: item,
-        themeColor: _themeColor,
+        themeColor: deliveryBlue,
         themeColorEnd: _themeColorEnd,
         isOnline: _isStoreOnline,
         availableAddons: _data?.addOns,
         onAddToCart: (cartItem, {bool openCartImmediately = false}) {
+          final incomingAddons = cartItem.selectedAddons
+              .where((a) => a.isSelected)
+              .map((a) => a.id)
+              .toSet();
           setState(() {
-            final existingIdx = _cartItems.indexWhere(
-              (c) =>
-                  c.item.id == cartItem.item.id &&
+            final existingIdx = _cartItems.indexWhere((c) {
+              final existingAddons = c.selectedAddons
+                  .where((a) => a.isSelected)
+                  .map((a) => a.id)
+                  .toSet();
+              return c.item.id == cartItem.item.id &&
                   c.selectedSize?.id == cartItem.selectedSize?.id &&
-                  c.instructions == cartItem.instructions,
-            );
+                  c.instructions == cartItem.instructions &&
+                  existingAddons.length == incomingAddons.length &&
+                  existingAddons.containsAll(incomingAddons);
+            });
             if (existingIdx >= 0) {
               _cartItems[existingIdx].quantity += cartItem.quantity;
             } else {
               _cartItems.add(cartItem);
             }
           });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Added "${item.name}" to cart'),
-              backgroundColor: _themeColor,
-              duration: const Duration(seconds: 1),
-              behavior: SnackBarBehavior.floating,
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 110),
-            ),
-          );
 
           if (openCartImmediately) {
             _openCartModal();
@@ -530,7 +597,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           color: Colors.white,
           shape: BoxShape.circle,
           border: Border.all(
-            color: _themeColor.withValues(alpha: 0.8),
+            color: const Color(0xFF2563EB).withValues(alpha: 0.35),
             width: 1.5,
           ),
           boxShadow: [
@@ -591,6 +658,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           width: size,
           height: size,
           fit: BoxFit.cover,
+          filterQuality: FilterQuality.high,
           gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) =>
               _buildFallbackImage(name, size),
@@ -601,6 +669,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           width: size,
           height: size,
           fit: BoxFit.cover,
+          filterQuality: FilterQuality.high,
           gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) =>
               _buildFallbackImage(name, size),
@@ -634,16 +703,18 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: const Color(0xFF0F172A),
         shape: BoxShape.circle,
-        border: Border.all(color: _themeColor, width: 1.5),
+        border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
       ),
       child: Center(
         child: Text(
-          name.length > 2 ? name.substring(0, 2).toUpperCase() : 'POS',
+          name.trim().length >= 2
+              ? name.trim().substring(0, 2).toUpperCase()
+              : (name.trim().isNotEmpty ? name.trim().toUpperCase() : 'POS'),
           style: TextStyle(
-            color: _themeColor,
-            fontSize: size * 0.38,
+            color: const Color(0xFFFACC15),
+            fontSize: size * 0.36,
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -654,46 +725,52 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   @override
   Widget build(BuildContext context) {
     if (_data == null) {
-      if (_loadError != null)
-        return Scaffold(
-          backgroundColor: storefrontBackground,
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(30),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.storefront_outlined,
-                      size: 44,
-                      color: Color(0xFF8B9BA9),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _loadError!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFF334155),
-                        fontSize: 14,
-                        height: 1.45,
+      if (_loadError != null) {
+        return StorefrontViewportFrame(
+          child: Scaffold(
+            backgroundColor: storefrontBackground,
+            body: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.storefront_outlined,
+                        size: 40,
+                        color: Color(0xFF475569),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _loadData,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F172A),
-                        foregroundColor: Colors.white,
+                      const SizedBox(height: 14),
+                      Text(
+                        _loadError!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFF334155),
+                          fontSize: 13,
+                          height: 1.45,
+                        ),
                       ),
-                      child: const Text('Try again'),
-                    ),
-                  ],
+                      const SizedBox(height: 14),
+                      FilledButton(
+                        onPressed: _loadData,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F172A),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text(
+                          'Try again',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         );
+      }
       return StorefrontMenuLoading(
         restaurant: _loadingRestaurant,
         avatar: (logo, name, size) =>
@@ -712,133 +789,155 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         tableCode: _activeTableCode!,
         preview: widget.isPreviewMode,
         onRefresh: _loadData,
-        avatar: (logo, name, size) => _buildRestaurantAvatar(logo, name, size: size),
+        avatar: (logo, name, size) =>
+            _buildRestaurantAvatar(logo, name, size: size),
       );
     }
-    return StorefrontMenuView(
-      data: _data!,
-      items: _filteredItems,
-      orderType: _orderType,
-      category: _selectedCategory,
-      deliveryAddress: _deliveryAddress,
-      favorite: _isFavorite,
-      preview: widget.isPreviewMode,
-      tableSession: _isTableSession,
-      tableCode: _activeTableCode,
-      refreshing: _isLoading,
-      refreshError: _loadError,
-      searchController: _searchController,
-      bannerController: _bannerController,
-      bannerIndex: _activeBannerIndex,
-      cartCount: _totalCartCount,
-      cartTotal: _totalCartAmount,
-      onRefresh: _loadData,
-      onOrderType: (type) => setState(() => _orderType = type),
-      onCategory: (category) => setState(() => _selectedCategory = category),
-      onSearch: (query) => setState(() => _searchQuery = query),
-      onBannerChanged: (index) => setState(() => _activeBannerIndex = index),
-      onBanner: (banner) {
-        if (banner.couponCode?.isNotEmpty == true) {
-          Clipboard.setData(ClipboardData(text: banner.couponCode!));
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Coupon ${banner.couponCode} copied')),
-          );
-        }
-      },
-      onProduct: _openCustomizationModal,
-      onFavorite: () => setState(() => _isFavorite = !_isFavorite),
-      onInfo: _showRestaurantInfo,
-      onLocation: _showChangeLocationDialog,
-      onCart: () => _openCartModal(),
-      onExitPreview: () => Navigator.maybePop(context),
-      avatar: (logo, name, size) =>
-          _buildRestaurantAvatar(logo, name, size: size),
-      cartItems: _cartItems,
-      onAddToCart: (item) {
-        setState(() {
-          final existingIdx = _cartItems.indexWhere((c) => c.item.id == item.id);
-          if (existingIdx >= 0) {
-            _cartItems[existingIdx].quantity += 1;
-          } else {
-            _cartItems.add(
-              StorefrontCartItem(
-                uid: 'cart_${DateTime.now().millisecondsSinceEpoch}_${item.id}',
-                item: item,
-                quantity: 1,
-              ),
+    return Theme(
+      data: storefrontLightTheme(context),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark,
+        child: StorefrontMenuView(
+        data: _data!,
+        items: _filteredItems,
+        orderType: _orderType,
+        category: _selectedCategory,
+        deliveryAddress: _deliveryAddress,
+        favorite: _isFavorite,
+        preview: widget.isPreviewMode,
+        tableSession: _isTableSession,
+        tableCode: _activeTableCode,
+        refreshing: _isLoading,
+        refreshError: _loadError,
+        searchController: _searchController,
+        bannerController: _bannerController,
+        bannerIndex: _activeBannerIndex,
+        cartCount: _totalCartCount,
+        cartTotal: _totalCartAmount,
+        onRefresh: _loadData,
+        onOrderType: (type) => setState(() => _orderType = type),
+        onCategory: (category) => setState(() => _selectedCategory = category),
+        onSearch: (query) => setState(() => _searchQuery = query),
+        onBannerChanged: (index) => setState(() => _activeBannerIndex = index),
+        onBanner: (banner) {
+          if (banner.couponCode?.isNotEmpty == true) {
+            Clipboard.setData(ClipboardData(text: banner.couponCode!));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Coupon ${banner.couponCode} copied')),
             );
           }
-        });
-      },
-      onUpdateQuantity: (cartItem, newQty) {
-        setState(() {
-          if (newQty <= 0) {
-            _cartItems.removeWhere((i) => i.uid == cartItem.uid);
-          } else {
-            cartItem.quantity = newQty;
-          }
-        });
-      },
-      onClearCart: () {
-        setState(() => _cartItems.clear());
-      },
-      onPlaceOrder: (paymentMethod, address, instructions) async {
-        final subtotal = _totalCartAmount;
-        final tax = (subtotal * 0.05);
-        final deliveryFee = _orderType == OrderType.delivery
-            ? (_data!.restaurant.deliveryBaseCharge > 0 ? _data!.restaurant.deliveryBaseCharge : 40.0)
-            : 0.0;
-        final grandTotal = subtotal + tax + deliveryFee;
+        },
+        onProduct: _openCustomizationModal,
+        onFavorite: _toggleFavorite,
+        onInfo: _showRestaurantInfo,
+        onLocation: _showChangeLocationDialog,
+        onCart: () => _openCartModal(),
+        onExitPreview: () => Navigator.maybePop(context),
+        avatar: (logo, name, size) =>
+            _buildRestaurantAvatar(logo, name, size: size),
+        cartItems: _cartItems,
+        onAddToCart: (item) {
+          setState(() {
+            final existingIdx = _cartItems.indexWhere(
+              (c) =>
+                  c.item.id == item.id &&
+                  c.selectedSize == null &&
+                  c.selectedAddons.isEmpty &&
+                  c.instructions.isEmpty,
+            );
+            if (existingIdx >= 0) {
+              _cartItems[existingIdx].quantity += 1;
+            } else {
+              _cartItems.add(
+                StorefrontCartItem(
+                  uid:
+                      'cart_${DateTime.now().millisecondsSinceEpoch}_${item.id}',
+                  item: item,
+                  quantity: 1,
+                ),
+              );
+            }
+          });
+        },
+        onUpdateQuantity: (cartItem, newQty) {
+          setState(() {
+            if (newQty <= 0) {
+              _cartItems.removeWhere((i) => i.uid == cartItem.uid);
+            } else {
+              cartItem.quantity = newQty;
+            }
+          });
+        },
+        onClearCart: () {
+          setState(() => _cartItems.clear());
+        },
+        onPlaceOrderWithReceipt: ({
+          required String paymentMethod,
+          required String address,
+          required String instructions,
+          double discount = 0.0,
+          String? couponCode,
+          CustomerProfileModel? customerOverride,
+          CustomerAddressModel? selectedAddress,
+        }) async {
+          final restaurant = _data!.restaurant;
+          final subtotal = _totalCartAmount;
+          final tax = _calculateTaxAmount(restaurant, subtotal);
+          final deliveryFee = _calculateDeliveryFee(restaurant, subtotal);
+          final grandTotal = (subtotal + tax + deliveryFee - discount).clamp(
+            0.0,
+            double.infinity,
+          );
 
-        final customer = _currentCustomer ?? CustomerProfileModel(
-          id: 'cust_direct_${DateTime.now().millisecondsSinceEpoch}',
-          name: 'Valued Customer',
-          phone: '+91 98765 43210',
-          addresses: [
-            CustomerAddressModel(
-              id: 'addr_1',
-              label: 'Delivery',
-              fullAddress: address,
-              isDefault: true,
-            ),
-          ],
-        );
+          final customer = customerOverride ?? _currentCustomer;
+          if (customer == null) return null;
 
-        try {
-          await _customerService.placeCustomerOrder(
-            restaurant: _data!.restaurant,
+          final addr =
+              selectedAddress ??
+              CustomerAddressModel(
+                id: 'addr_${DateTime.now().millisecondsSinceEpoch}',
+                label: 'Delivery',
+                fullAddress: address,
+                isDefault: true,
+              );
+
+          return _customerService.placeCustomerOrder(
+            restaurant: restaurant,
             customer: customer,
-            selectedAddress: customer.addresses.first,
+            selectedAddress: addr,
             cartItems: List.of(_cartItems),
             paymentMethod: paymentMethod,
             subtotal: subtotal,
             deliveryFee: deliveryFee,
             tax: tax,
             grandTotal: grandTotal,
+            discount: discount,
+            couponCode: couponCode,
             deliveryInstructions: instructions,
-          );
-        } catch (_) {}
-
-        try {
-          await _service.submitOrder(
-            restaurant: _data!.restaurant,
             orderType: _orderType,
-            cartItems: List.of(_cartItems),
-            customerName: customer.name,
-            customerPhone: customer.phone,
-            deliveryAddress: address,
-            subtotal: subtotal,
-            taxAmount: tax,
-            deliveryFee: deliveryFee,
-            totalAmount: grandTotal,
-            paymentMethod: paymentMethod,
           );
-        } catch (_) {}
-      },
-      customer: _currentCustomer,
-      onUpdateCustomer: (cust) {
-        setState(() => _currentCustomer = cust);
-      },
+        },
+        customer: _currentCustomer,
+        onUpdateCustomer: (cust) {
+          setState(() => _currentCustomer = cust);
+          if (cust != null &&
+              cust.addresses.isNotEmpty &&
+              _deliveryAddress.isEmpty) {
+            setState(() => _deliveryAddress = cust.addresses.first.fullAddress);
+          }
+        },
+        onUpdateDeliveryAddress: (addr) async {
+          setState(() => _deliveryAddress = addr.fullAddress);
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final restId = _data?.restaurant.id ?? '';
+            if (restId.isNotEmpty) {
+              await prefs.setString('storefront_addr_$restId', addr.fullAddress);
+            }
+          } catch (_) {}
+        },
+        ),
+      ),
     );
   }
 }
