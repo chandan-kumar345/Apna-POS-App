@@ -71,11 +71,13 @@ class CampaignShell extends StatelessWidget {
   final Widget? header;
   final Widget body;
   final Widget? footer;
+  final bool resizeToAvoidBottomInset;
   const CampaignShell({
     super.key,
     this.header,
     required this.body,
     this.footer,
+    this.resizeToAvoidBottomInset = false,
   });
   @override
   Widget build(BuildContext context) {
@@ -101,6 +103,7 @@ class CampaignShell extends StatelessWidget {
         data: theme,
         child: Scaffold(
           backgroundColor: header != null ? navy : Colors.transparent,
+          resizeToAvoidBottomInset: resizeToAvoidBottomInset,
           body: SafeArea(
             bottom: false,
             top: header != null,
@@ -128,6 +131,7 @@ class CampaignShell extends StatelessWidget {
                       ),
                       child: SafeArea(
                         top: false,
+                        maintainBottomViewPadding: header != null,
                         child: Column(
                           children: [
                             Expanded(child: body),

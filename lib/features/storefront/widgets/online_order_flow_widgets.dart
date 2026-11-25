@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/models/restaurant_model.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/services/location_service.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../services/customer_storefront_api_service.dart';
 
@@ -36,16 +37,16 @@ class OnlineStorefrontBottomBar extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            offset: const Offset(0, -3),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: 0.08),
+            offset: const Offset(0, -4),
+            blurRadius: 14,
           ),
         ],
       ),
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 54,
+          height: 66,
           child: Row(
             children: [
               Expanded(child: _buildNavItem(0, Icons.home_rounded, 'Home')),
@@ -56,7 +57,6 @@ class OnlineStorefrontBottomBar extends StatelessWidget {
                 child: _buildCartItem(
                   2,
                   Icons.shopping_cart_outlined,
-                  'Cart',
                 ),
               ),
               Expanded(
@@ -74,88 +74,138 @@ class OnlineStorefrontBottomBar extends StatelessWidget {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = currentIndex == index;
-    final color = isSelected ? activeColor : const Color(0xFF1E293B);
+    final foregroundColor = isSelected ? Colors.white : const Color(0xFF0F172A);
+    final deeperBlue = Color.lerp(activeColor, Colors.black, 0.14) ?? activeColor;
+
     return InkWell(
       onTap: () => onTabSelected(index),
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: color,
+      borderRadius: BorderRadius.circular(14),
+      child: Center(
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          decoration: isSelected
+              ? BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [activeColor, deeperBlue],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: activeColor.withValues(alpha: 0.28),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                )
+              : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 24, color: foregroundColor),
+              const SizedBox(height: 2.5),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: foregroundColor,
+                    height: 1.05,
+                  ),
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildCartItem(int index, IconData icon, String label) {
+  Widget _buildCartItem(int index, IconData icon) {
     final isSelected = currentIndex == index;
-    final color = isSelected ? activeColor : const Color(0xFF1E293B);
+    final deeperBlue = Color.lerp(activeColor, Colors.black, 0.16) ?? activeColor;
+
     return InkWell(
       onTap: () => onTabSelected(index),
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      borderRadius: BorderRadius.circular(30),
+      child: SizedBox(
+        height: 66,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(icon, size: 20, color: color),
-                Positioned(
-                  right: -8,
-                  top: -5,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1.5,
+            Positioned(
+              top: -4,
+              child: Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [activeColor, deeperBlue],
+                  ),
+                  border: Border.all(
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.96),
+                    width: 2.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: activeColor.withValues(alpha: isSelected ? 0.42 : 0.30),
+                      blurRadius: isSelected ? 14 : 10,
+                      offset: const Offset(0, 4),
                     ),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFDC2626),
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 15,
-                      minHeight: 15,
-                    ),
-                    child: Center(
-                      child: Text(
-                        cartCount > 99 ? '99+' : '$cartCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w900,
-                          height: 1.0,
+                  ],
+                ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(icon, size: 26, color: Colors.white),
+                    Positioned(
+                      right: -2,
+                      top: -2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
                         ),
-                        textAlign: TextAlign.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.6),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        child: Center(
+                          child: Text(
+                            cartCount > 99 ? '99+' : '$cartCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: color,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -168,7 +218,7 @@ class OnlineStorefrontBottomBar extends StatelessWidget {
 /// VEG / NON-VEG INDICATOR BADGE
 /// Green square with green circle for Veg, Red square with red mark for Non-Veg
 /// ============================================================================
-Widget buildFoodTypeBadge(String type) {
+Widget buildFoodTypeBadge(String type, {double size = 15}) {
   final lower = type.toLowerCase();
   final isNonVeg = lower.contains('non');
   final isEgg = lower.contains('egg');
@@ -177,19 +227,20 @@ Widget buildFoodTypeBadge(String type) {
       : isEgg
       ? const Color(0xFFD97706)
       : const Color(0xFF16A34A);
+  final dotSize = (size * 0.43).clamp(5.0, 9.0);
   return Container(
-    width: 14,
-    height: 14,
+    width: size,
+    height: size,
     padding: const EdgeInsets.all(2),
     decoration: BoxDecoration(
-      border: Border.all(color: color, width: 1.3),
-      borderRadius: BorderRadius.circular(3),
+      border: Border.all(color: color, width: 1.4),
+      borderRadius: BorderRadius.circular(3.5),
       color: Colors.white,
     ),
     child: Center(
       child: Container(
-        width: 6,
-        height: 6,
+        width: dotSize,
+        height: dotSize,
         decoration: BoxDecoration(
           color: color,
           shape: isNonVeg ? BoxShape.rectangle : BoxShape.circle,
@@ -1747,26 +1798,35 @@ class _OnlinePaymentModalSheetState extends State<OnlinePaymentModalSheet> {
 
 /// ============================================================================
 /// DELIVERY ADDRESS SHEET (FROM SCREEN 3 "Enter Delivery Address")
+/// Supports Google Address autocomplete, GPS auto-fill, and mandatory Pincode.
 /// ============================================================================
 class DeliveryAddressBottomSheet extends StatefulWidget {
   final String initialAddress;
+  final String initialLandmark;
+  final String initialPinCode;
   final List<CustomerAddressModel> savedAddresses;
 
   const DeliveryAddressBottomSheet({
     super.key,
     required this.initialAddress,
+    this.initialLandmark = '',
+    this.initialPinCode = '',
     this.savedAddresses = const [],
   });
 
   static Future<CustomerAddressModel?> show(
     BuildContext context, {
     required String initialAddress,
+    String initialLandmark = '',
+    String initialPinCode = '',
     List<CustomerAddressModel> savedAddresses = const [],
   }) {
     return showBlurredStorefrontSheet<CustomerAddressModel>(
       context: context,
       builder: (_) => DeliveryAddressBottomSheet(
         initialAddress: initialAddress,
+        initialLandmark: initialLandmark,
+        initialPinCode: initialPinCode,
         savedAddresses: savedAddresses,
       ),
     );
@@ -1786,24 +1846,225 @@ class _DeliveryAddressBottomSheetState
   static const Color _brand = Color(0xFF1D4ED8);
   static const Color _ctaBlue = Color(0xFF0F4BF5);
 
+  final TextEditingController _googleSearchCtrl = TextEditingController();
   late final TextEditingController _addressCtrl;
-  final TextEditingController _landmarkCtrl = TextEditingController();
-  final TextEditingController _pinCtrl = TextEditingController();
+  late final TextEditingController _landmarkCtrl;
+  late final TextEditingController _pinCtrl;
+  final FocusNode _pinFocusNode = FocusNode();
+
+  Timer? _searchDebounce;
+  List<LocationAddressResult> _suggestions = [];
+  bool _isSearchingAddress = false;
+  bool _isFetchingCurrentLocation = false;
+  bool _isLookingUpPin = false;
+  String? _autoFillStatus;
+  String _lastLookedUpPin = '';
   String _label = 'Home';
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _addressCtrl = TextEditingController(text: widget.initialAddress);
+    final extractedPin = LocationService.extractPinCode(widget.initialAddress);
+    final resolvedInitialPin = widget.initialPinCode.trim().isNotEmpty
+        ? widget.initialPinCode.trim()
+        : extractedPin;
+    var cleanedAddress = widget.initialAddress.trim();
+    if (resolvedInitialPin.isNotEmpty && cleanedAddress.endsWith(resolvedInitialPin)) {
+      cleanedAddress = cleanedAddress
+          .substring(0, cleanedAddress.length - resolvedInitialPin.length)
+          .replaceAll(RegExp(r'[\s,\-]+$'), '');
+    }
+
+    _addressCtrl = TextEditingController(text: cleanedAddress);
+    _landmarkCtrl = TextEditingController(text: widget.initialLandmark.trim());
+    _pinCtrl = TextEditingController(text: resolvedInitialPin);
+    _lastLookedUpPin = resolvedInitialPin;
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _googleSearchCtrl.dispose();
     _addressCtrl.dispose();
     _landmarkCtrl.dispose();
     _pinCtrl.dispose();
+    _pinFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onGoogleSearchChanged(String raw) {
+    _searchDebounce?.cancel();
+    final query = raw.trim();
+    if (query.length < 3) {
+      if (_suggestions.isNotEmpty || _isSearchingAddress) {
+        setState(() {
+          _suggestions = [];
+          _isSearchingAddress = false;
+        });
+      }
+      return;
+    }
+
+    setState(() => _isSearchingAddress = true);
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      final results = await LocationService.fetchAddressSuggestions(query);
+      if (!mounted) return;
+      if (_googleSearchCtrl.text.trim() != query) return;
+      setState(() {
+        _suggestions = results;
+        _isSearchingAddress = false;
+      });
+    });
+  }
+
+  Future<void> _selectAddressSuggestion(LocationAddressResult suggestion) async {
+    setState(() {
+      _isSearchingAddress = true;
+      _suggestions = [];
+      _error = null;
+    });
+
+    final resolved = await LocationService.resolveSuggestionDetails(suggestion);
+    if (!mounted) return;
+    _applyLocationResult(
+      resolved,
+      statusMessage: resolved.pincode.isNotEmpty
+          ? 'Google address & pincode (${resolved.pincode}) auto-filled'
+          : 'Google address auto-filled — verify 6-digit PIN',
+    );
+  }
+
+  Future<void> _autoFillCurrentLocation() async {
+    setState(() {
+      _isFetchingCurrentLocation = true;
+      _suggestions = [];
+      _error = null;
+    });
+
+    try {
+      final locationResult = await LocationService.getCurrentLocationAddress();
+      if (!mounted) return;
+      _applyLocationResult(
+        locationResult,
+        statusMessage: locationResult.pincode.isNotEmpty
+            ? 'Current location & pincode (${locationResult.pincode}) auto-filled'
+            : 'Current location filled — verify 6-digit PIN',
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isFetchingCurrentLocation = false;
+          _error = 'Unable to detect current location. Search Google address above.';
+        });
+      }
+    }
+  }
+
+  void _applyLocationResult(
+    LocationAddressResult result, {
+    required String statusMessage,
+  }) {
+    final rawFull = result.fullAddress.trim();
+    final pin = result.pincode.trim().isNotEmpty
+        ? result.pincode.trim()
+        : LocationService.extractPinCode(rawFull);
+
+    // Build clean street/area text without duplicating trailing PIN code
+    var streetText = rawFull.isNotEmpty
+        ? rawFull
+        : [result.houseNo, result.mainText, result.city, result.state]
+            .where((s) => s.trim().isNotEmpty)
+            .join(', ');
+    if (pin.isNotEmpty && streetText.endsWith(pin)) {
+      streetText = streetText
+          .substring(0, streetText.length - pin.length)
+          .replaceAll(RegExp(r'[\s,\-]+$'), '');
+    }
+
+    setState(() {
+      _isSearchingAddress = false;
+      _isFetchingCurrentLocation = false;
+      if (result.mainText.trim().isNotEmpty) {
+        _googleSearchCtrl.text = result.mainText.trim();
+      }
+      if (streetText.isNotEmpty) {
+        _addressCtrl.text = streetText;
+      }
+      if (result.landmark.trim().isNotEmpty) {
+        _landmarkCtrl.text = result.landmark.trim();
+      }
+      if (pin.isNotEmpty) {
+        _pinCtrl.text = pin;
+        _lastLookedUpPin = pin;
+      }
+      _autoFillStatus = statusMessage;
+      _error = null;
+    });
+
+    if (pin.isEmpty) {
+      _pinFocusNode.requestFocus();
+    }
+  }
+
+  void _onPinChanged(String raw) {
+    final pin = raw.trim();
+    if (_error != null) {
+      setState(() => _error = null);
+    }
+    if (pin.length == 6 &&
+        RegExp(r'^[1-9][0-9]{5}$').hasMatch(pin) &&
+        pin != _lastLookedUpPin) {
+      _lastLookedUpPin = pin;
+      unawaited(_lookupPinDetails(pin));
+    }
+  }
+
+  Future<void> _lookupPinDetails(String pin) async {
+    setState(() => _isLookingUpPin = true);
+    final info = await LocationService.lookupPincode(pin);
+    if (!mounted || _pinCtrl.text.trim() != pin) return;
+    setState(() {
+      _isLookingUpPin = false;
+      if (info != null) {
+        if (_addressCtrl.text.trim().isEmpty && info.fullAddress.isNotEmpty) {
+          _addressCtrl.text = info.fullAddress;
+        }
+        if (_landmarkCtrl.text.trim().isEmpty && info.landmark.isNotEmpty) {
+          _landmarkCtrl.text = info.landmark;
+        }
+        final placeSummary = [info.mainText, info.city, info.state]
+            .where((s) => s.trim().isNotEmpty)
+            .toSet()
+            .join(', ');
+        _autoFillStatus = placeSummary.isNotEmpty
+            ? 'Verified PIN $pin • $placeSummary'
+            : 'Verified PIN $pin';
+      }
+    });
+  }
+
+  void _selectSavedAddress(CustomerAddressModel addr) {
+    final extractedPin = addr.pinCode.trim().isNotEmpty
+        ? addr.pinCode.trim()
+        : LocationService.extractPinCode(addr.fullAddress);
+    if (!RegExp(r'^[1-9][0-9]{5}$').hasMatch(extractedPin)) {
+      setState(() {
+        _label = addr.label.isNotEmpty ? addr.label : 'Home';
+        _addressCtrl.text = addr.fullAddress.trim();
+        _landmarkCtrl.text = addr.landmark.trim();
+        _pinCtrl.clear();
+        _error = 'Pin code is mandatory. Please enter 6-digit PIN code';
+      });
+      _pinFocusNode.requestFocus();
+      return;
+    }
+    Navigator.pop(
+      context,
+      addr.pinCode.trim().isNotEmpty
+          ? addr
+          : addr.copyWith(pinCode: extractedPin),
+    );
   }
 
   void _saveAddress() {
@@ -1814,10 +2075,22 @@ class _DeliveryAddressBottomSheetState
     }
     final landmark = _landmarkCtrl.text.trim();
     final pin = _pinCtrl.text.trim();
+    if (pin.isEmpty) {
+      setState(() => _error = 'Pin code is mandatory. Please enter 6-digit PIN code');
+      _pinFocusNode.requestFocus();
+      return;
+    }
+    if (!RegExp(r'^[1-9][0-9]{5}$').hasMatch(pin)) {
+      setState(() => _error = 'Please enter a valid 6-digit PIN code');
+      _pinFocusNode.requestFocus();
+      return;
+    }
+    final lowerStreet = street.toLowerCase();
     final parts = [
       street,
-      if (landmark.isNotEmpty) landmark,
-      if (pin.isNotEmpty) pin,
+      if (landmark.isNotEmpty && !lowerStreet.contains(landmark.toLowerCase()))
+        landmark,
+      if (!street.contains(pin)) pin,
     ];
     Navigator.pop(
       context,
@@ -1843,11 +2116,262 @@ class _DeliveryAddressBottomSheetState
     }
   }
 
+  Widget _buildGoogleAddressSearchSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.travel_explore_rounded, size: 15, color: _brand),
+            const SizedBox(width: 5),
+            const Expanded(
+              child: Text(
+                'Google Address Search & Auto-fill',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const ValueKey('google-address-search-input'),
+                controller: _googleSearchCtrl,
+                cursorColor: _brand,
+                onChanged: _onGoogleSearchChanged,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: _ink,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Search Google address, area, street...',
+                  hintStyle: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: _hint,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    size: 18,
+                    color: _brand,
+                  ),
+                  suffixIcon: _isSearchingAddress
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: _brand,
+                            ),
+                          ),
+                        )
+                      : (_googleSearchCtrl.text.isNotEmpty
+                          ? IconButton(
+                              tooltip: 'Clear search',
+                              onPressed: () {
+                                _searchDebounce?.cancel();
+                                _googleSearchCtrl.clear();
+                                setState(() {
+                                  _suggestions = [];
+                                  _isSearchingAddress = false;
+                                });
+                              },
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                size: 16,
+                                color: _hint,
+                              ),
+                            )
+                          : null),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _border, width: 1.15),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _brand, width: 1.6),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              key: const ValueKey('delivery-autofill-location-btn'),
+              onTap: _isFetchingCurrentLocation ? null : _autoFillCurrentLocation,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 11),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF3B82F6),
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isFetchingCurrentLocation)
+                      const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _brand,
+                        ),
+                      )
+                    else
+                      const Icon(
+                        Icons.my_location_rounded,
+                        size: 16,
+                        color: _brand,
+                      ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      'Auto-fill',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: _brand,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_suggestions.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 190),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF93C5FD), width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: _suggestions.length,
+              separatorBuilder: (_, _) =>
+                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+              itemBuilder: (context, index) {
+                final item = _suggestions[index];
+                return InkWell(
+                  onTap: () => _selectAddressSuggestion(item),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 9,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 1),
+                          child: Icon(
+                            Icons.location_on_rounded,
+                            size: 17,
+                            color: _brand,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.mainText,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: _ink,
+                                ),
+                              ),
+                              if (item.secondaryText.trim().isNotEmpty) ...[
+                                const SizedBox(height: 1.5),
+                                Text(
+                                  item.secondaryText,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: _muted,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (item.pincode.trim().isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFFBFDBFE),
+                              ),
+                            ),
+                            child: Text(
+                              item.pincode,
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                color: _brand,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildLabeledInput({
     required String caption,
     required TextEditingController controller,
     required String hintText,
     Key? fieldKey,
+    FocusNode? focusNode,
     IconData? prefixIcon,
     int maxLines = 1,
     int minLines = 1,
@@ -1855,22 +2379,52 @@ class _DeliveryAddressBottomSheetState
     TextCapitalization textCapitalization = TextCapitalization.sentences,
     List<TextInputFormatter>? inputFormatters,
     bool showClearButton = false,
+    bool isRequired = false,
+    ValueChanged<String>? onChangedExtra,
+    Widget? trailingSuffix,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          caption,
-          style: const TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1E293B),
+        if (isRequired)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  caption,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+              const Text(
+                ' *',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFFDC2626),
+                ),
+              ),
+            ],
+          )
+        else
+          Text(
+            caption,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1E293B),
+            ),
           ),
-        ),
         const SizedBox(height: 5),
         TextField(
           key: fieldKey,
           controller: controller,
+          focusNode: focusNode,
           maxLines: maxLines,
           minLines: minLines,
           keyboardType: keyboardType,
@@ -1883,10 +2437,11 @@ class _DeliveryAddressBottomSheetState
             color: _ink,
             height: 1.35,
           ),
-          onChanged: (_) {
+          onChanged: (value) {
             if (_error != null || showClearButton) {
               setState(() => _error = null);
             }
+            onChangedExtra?.call(value);
           },
           decoration: InputDecoration(
             hintText: hintText,
@@ -1898,20 +2453,21 @@ class _DeliveryAddressBottomSheetState
             prefixIcon: prefixIcon != null
                 ? Icon(prefixIcon, size: 17, color: _brand)
                 : null,
-            suffixIcon: showClearButton && controller.text.isNotEmpty
-                ? IconButton(
-                    tooltip: 'Clear',
-                    onPressed: () {
-                      controller.clear();
-                      setState(() => _error = null);
-                    },
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      size: 16,
-                      color: _hint,
-                    ),
-                  )
-                : null,
+            suffixIcon: trailingSuffix ??
+                (showClearButton && controller.text.isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Clear',
+                        onPressed: () {
+                          controller.clear();
+                          setState(() => _error = null);
+                        },
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 16,
+                          color: _hint,
+                        ),
+                      )
+                    : null),
             filled: true,
             fillColor: Colors.white,
             isDense: true,
@@ -2002,7 +2558,7 @@ class _DeliveryAddressBottomSheetState
                           ),
                           SizedBox(height: 1),
                           Text(
-                            'Enter complete doorstep details for delivery',
+                            'Search Google address or auto-fill with GPS',
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w500,
@@ -2034,6 +2590,8 @@ class _DeliveryAddressBottomSheetState
                   ],
                 ),
                 const SizedBox(height: 14),
+                _buildGoogleAddressSearchSection(),
+                const SizedBox(height: 12),
                 if (widget.savedAddresses.isNotEmpty) ...[
                   const Text(
                     'Saved Addresses',
@@ -2052,7 +2610,7 @@ class _DeliveryAddressBottomSheetState
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: InkWell(
-                        onTap: () => Navigator.pop(context, addr),
+                        onTap: () => _selectSavedAddress(addr),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -2143,47 +2701,46 @@ class _DeliveryAddressBottomSheetState
                   ),
                 ),
                 const SizedBox(height: 7),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: ['Home', 'Work', 'Other'].map((tag) {
                     final selected = _label == tag;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: InkWell(
-                        onTap: () => setState(() => _label = tag),
-                        borderRadius: BorderRadius.circular(18),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 7,
+                    return InkWell(
+                      onTap: () => setState(() => _label = tag),
+                      borderRadius: BorderRadius.circular(18),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected ? _brand : Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: selected ? _brand : _border,
+                            width: 1.2,
                           ),
-                          decoration: BoxDecoration(
-                            color: selected ? _brand : Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: selected ? _brand : _border,
-                              width: 1.2,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _tagIcon(tag),
+                              size: 14,
+                              color: selected ? Colors.white : _ink,
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _tagIcon(tag),
-                                size: 14,
+                            const SizedBox(width: 5),
+                            Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
                                 color: selected ? Colors.white : _ink,
                               ),
-                              const SizedBox(width: 5),
-                              Text(
-                                tag,
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: selected ? Colors.white : _ink,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -2206,6 +2763,7 @@ class _DeliveryAddressBottomSheetState
                     Expanded(
                       flex: 3,
                       child: _buildLabeledInput(
+                        fieldKey: const ValueKey('delivery-landmark-input'),
                         caption: 'Landmark (Optional)',
                         controller: _landmarkCtrl,
                         hintText: 'Near park, gate, mall',
@@ -2216,11 +2774,28 @@ class _DeliveryAddressBottomSheetState
                     Expanded(
                       flex: 2,
                       child: _buildLabeledInput(
+                        fieldKey: const ValueKey('delivery-pincode-input'),
+                        focusNode: _pinFocusNode,
                         caption: 'Pincode',
+                        isRequired: true,
                         controller: _pinCtrl,
-                        hintText: '6 digits',
+                        hintText: '6 digits *',
                         keyboardType: TextInputType.number,
                         textCapitalization: TextCapitalization.none,
+                        onChangedExtra: _onPinChanged,
+                        trailingSuffix: _isLookingUpPin
+                            ? const Padding(
+                                padding: EdgeInsets.all(11),
+                                child: SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: _brand,
+                                  ),
+                                ),
+                              )
+                            : null,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                           LengthLimitingTextInputFormatter(6),
@@ -2229,6 +2804,41 @@ class _DeliveryAddressBottomSheetState
                     ),
                   ],
                 ),
+                if (_autoFillStatus != null && _error == null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle_outline_rounded,
+                          size: 15,
+                          color: Color(0xFF15803D),
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            _autoFillStatus!,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF14532D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   Container(
@@ -2281,12 +2891,18 @@ class _DeliveryAddressBottomSheetState
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          'Confirm Delivery Address',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Confirm Delivery Address',
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ),
                         SizedBox(width: 6),

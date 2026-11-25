@@ -412,4 +412,31 @@ void main() {
       expect(t.takeException(), isNull);
     });
   }
+
+  testWidgets('campaign dashboard stays fixed when keyboard opens', (t) async {
+    t.view.physicalSize = const Size(412, 915);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
+    addTearDown(t.view.resetViewInsets);
+
+    t.view.viewInsets = FakeViewPadding.zero;
+    await t.pumpWidget(
+      MaterialApp(home: MobileCampaignDashboard(api: api)),
+    );
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+
+    final scaffold = t.widget<Scaffold>(find.byType(Scaffold).last);
+    expect(scaffold.resizeToAvoidBottomInset, isFalse);
+    final beforeTop = t.getTopLeft(find.text('Create campaign')).dy;
+
+    t.view.viewInsets = const FakeViewPadding(bottom: 320);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+
+    final afterTop = t.getTopLeft(find.text('Create campaign')).dy;
+    expect(afterTop, equals(beforeTop));
+    expect(t.takeException(), isNull);
+  });
 }

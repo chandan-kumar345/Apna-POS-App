@@ -431,7 +431,9 @@ class _StorefrontProductDetailSheetState
                         const SizedBox(height: 8),
 
                         // Rating & Bestseller row
-                        Row(
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          runSpacing: 4,
                           children: [
                             const Icon(
                               Icons.star_rounded,

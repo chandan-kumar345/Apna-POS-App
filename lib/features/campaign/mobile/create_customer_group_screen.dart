@@ -289,7 +289,12 @@ class _CreateCustomerGroupScreenState extends State<CreateCustomerGroupScreen> {
           ),
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            14,
+            16,
+            20 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

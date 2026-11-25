@@ -11,6 +11,7 @@ import 'package:apna_pos/core/services/customer_service.dart';
 import 'package:apna_pos/features/campaign/models/campaign_models.dart';
 import 'package:apna_pos/features/campaign/mobile/create_customer_group_screen.dart';
 import 'package:apna_pos/features/campaign/mobile/customer_group_details_screen.dart';
+import 'package:apna_pos/features/campaign/mobile/customer_style.dart';
 import 'package:apna_pos/features/campaign/mobile/mobile_campaign_data.dart';
 import 'package:apna_pos/features/campaign/mobile/mobile_customers_data.dart';
 import 'package:apna_pos/features/campaign/mobile/mobile_customers_screen.dart';
@@ -616,4 +617,61 @@ void main() {
       },
     );
   }
+
+  testWidgets('customers screen stays fixed when keyboard opens', (t) async {
+    t.view.physicalSize = const Size(412, 915);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
+    addTearDown(t.view.resetViewInsets);
+
+    t.view.viewInsets = FakeViewPadding.zero;
+    await t.pumpWidget(
+      MaterialApp(
+        home: MobileCustomersScreen(
+          api: api,
+          options: options,
+          showHeader: false,
+        ),
+      ),
+    );
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+
+    final campaignScaffold = t.widget<Scaffold>(find.byType(Scaffold).last);
+    expect(campaignScaffold.resizeToAvoidBottomInset, isFalse);
+    final beforeTop = t.getTopLeft(find.text('Create group')).dy;
+
+    t.view.viewInsets = const FakeViewPadding(bottom: 320);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+
+    expect(t.getTopLeft(find.text('Create group')).dy, equals(beforeTop));
+    expect(t.takeException(), isNull);
+
+    t.view.viewInsets = FakeViewPadding.zero;
+    await t.pumpWidget(
+      const MaterialApp(
+        home: CustomerShell(
+          header: SizedBox(height: 56),
+          body: SizedBox.expand(),
+          footer: SizedBox(height: 56, child: Text('Pinned Customer Footer')),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+
+    final customerScaffold = t.widget<Scaffold>(find.byType(Scaffold).last);
+    expect(customerScaffold.resizeToAvoidBottomInset, isFalse);
+    final beforeFooter = t.getTopLeft(find.text('Pinned Customer Footer')).dy;
+
+    t.view.viewInsets = const FakeViewPadding(bottom: 320);
+    await t.pumpAndSettle();
+
+    expect(
+      t.getTopLeft(find.text('Pinned Customer Footer')).dy,
+      equals(beforeFooter),
+    );
+    expect(t.takeException(), isNull);
+  });
 }

@@ -243,7 +243,12 @@ class _CreateLoyaltyProgramScreenState
             // Active Step Body
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  20 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
                 child: _buildCurrentStepBody(),
               ),
             ),
@@ -1176,6 +1181,7 @@ class _CreateLoyaltyProgramScreenState
   Widget _buildDesktopLayout() {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF0F172A),
@@ -1263,7 +1269,12 @@ class _CreateLoyaltyProgramScreenState
             // 2-column or responsive body
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  16,
+                  24,
+                  24 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1180),

@@ -35,11 +35,13 @@ BoxDecoration customerCard({List<Color>? colors, double radius = 18}) =>
 class CustomerShell extends StatelessWidget {
   final Widget header, body;
   final Widget? footer;
+  final bool resizeToAvoidBottomInset;
   const CustomerShell({
     super.key,
     required this.header,
     required this.body,
     this.footer,
+    this.resizeToAvoidBottomInset = false,
   });
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
@@ -57,6 +59,7 @@ class CustomerShell extends StatelessWidget {
       ),
       child: Scaffold(
         backgroundColor: const Color(0xFF031024),
+        resizeToAvoidBottomInset: resizeToAvoidBottomInset,
         body: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -98,6 +101,7 @@ class CustomerShell extends StatelessWidget {
                     ),
                     child: SafeArea(
                       top: false,
+                      maintainBottomViewPadding: true,
                       child: Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 840),

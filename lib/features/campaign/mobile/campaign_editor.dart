@@ -314,7 +314,12 @@ class _CampaignEditorState extends State<CampaignEditor> {
             Expanded(
               child: SingleChildScrollView(
                 controller: scroll,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  18 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 child: AbsorbPointer(

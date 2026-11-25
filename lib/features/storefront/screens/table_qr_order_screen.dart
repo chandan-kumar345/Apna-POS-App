@@ -1018,7 +1018,12 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
                               child: _image(
                                 _productImage(
                                   _data.menuItems.firstWhere(
-                                    (item) => item.category.trim() == category,
+                                    (item) =>
+                                        item.category.trim() == category &&
+                                        _productImage(item).isNotEmpty,
+                                    orElse: () => _data.menuItems.firstWhere(
+                                      (item) => item.category.trim() == category,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1120,46 +1125,92 @@ class _TableQrOrderScreenState extends State<TableQrOrderScreen> {
     );
   }
 
-  Widget _menuCard(MenuItemModel item) => _card(
-    onTap: () => _showDetails(item),
-    padding: const EdgeInsets.all(8),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(width: 86, height: 91, child: _photo(item, 12)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _itemTitle(item, maxLines: 2),
-              if (item.description.trim().isNotEmpty)
-                Text(
-                  item.description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _muted,
-                    fontSize: 12,
-                    height: 1.22,
+  Widget _menuCard(MenuItemModel item) {
+    final variantNames = item.variants
+        .map((v) => v.name.trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+    return _card(
+      onTap: () => _showDetails(item),
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 86, height: 91, child: _photo(item, 12)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _itemTitle(item, maxLines: 2),
+                if (item.description.trim().isNotEmpty)
+                  Text(
+                    item.description,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 12,
+                      height: 1.22,
+                    ),
                   ),
-                ),
-              const SizedBox(height: 4),
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                children: [
-                  _title(_money(item.effectivePrice), 16),
-                  _addControl(item),
+                if (variantNames.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        variantNames.length > 1 ? 'Variants:' : 'Variant:',
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          color: _blue,
+                        ),
+                      ),
+                      for (final vName in variantNames)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _tint,
+                            borderRadius: BorderRadius.circular(7),
+                            border: Border.all(
+                              color: _blue.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: Text(
+                            vName,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _blue,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
-              ),
-            ],
+                const SizedBox(height: 4),
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  children: [
+                    _title(_money(item.effectivePrice), 16),
+                    _addControl(item),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   // 03 / Cart and pay at counter
   Widget _cartPage() => Column(

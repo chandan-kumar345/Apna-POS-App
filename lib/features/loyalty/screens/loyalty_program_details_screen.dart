@@ -1919,6 +1919,7 @@ class _LoyaltyProgramDetailsScreenState
   Widget _buildDesktopLayout() {
     return Scaffold(
       backgroundColor: const Color(0xFFF1F7FC),
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: const Color(0xFF061E38),
         foregroundColor: Colors.white,

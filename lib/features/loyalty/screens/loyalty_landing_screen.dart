@@ -341,6 +341,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFEAF3FF),
+      resizeToAvoidBottomInset: false,
       body: workspace,
     );
   }
@@ -579,7 +580,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                           height: isWide ? 102 : 92,
                           fit: BoxFit.contain,
                           filterQuality: FilterQuality.high,
-                          errorBuilder: (_, __, ___) => const _HeroGiftFallback(),
+                          errorBuilder: (_, _, _) => const _HeroGiftFallback(),
                         ),
                       ],
                     ),
@@ -663,7 +664,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                       height: 34,
                       fit: BoxFit.contain,
                       filterQuality: FilterQuality.high,
-                      errorBuilder: (_, __, ___) => const Icon(
+                      errorBuilder: (_, _, _) => const Icon(
                         Icons.emoji_events_rounded,
                         color: Color(0xFFF59E0B),
                         size: 30,

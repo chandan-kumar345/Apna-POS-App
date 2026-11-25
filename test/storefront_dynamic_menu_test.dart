@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apna_pos/core/network/api_client.dart';
+import 'package:apna_pos/core/services/location_service.dart';
 import 'package:apna_pos/core/services/network_service.dart';
 import 'package:apna_pos/core/theme/glass_theme.dart';
 import 'package:apna_pos/features/storefront/screens/customer_storefront_screen.dart';
@@ -187,6 +188,10 @@ void main() {
       ..clear()
       ..addAll(originals);
     NetworkService().dispose();
+    LocationService.debugAddressSearchOverride = null;
+    LocationService.debugCurrentLocationOverride = null;
+    LocationService.debugResolveDetailsOverride = null;
+    LocationService.debugPincodeLookupOverride = null;
   });
 
   Future<void> mount(
@@ -398,7 +403,7 @@ void main() {
       expect(find.text('Bill Summary'), findsOneWidget);
       expect(find.text('GST (5%)'), findsOneWidget);
 
-      // Enter delivery address
+      // Enter delivery address (6-digit PIN code is mandatory)
       await tester.tap(find.text('Enter Delivery Address'));
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -406,10 +411,27 @@ void main() {
         '42 Park Lane, Sector 18',
       );
       await tester.pumpAndSettle();
-      await capture(tester, key, 'delivery-06-address');
+      await tester.ensureVisible(find.text('Confirm Delivery Address'));
       await tester.tap(find.text('Confirm Delivery Address'));
       await tester.pumpAndSettle();
-      expect(find.text('42 Park Lane, Sector 18'), findsOneWidget);
+      expect(
+        find.text('Pin code is mandatory. Please enter 6-digit PIN code'),
+        findsOneWidget,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('delivery-pincode-input')),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('delivery-pincode-input')),
+        '201301',
+      );
+      await tester.pumpAndSettle();
+      await capture(tester, key, 'delivery-06-address');
+      await tester.ensureVisible(find.text('Confirm Delivery Address'));
+      await tester.tap(find.text('Confirm Delivery Address'));
+      await tester.pumpAndSettle();
+      expect(find.text('42 Park Lane, Sector 18, 201301'), findsOneWidget);
       await capture(tester, key, 'delivery-03-cart');
 
       // Proceed to Checkout -> Screen 4 Login popup
@@ -568,12 +590,20 @@ void main() {
         find.byKey(const ValueKey('delivery-address-input')),
         '42 Park Lane, Sector 18',
       );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('delivery-pincode-input')),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('delivery-pincode-input')),
+        '201301',
+      );
       await tester.pumpAndSettle();
       await capture(tester, key, 'delivery-06-address-dark-parent');
 
+      await tester.ensureVisible(find.text('Confirm Delivery Address'));
       await tester.tap(find.text('Confirm Delivery Address'));
       await tester.pumpAndSettle();
-      expect(find.text('42 Park Lane, Sector 18'), findsOneWidget);
+      expect(find.text('42 Park Lane, Sector 18, 201301'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

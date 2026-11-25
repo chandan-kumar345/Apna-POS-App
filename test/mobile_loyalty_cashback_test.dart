@@ -56,13 +56,14 @@ void main() {
       );
 
       await tester.pumpWidget(
-        buildTestWidget(LoyaltyLandingScreen(initialBranding: dynamicBranding)),
+        buildTestWidget(
+          LoyaltyLandingScreen(
+            showHeader: false,
+            initialBranding: dynamicBranding,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
-
-      // Top bar elements (POS Screen Top Header)
-      expect(find.text('P4'), findsOneWidget);
-      expect(find.text('Pizza 47'), findsWidgets);
 
       // Hero Banner Header title & subtitle
       expect(find.text('Loyalty Program'), findsOneWidget);
@@ -100,12 +101,57 @@ void main() {
       // Inactive program hidden until View All is tapped
       expect(find.text('Weekend Bonus Cashback'), findsNothing);
       await tester.tap(find.text('View All'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
       expect(find.text('All Programs (2)'), findsOneWidget);
       expect(find.text('Weekend Bonus Cashback'), findsOneWidget);
 
+      // Revenue info dialog opens cleanly
+      await tester.tap(find.byIcon(Icons.info_outline_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('Loyalty Revenue'), findsOneWidget);
+      await tester.tap(find.text('Got it'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
       // Bottom CTA Button
       expect(find.text('Create Loyalty Program'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Screen 1b: LoyaltyLandingScreen handles desktop width (showHeader: false) and zero empty metrics gracefully', (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final emptyBranding = LoyaltyBrandingModel(
+        companyName: 'Pizza 47',
+        companyLogo: '',
+        members: 0,
+        totalCashback: 0,
+        redemptions: 0,
+        revenue: 0,
+        revenueGrowthPercent: null,
+        programs: const [],
+      );
+
+      await tester.pumpWidget(
+        buildTestWidget(
+          LoyaltyLandingScreen(
+            showHeader: false,
+            initialBranding: emptyBranding,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Loyalty Program'), findsOneWidget);
+      expect(find.text('Members'), findsOneWidget);
+      expect(find.text('0'), findsNWidgets(2)); // Members and Redemptions
+      expect(find.text('₹0'), findsNWidgets(2)); // Total Cashback and Revenue
+      expect(find.text('Active Programs (0)'), findsOneWidget);
+      expect(find.text('No active programs yet'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -225,6 +271,62 @@ void main() {
       expect(find.text('Edit Program'), findsOneWidget);
       expect(find.text('Eligible Customers'), findsWidgets);
       expect(find.text('Deactivate'), findsOneWidget);
+    });
+
+    testWidgets('Loyalty screens stay fixed when keyboard opens', (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+
+      final branding = LoyaltyBrandingModel(
+        companyName: 'Pizza 47',
+        companyLogo: '',
+        members: 1,
+        totalCashback: 10,
+        redemptions: 1,
+        revenue: 100,
+        programs: const [],
+      );
+
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pumpWidget(
+        buildTestWidget(
+          LoyaltyLandingScreen(
+            showHeader: false,
+            initialBranding: branding,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).last);
+      expect(scaffold.resizeToAvoidBottomInset, isFalse);
+      final beforeTop = tester.getTopLeft(find.text('Create Loyalty Program')).dy;
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+      await tester.pump();
+
+      final afterTop = tester.getTopLeft(find.text('Create Loyalty Program')).dy;
+      expect(afterTop, equals(beforeTop));
+      expect(tester.takeException(), isNull);
+
+      tester.view.physicalSize = const Size(520, 915);
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pumpWidget(buildTestWidget(const CreateLoyaltyProgramScreen()));
+      await tester.pumpAndSettle();
+
+      final createScaffold = tester.widget<Scaffold>(find.byType(Scaffold).last);
+      expect(createScaffold.resizeToAvoidBottomInset, isFalse);
+      final beforeNext = tester.getTopLeft(find.text('Next')).dy;
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.text('Next')).dy, equals(beforeNext));
+      expect(tester.takeException(), isNull);
     });
   });
 }

@@ -5,6 +5,7 @@ import '../../../core/models/restaurant_model.dart';
 import '../../../core/models/order_model.dart';
 import 'package:flutter/services.dart';
 import '../models/customer_storefront_flow_models.dart';
+import 'online_order_flow_widgets.dart';
 import '../models/storefront_model.dart';
 import '../services/customer_storefront_api_service.dart';
 import '../screens/customer_my_orders_screen.dart';
@@ -2921,58 +2922,23 @@ class _StorefrontCheckoutFlowSheetState extends State<StorefrontCheckoutFlowShee
     );
   }
 
-  void _showAddNewAddressDialog() {
-    final labelCtrl = TextEditingController(text: 'Home');
-    final addressCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Add Delivery Address', style: TextStyle(fontWeight: FontWeight.w900)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: labelCtrl,
-              decoration: const InputDecoration(labelText: 'Label (Home, Work, Other)'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: addressCtrl,
-              decoration: const InputDecoration(labelText: 'Full Address'),
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (addressCtrl.text.trim().isNotEmpty) {
-                final newAddr = CustomerAddressModel(
-                  id: 'addr_${DateTime.now().millisecondsSinceEpoch}',
-                  label: labelCtrl.text.trim().isNotEmpty ? labelCtrl.text.trim() : 'Other',
-                  fullAddress: addressCtrl.text.trim(),
-                );
-                final updated = await _customerService.saveAddress(newAddr);
-                if (mounted && updated != null) {
-                  setState(() {
-                    _currentCustomer = updated;
-                    _selectedAddress = newAddr;
-                  });
-                }
-              }
-              if (ctx.mounted) {
-                Navigator.pop(ctx);
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: widget.themeColor, foregroundColor: Colors.white),
-            child: const Text('Save Address'),
-          ),
-        ],
-      ),
+  Future<void> _showAddNewAddressDialog() async {
+    final chosen = await DeliveryAddressBottomSheet.show(
+      context,
+      initialAddress: _selectedAddress?.fullAddress ?? '',
+      initialLandmark: _selectedAddress?.landmark ?? '',
+      initialPinCode: _selectedAddress?.pinCode ?? '',
+      savedAddresses: _currentCustomer?.addresses ?? const [],
     );
+    if (chosen == null || !mounted) return;
+    final updated = await _customerService.saveAddress(chosen);
+    if (!mounted) return;
+    setState(() {
+      if (updated != null) {
+        _currentCustomer = updated;
+      }
+      _selectedAddress = chosen;
+    });
   }
 
   // =========================================================================

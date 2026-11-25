@@ -8,6 +8,8 @@ import '../../../core/models/menu_item_model.dart';
 import '../../../core/models/order_model.dart';
 import '../../../core/models/restaurant_model.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/services/youtube_service.dart';
+import '../../pos/widgets/pos_product_media_box.dart';
 import '../models/customer_order_status.dart';
 import '../models/customer_storefront_flow_models.dart';
 import '../models/storefront_model.dart';
@@ -492,10 +494,183 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
     return Icons.restaurant_outlined;
   }
 
+  String _primaryProductImage(MenuItemModel item) {
+    if (item.imageUrl.trim().isNotEmpty) return item.imageUrl.trim();
+    for (final img in item.images) {
+      if (img.trim().isNotEmpty) return img.trim();
+    }
+    final rawVideo = item.videoUrl.trim();
+    if (rawVideo.isNotEmpty && YouTubeService.isYouTubeUrl(rawVideo)) {
+      final videoId = YouTubeService.extractVideoId(rawVideo);
+      if (videoId != null && videoId.isNotEmpty) {
+        return YouTubeService.getThumbnailUrl(videoId);
+      }
+    }
+    return '';
+  }
+
+  String _categoryFirstProductImage(String category) {
+    final target = category.trim().toLowerCase();
+    if (target.isEmpty || target == 'all') return '';
+    for (final item in widget.data.menuItems) {
+      if (item.category.trim().toLowerCase() == target) {
+        final img = _primaryProductImage(item);
+        if (img.isNotEmpty) return img;
+      }
+    }
+    return '';
+  }
+
+  Widget _buildProductMedia(
+    MenuItemModel item, {
+    double? width,
+    double? height,
+    double radius = 12,
+    bool isPopularCard = false,
+  }) {
+    final primaryImg = _primaryProductImage(item);
+    final hasVideo = item.videoUrl.trim().isNotEmpty;
+    if (!hasVideo && item.images.length <= 1) {
+      return buildFoodThumbnail(
+        primaryImg,
+        width: width ?? 90,
+        height: height ?? 90,
+        radius: radius,
+      );
+    }
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          PosProductMediaBox(
+            key: ValueKey(
+              'storefront_media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}',
+            ),
+            item: item,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            imageCacheWidth: isPopularCard ? 480 : 320,
+            showDots: item.images.length > 1 || hasVideo,
+            autoSlide: false,
+            autoPlayVideo: true,
+            independentPlayback: true,
+            borderRadius: BorderRadius.circular(radius),
+            onTap: () => widget.onProduct(item),
+          ),
+          if (hasVideo)
+            Positioned(
+              top: 5,
+              left: 5,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.60),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.videocam_rounded,
+                    size: 12,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget? _buildVariantsLabel(
+    MenuItemModel item, {
+    bool compact = false,
+  }) {
+    final names = item.variants
+        .map((v) => v.name.trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+    if (names.isEmpty) return null;
+
+    final labelPrefix = names.length > 1 ? 'Variants' : 'Variant';
+    if (compact) {
+      return Container(
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFBFDBFE), width: 0.9),
+        ),
+        child: Text(
+          '$labelPrefix: ${names.join(' • ')}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: brand,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 5,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '$labelPrefix:',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: brand,
+            ),
+          ),
+          ...names.map(
+            (name) => Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 7,
+                vertical: 2.5,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFFBFDBFE),
+                  width: 0.9,
+                ),
+              ),
+              child: Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E3A8A),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _pickDeliveryAddress() async {
     final chosen = await DeliveryAddressBottomSheet.show(
       context,
       initialAddress: _localDeliveryAddress,
+      initialLandmark: _selectedAddressModel?.landmark ?? '',
+      initialPinCode: _selectedAddressModel?.pinCode ?? '',
       savedAddresses: _localCustomer?.addresses ?? const [],
     );
     if (chosen == null || !mounted) return false;
@@ -505,6 +680,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
     });
     widget.onUpdateDeliveryAddress?.call(chosen);
     return true;
+  }
+
+  bool _hasValidPinCode() {
+    final savedPin = (_selectedAddressModel?.pinCode ?? '').trim();
+    if (RegExp(r'^[1-9][0-9]{5}$').hasMatch(savedPin)) {
+      return true;
+    }
+    return RegExp(r'\b[1-9][0-9]{5}\b').hasMatch(_localDeliveryAddress);
   }
 
   // Screen 3 -> Screen 4 (Login) -> Screen 5 (Payment Method) -> Real Order Submit
@@ -520,7 +703,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
     }
 
     if (widget.orderType == OrderType.delivery &&
-        _localDeliveryAddress.trim().isEmpty) {
+        (_localDeliveryAddress.trim().isEmpty || !_hasValidPinCode())) {
       final saved = await _pickDeliveryAddress();
       if (!saved || !mounted) return;
     }
@@ -978,7 +1161,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                             child: Row(
                               children: [
                                 buildFoodThumbnail(
-                                  item.imageUrl,
+                                  _primaryProductImage(item),
                                   size: 52,
                                   radius: 9,
                                 ),
@@ -1218,9 +1401,6 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
       );
     }
 
-    final showBottomNav =
-        _currentTab == 0 || _currentTab == 3 || _currentTab == 4;
-
     return PopScope(
       canPop: _currentTab == 0,
       onPopInvokedWithResult: (didPop, _) {
@@ -1234,20 +1414,119 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
         child: Scaffold(
           backgroundColor: storefrontBackground,
           body: SafeArea(child: _buildCurrentTabBody()),
-          bottomNavigationBar: showBottomNav
-              ? OnlineStorefrontBottomBar(
-                  currentIndex: _currentTab,
-                  cartCount: widget.cartCount,
-                  activeColor: brand,
-                  onTabSelected: (index) {
-                    setState(() => _currentTab = index);
-                    if (index == 3) {
-                      unawaited(_loadOrderHistory());
-                    }
-                  },
-                )
-              : null,
+          bottomNavigationBar: OnlineStorefrontBottomBar(
+            currentIndex: _currentTab,
+            cartCount: widget.cartCount,
+            activeColor: brand,
+            onTabSelected: (index) {
+              setState(() => _currentTab = index);
+              if (index == 3) {
+                unawaited(_loadOrderHistory());
+              }
+            },
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionScreenHeader(String title, VoidCallback onBack) {
+    return Row(
+      children: [
+        InkWell(
+          onTap: onBack,
+          borderRadius: BorderRadius.circular(20),
+          child: const Padding(
+            padding: EdgeInsets.all(6),
+            child: Icon(
+              Icons.arrow_back_rounded,
+              size: 24,
+              color: _ink,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: _ink,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuantityStepper({
+    required int quantity,
+    required VoidCallback onDecrement,
+    required VoidCallback onIncrement,
+    double height = 34,
+    double iconSize = 15.5,
+    double fontSize = 14,
+    double horizontalPad = 10,
+  }) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(height / 2),
+        border: Border.all(
+          color: const Color(0xFF94A3B8),
+          width: 1.15,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: onDecrement,
+            borderRadius: BorderRadius.circular(height / 2),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPad,
+                vertical: 4,
+              ),
+              child: Icon(
+                Icons.remove_rounded,
+                size: iconSize,
+                color: const Color(0xFF1D4ED8),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              '$quantity',
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w900,
+                color: _ink,
+              ),
+            ),
+          ),
+          InkWell(
+            onTap: onIncrement,
+            borderRadius: BorderRadius.circular(height / 2),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPad,
+                vertical: 4,
+              ),
+              child: Icon(
+                Icons.add_rounded,
+                size: iconSize,
+                color: const Color(0xFF1D4ED8),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1355,11 +1634,11 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
             onTap: () => setState(() => _showRestaurantInfoView = true),
             borderRadius: BorderRadius.circular(14),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.symmetric(vertical: 3),
               child: Row(
                 children: [
-                  widget.avatar(restaurant.logoUrl, restaurant.name, 46),
-                  const SizedBox(width: 10),
+                  widget.avatar(restaurant.logoUrl, restaurant.name, 60),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1371,24 +1650,24 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 15.5,
+                            fontSize: 18.5,
                             fontWeight: FontWeight.w900,
                             color: _ink,
                             height: 1.15,
                           ),
                         ),
-                        const SizedBox(height: 1),
+                        const SizedBox(height: 2),
                         Text(
                           subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 11,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: _muted,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         Wrap(
                           spacing: 6,
                           runSpacing: 3,
@@ -1396,36 +1675,28 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 1.5,
+                                horizontal: 7,
+                                vertical: 2,
                               ),
                               decoration: BoxDecoration(
                                 color: widget.data.isOnline
-                                    ? const Color(0xFFDCFCE7)
-                                    : const Color(0xFFFEE2E2),
-                                borderRadius: BorderRadius.circular(5),
-                                border: Border.all(
-                                  color: widget.data.isOnline
-                                      ? const Color(0xFF86EFAC)
-                                      : const Color(0xFFFCA5A5),
-                                  width: 0.8,
-                                ),
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFDC2626),
+                                borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 widget.data.isOnline ? 'Open' : 'Closed',
-                                style: TextStyle(
-                                  fontSize: 9.5,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
                                   fontWeight: FontWeight.w800,
-                                  color: widget.data.isOnline
-                                      ? const Color(0xFF14532D)
-                                      : const Color(0xFF991B1B),
+                                  color: Colors.white,
                                 ),
                               ),
                             ),
                             Text(
                               '$open – $close',
                               style: const TextStyle(
-                                fontSize: 10,
+                                fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
                                 color: _muted,
                               ),
@@ -1443,10 +1714,10 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
         const SizedBox(width: 8),
         InkWell(
           onTap: widget.onFavorite,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           child: Container(
-            width: 36,
-            height: 36,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
@@ -1463,7 +1734,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
               widget.favorite
                   ? Icons.favorite_rounded
                   : Icons.favorite_border_rounded,
-              size: 18,
+              size: 22,
               color: widget.favorite ? const Color(0xFFDC2626) : _ink,
             ),
           ),
@@ -1477,7 +1748,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
     final slideCount = banners.isNotEmpty ? banners.length : 1;
 
     return Container(
-      height: 138,
+      height: 154,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFF1E293B), width: 1.2),
@@ -1576,7 +1847,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
             ),
             // Left promotional headline & subtitle
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 134, 18),
+              padding: const EdgeInsets.fromLTRB(16, 14, 130, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1588,7 +1859,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           TextSpan(
                             text: 'Order Food\n',
                             style: TextStyle(
-                              fontSize: 17.5,
+                              fontSize: 20.5,
                               fontWeight: FontWeight.w900,
                               color: Colors.white,
                               height: 1.12,
@@ -1597,7 +1868,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           TextSpan(
                             text: 'Online',
                             style: TextStyle(
-                              fontSize: 18.5,
+                              fontSize: 21.5,
                               fontWeight: FontWeight.w900,
                               color: Color(0xFFFACC15),
                               height: 1.12,
@@ -1612,7 +1883,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 16.5,
+                        fontSize: 19,
                         fontWeight: FontWeight.w900,
                         color: Colors.white,
                         height: 1.15,
@@ -1621,16 +1892,16 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         ],
                       ),
                     ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 6),
                   Text(
                     subtitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFFE2E8F0),
-                      height: 1.28,
+                      height: 1.3,
                     ),
                   ),
                 ],
@@ -1702,10 +1973,11 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
             iconWidget: Transform.rotate(
               angle: 0.785,
               child: Container(
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(7),
                   border: Border.all(color: const Color(0xFFEA580C), width: 2),
                 ),
                 child: Transform.rotate(
@@ -1713,7 +1985,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                   child: const Center(
                     child: Icon(
                       Icons.percent_rounded,
-                      size: 13,
+                      size: 16,
                       color: Color(0xFFEA580C),
                     ),
                   ),
@@ -1729,8 +2001,8 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
           child: _buildQuickActionTile(
             iconWidget: const Icon(
               Icons.star_rounded,
-              size: 23,
-              color: Color(0xFFD97706),
+              size: 30,
+              color: Color(0xFFF59E0B),
             ),
             label: 'Favorites',
             onTap: _openFavoritesSheet,
@@ -1741,7 +2013,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
           child: _buildQuickActionTile(
             iconWidget: const Icon(
               Icons.shopping_bag_outlined,
-              size: 20,
+              size: 27,
               color: Color(0xFF1D4ED8),
             ),
             label: 'Order\nHistory',
@@ -1756,7 +2028,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
           child: _buildQuickActionTile(
             iconWidget: const Icon(
               Icons.headset_mic_outlined,
-              size: 20,
+              size: 27,
               color: Color(0xFF1D4ED8),
             ),
             label: 'Support',
@@ -1774,15 +2046,15 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
   }) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(13),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 72),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+          constraints: const BoxConstraints(minHeight: 82),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _cardBorder, width: 1.15),
             boxShadow: [
               BoxShadow(
@@ -1795,15 +2067,15 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(height: 24, child: Center(child: iconWidget)),
-              const SizedBox(height: 4),
+              SizedBox(height: 32, child: Center(child: iconWidget)),
+              const SizedBox(height: 5),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 10,
+                  fontSize: 11.2,
                   fontWeight: FontWeight.w800,
                   color: _ink,
                   height: 1.15,
@@ -1835,7 +2107,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
               child: Text(
                 'Popular Picks',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 17.5,
                   fontWeight: FontWeight.w900,
                   color: _ink,
                 ),
@@ -1852,7 +2124,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                     Text(
                       'View All',
                       style: TextStyle(
-                        fontSize: 11.5,
+                        fontSize: 13,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF1D4ED8),
                       ),
@@ -1860,7 +2132,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                     SizedBox(width: 3),
                     Icon(
                       Icons.arrow_forward_rounded,
-                      size: 13.5,
+                      size: 16,
                       color: Color(0xFF1D4ED8),
                     ),
                   ],
@@ -1869,15 +2141,15 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         LayoutBuilder(
           builder: (context, constraints) {
             final cardWidth = ((constraints.maxWidth - 10) / 2).clamp(
-              130.0,
-              200.0,
+              132.0,
+              204.0,
             );
             return SizedBox(
-              height: 174,
+              height: 216,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
@@ -1900,6 +2172,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
   Widget _popularPickCard(MenuItemModel item) {
     final qty = _getItemCartQuantity(item);
     final available = canOrder && item.isAvailable && !item.isOutOfStock;
+    final variantsChip = _buildVariantsLabel(item, compact: true);
 
     return Material(
       color: Colors.white,
@@ -1928,18 +2201,19 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                 ),
                 child: SizedBox(
                   width: double.infinity,
-                  height: 82,
-                  child: buildFoodThumbnail(
-                    item.imageUrl,
+                  height: 98,
+                  child: _buildProductMedia(
+                    item,
                     width: double.infinity,
-                    height: 82,
+                    height: 98,
                     radius: 0,
+                    isPopularCard: true,
                   ),
                 ),
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                  padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1947,8 +2221,8 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Padding(
-                            padding: const EdgeInsets.only(top: 1),
-                            child: buildFoodTypeBadge(item.itemType),
+                            padding: const EdgeInsets.only(top: 1.5),
+                            child: buildFoodTypeBadge(item.itemType, size: 15),
                           ),
                           const SizedBox(width: 5),
                           Expanded(
@@ -1957,7 +2231,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w800,
                                 color: _ink,
                                 height: 1.18,
@@ -1966,6 +2240,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           ),
                         ],
                       ),
+                      if (variantsChip != null) variantsChip,
                       const Spacer(),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1976,7 +2251,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 12.5,
+                                fontSize: 14.5,
                                 fontWeight: FontWeight.w900,
                                 color: _ink,
                               ),
@@ -1987,10 +2262,10 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           else if (qty == 0)
                             InkWell(
                               onTap: () => _handleQuickAdd(item),
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(16),
                               child: Container(
-                                width: 26,
-                                height: 26,
+                                width: 31,
+                                height: 31,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFDBEAFE),
                                   shape: BoxShape.circle,
@@ -2000,61 +2275,20 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                 ),
                                 child: const Icon(
                                   Icons.add_rounded,
-                                  size: 16,
+                                  size: 19,
                                   color: Color(0xFF1D4ED8),
                                 ),
                               ),
                             )
                           else
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFF94A3B8),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  InkWell(
-                                    onTap: () => _handleDecrementItem(item),
-                                    child: const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 5,
-                                        vertical: 3,
-                                      ),
-                                      child: Icon(
-                                        Icons.remove,
-                                        size: 12,
-                                        color: Color(0xFF1D4ED8),
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    '$qty',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 11,
-                                      color: _ink,
-                                    ),
-                                  ),
-                                  InkWell(
-                                    onTap: () => _handleIncrementItem(item),
-                                    child: const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 5,
-                                        vertical: 3,
-                                      ),
-                                      child: Icon(
-                                        Icons.add,
-                                        size: 12,
-                                        color: Color(0xFF1D4ED8),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            _buildQuantityStepper(
+                              quantity: qty,
+                              onDecrement: () => _handleDecrementItem(item),
+                              onIncrement: () => _handleIncrementItem(item),
+                              height: 28,
+                              iconSize: 13.5,
+                              fontSize: 12,
+                              horizontalPad: 6,
                             ),
                         ],
                       ),
@@ -2109,7 +2343,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
           : () => setState(() => _currentTab = 1),
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment.centerLeft,
@@ -2120,7 +2354,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
               Color(0xFF4338CA),
             ],
           ),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF5B21B6).withValues(alpha: 0.28),
@@ -2165,14 +2399,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
             Row(
               children: [
                 SizedBox(
-                  width: 42,
-                  height: 42,
+                  width: 50,
+                  height: 50,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
                       Container(
-                        width: 38,
-                        height: 38,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: RadialGradient(
@@ -2184,24 +2418,24 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         ),
                       ),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                         child: Image.asset(
                           'assets/images/loyalty_hero_gift_3d.png',
-                          width: 40,
-                          height: 40,
+                          width: 48,
+                          height: 48,
                           fit: BoxFit.contain,
                           filterQuality: FilterQuality.high,
                           errorBuilder: (_, _, _) => const Icon(
                             Icons.card_giftcard_rounded,
                             color: Color(0xFFFDE047),
-                            size: 26,
+                            size: 32,
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2211,18 +2445,18 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 16.5,
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
                         ),
                       ),
-                      const SizedBox(height: 1.5),
+                      const SizedBox(height: 2.5),
                       Text(
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 10.5,
+                          fontSize: 12.2,
                           fontWeight: FontWeight.w500,
                           color: Colors.white.withValues(alpha: 0.94),
                         ),
@@ -2277,33 +2511,12 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Top App Bar: <- Our Menu
-                    Row(
-                      children: [
-                        InkWell(
-                          onTap: () => setState(() => _currentTab = 0),
-                          borderRadius: BorderRadius.circular(18),
-                          child: const Padding(
-                            padding: EdgeInsets.all(5),
-                            child: Icon(
-                              Icons.arrow_back_rounded,
-                              size: 20,
-                              color: _ink,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Our Menu',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: _ink,
-                          ),
-                        ),
-                      ],
+                    _buildSectionScreenHeader(
+                      'Our Menu',
+                      () => setState(() => _currentTab = 0),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
                     // High-Contrast Pill Search Bar
                     Container(
@@ -2323,7 +2536,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         controller: widget.searchController,
                         onChanged: widget.onSearch,
                         style: const TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                           color: _ink,
                         ),
@@ -2331,19 +2544,19 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           hintText: searchHint,
                           hintStyle: const TextStyle(
                             color: Color(0xFF475569),
-                            fontSize: 11.5,
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
                           prefixIcon: const Icon(
                             Icons.search_rounded,
                             color: Color(0xFF1E293B),
-                            size: 18,
+                            size: 21,
                           ),
                           suffixIcon: widget.searchController.text.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(
                                     Icons.clear_rounded,
-                                    size: 16,
+                                    size: 18,
                                     color: _ink,
                                   ),
                                   onPressed: () {
@@ -2355,36 +2568,39 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 14,
-                            vertical: 10,
+                            vertical: 12,
                           ),
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
                     // Category Filter Pills
                     SizedBox(
-                      height: 34,
+                      height: 44,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
                         itemCount: widget.data.categories.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 7),
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           final cat = widget.data.categories[index];
                           final isSelected = widget.category == cat;
+                          final catImage = _categoryFirstProductImage(cat);
                           return InkWell(
                             onTap: () => widget.onCategory(cat),
-                            borderRadius: BorderRadius.circular(18),
+                            borderRadius: BorderRadius.circular(22),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
+                              padding: EdgeInsets.fromLTRB(
+                                catImage.isNotEmpty ? 6 : 14,
+                                6,
+                                14,
+                                6,
                               ),
                               decoration: BoxDecoration(
                                 color: isSelected ? brand : Colors.white,
-                                borderRadius: BorderRadius.circular(18),
+                                borderRadius: BorderRadius.circular(22),
                                 border: Border.all(
                                   color: isSelected ? brand : _cardBorder,
                                   width: 1.15,
@@ -2393,18 +2609,42 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
-                                    cat == 'All'
-                                        ? Icons.grid_view_rounded
-                                        : _getCategoryIcon(cat),
-                                    size: 13.5,
-                                    color: isSelected ? Colors.white : _ink,
-                                  ),
-                                  const SizedBox(width: 5),
+                                  if (catImage.isNotEmpty)
+                                    Container(
+                                      width: 28,
+                                      height: 28,
+                                      padding: const EdgeInsets.all(1.5),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.white,
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? Colors.white
+                                              : _cardBorder,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: ClipOval(
+                                        child: buildFoodThumbnail(
+                                          catImage,
+                                          size: 25,
+                                          radius: 12.5,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Icon(
+                                      cat == 'All'
+                                          ? Icons.grid_view_rounded
+                                          : _getCategoryIcon(cat),
+                                      size: 16.5,
+                                      color: isSelected ? Colors.white : _ink,
+                                    ),
+                                  const SizedBox(width: 7),
                                   Text(
                                     cat,
                                     style: TextStyle(
-                                      fontSize: 11.5,
+                                      fontSize: 13,
                                       fontWeight: isSelected
                                           ? FontWeight.w800
                                           : FontWeight.w700,
@@ -2419,7 +2659,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       ),
                     ),
 
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
 
                     // High-Contrast Veg Only Switch Toggle
                     Row(
@@ -2427,14 +2667,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         const Text(
                           'Veg only',
                           style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w700,
                             color: _ink,
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 6),
                         Transform.scale(
-                          scale: 0.74,
+                          scale: 0.84,
                           child: Switch(
                             value: _vegOnly,
                             activeTrackColor: const Color(0xFF15803D),
@@ -2501,7 +2741,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                   14,
                   0,
                   14,
-                  widget.cartCount > 0 ? 86 : 20,
+                  widget.cartCount > 0 ? 94 : 22,
                 ),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate((context, index) {
@@ -2511,7 +2751,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.only(top: 8, bottom: 7),
+                          padding: const EdgeInsets.only(top: 10, bottom: 9),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -2519,7 +2759,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                 child: Text(
                                   catName,
                                   style: const TextStyle(
-                                    fontSize: 14.5,
+                                    fontSize: 17.5,
                                     fontWeight: FontWeight.w900,
                                     color: _ink,
                                   ),
@@ -2528,9 +2768,9 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               Text(
                                 '${catDishes.length} ${catDishes.length == 1 ? "item" : "items"}',
                                 style: const TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1D4ED8),
+                                  color: _muted,
                                 ),
                               ),
                             ],
@@ -2538,7 +2778,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         ),
                         ...catDishes.map(
                           (dish) => Padding(
-                            padding: const EdgeInsets.only(bottom: 9),
+                            padding: const EdgeInsets.only(bottom: 11),
                             child: _dishCard(dish),
                           ),
                         ),
@@ -2553,14 +2793,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
         // Floating White Sticky Cart Bar matching Screen 2
         if (widget.cartCount > 0)
           Positioned(
-            bottom: 10,
+            bottom: 12,
             left: 12,
             right: 12,
             child: Container(
-              padding: const EdgeInsets.fromLTRB(14, 7, 7, 7),
+              padding: const EdgeInsets.fromLTRB(16, 9, 9, 9),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(26),
+                borderRadius: BorderRadius.circular(28),
                 border: Border.all(color: _cardBorder, width: 1.2),
                 boxShadow: [
                   BoxShadow(
@@ -2575,9 +2815,9 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                   const Icon(
                     Icons.shopping_cart_outlined,
                     color: _ink,
-                    size: 18,
+                    size: 22,
                   ),
-                  const SizedBox(width: 7),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text.rich(
                       TextSpan(
@@ -2587,7 +2827,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                 '${widget.cartCount} ${widget.cartCount == 1 ? "item" : "items"}  |  ',
                             style: const TextStyle(
                               color: _muted,
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -2595,7 +2835,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                             text: money(widget.cartTotal),
                             style: const TextStyle(
                               color: _ink,
-                              fontSize: 13,
+                              fontSize: 14.5,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -2611,12 +2851,13 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       backgroundColor: _ctaBlue,
                       foregroundColor: Colors.white,
                       elevation: 0,
+                      minimumSize: const Size(132, 42),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+                        horizontal: 20,
+                        vertical: 10,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(22),
                       ),
                     ),
                     child: const Row(
@@ -2626,11 +2867,11 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           'View Cart',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            fontSize: 12,
+                            fontSize: 13.5,
                           ),
                         ),
-                        SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_rounded, size: 14),
+                        SizedBox(width: 5),
+                        Icon(Icons.arrow_forward_rounded, size: 16),
                       ],
                     ),
                   ),
@@ -2647,17 +2888,18 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
     final available = canOrder && item.isAvailable && !item.isOutOfStock;
     final hasStrike =
         item.hasDiscount && item.price > item.effectivePrice;
+    final variantsSection = _buildVariantsLabel(item);
 
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: () => widget.onProduct(item),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(9),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: _cardBorder, width: 1.15),
             boxShadow: [
               BoxShadow(
@@ -2670,8 +2912,8 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              buildFoodThumbnail(item.imageUrl, size: 70, radius: 10),
-              const SizedBox(width: 10),
+              _buildProductMedia(item, width: 92, height: 92, radius: 12),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2680,48 +2922,50 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.only(top: 1.5),
-                          child: buildFoodTypeBadge(item.itemType),
+                          padding: const EdgeInsets.only(top: 2),
+                          child: buildFoodTypeBadge(item.itemType, size: 16),
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             item.name,
                             style: const TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 15.5,
                               fontWeight: FontWeight.w800,
                               color: _ink,
+                              height: 1.2,
                             ),
                           ),
                         ),
                       ],
                     ),
                     if (item.description.trim().isNotEmpty) ...[
-                      const SizedBox(height: 2.5),
+                      const SizedBox(height: 4),
                       Text(
                         item.description.trim(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 10.5,
+                          fontSize: 12,
                           color: _muted,
-                          height: 1.28,
+                          height: 1.32,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 6),
+                    if (variantsSection != null) variantsSection,
+                    const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Flexible(
                           child: Wrap(
-                            spacing: 5,
+                            spacing: 6,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               Text(
                                 money(item.effectivePrice),
                                 style: const TextStyle(
-                                  fontSize: 13,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w900,
                                   color: _ink,
                                 ),
@@ -2730,7 +2974,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                 Text(
                                   money(item.price),
                                   style: const TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 12,
                                     color: Color(0xFF64748B),
                                     decoration: TextDecoration.lineThrough,
                                   ),
@@ -2738,6 +2982,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                             ],
                           ),
                         ),
+                        const SizedBox(width: 8),
                         if (!available)
                           const SizedBox.shrink()
                         else if (qty == 0)
@@ -2745,12 +2990,12 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                             onPressed: () => _handleQuickAdd(item),
                             icon: const Icon(
                               Icons.shopping_cart_outlined,
-                              size: 13,
+                              size: 16,
                             ),
                             label: const Text(
                               'Add',
                               style: TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -2759,73 +3004,20 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               foregroundColor: Colors.white,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 5,
+                                horizontal: 16,
+                                vertical: 8,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(18),
                               ),
-                              minimumSize: const Size(68, 29),
+                              minimumSize: const Size(98, 36),
                             ),
                           )
                         else
-                          Container(
-                            height: 29,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: const Color(0xFF94A3B8),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                InkWell(
-                                  onTap: () => _handleDecrementItem(item),
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: const Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 9,
-                                      vertical: 4,
-                                    ),
-                                    child: Icon(
-                                      Icons.remove,
-                                      size: 13.5,
-                                      color: Color(0xFF1D4ED8),
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  child: Text(
-                                    '$qty',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w900,
-                                      color: _ink,
-                                    ),
-                                  ),
-                                ),
-                                InkWell(
-                                  onTap: () => _handleIncrementItem(item),
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: const Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 5,
-                                    ),
-                                    child: Icon(
-                                      Icons.add,
-                                      size: 15,
-                                      color: Color(0xFF1D4ED8),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                          _buildQuantityStepper(
+                            quantity: qty,
+                            onDecrement: () => _handleDecrementItem(item),
+                            onIncrement: () => _handleIncrementItem(item),
                           ),
                       ],
                     ),
@@ -2850,31 +3042,10 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
       children: [
         // Top App Bar: <- Your Cart
         Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 14, 6),
-          child: Row(
-            children: [
-              InkWell(
-                onTap: () => setState(() => _currentTab = 1),
-                borderRadius: BorderRadius.circular(18),
-                child: const Padding(
-                  padding: EdgeInsets.all(5),
-                  child: Icon(
-                    Icons.arrow_back_rounded,
-                    size: 20,
-                    color: _ink,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Your Cart',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: _ink,
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(10, 10, 14, 6),
+          child: _buildSectionScreenHeader(
+            'Your Cart',
+            () => setState(() => _currentTab = 1),
           ),
         ),
 
@@ -2888,41 +3059,41 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       children: [
                         const Icon(
                           Icons.shopping_cart_outlined,
-                          size: 48,
+                          size: 58,
                           color: Color(0xFF475569),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         const Text(
                           'Your cart is empty',
                           style: TextStyle(
-                            fontSize: 15.5,
+                            fontSize: 18,
                             fontWeight: FontWeight.w800,
                             color: _ink,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         const Text(
                           'Add tasty items from the menu to get started.',
-                          style: TextStyle(fontSize: 11.5, color: _muted),
+                          style: TextStyle(fontSize: 13.5, color: _muted),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 18),
                         ElevatedButton(
                           onPressed: () => setState(() => _currentTab = 1),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _ctaBlue,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(22),
                             ),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 10,
+                              horizontal: 24,
+                              vertical: 12,
                             ),
                           ),
                           child: const Text(
                             'Explore Menu',
                             style: TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 14,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -2933,7 +3104,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                 )
               : SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 18),
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -2941,17 +3112,17 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       InkWell(
                         onTap: _pickDeliveryAddress,
                         borderRadius: BorderRadius.circular(
-                          hasAddress ? 14 : 22,
+                          hasAddress ? 16 : 24,
                         ),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
+                            horizontal: 14,
+                            vertical: 13,
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFEFF6FF),
                             borderRadius: BorderRadius.circular(
-                              hasAddress ? 14 : 22,
+                              hasAddress ? 16 : 24,
                             ),
                             border: Border.all(
                               color: const Color(0xFF3B82F6),
@@ -2963,9 +3134,9 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               const Icon(
                                 Icons.location_on_outlined,
                                 color: Color(0xFF1D4ED8),
-                                size: 20,
+                                size: 22,
                               ),
-                              const SizedBox(width: 9),
+                              const SizedBox(width: 10),
                               Expanded(
                                 child: hasAddress
                                     ? Column(
@@ -2975,19 +3146,19 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                           Text(
                                             'Deliver to ${_selectedAddressModel?.label ?? "Address"}',
                                             style: const TextStyle(
-                                              fontSize: 11.5,
+                                              fontSize: 13.5,
                                               fontWeight: FontWeight.w800,
                                               color: _ink,
                                             ),
                                           ),
-                                          const SizedBox(height: 1.5),
+                                          const SizedBox(height: 2),
                                           Text(
                                             _localDeliveryAddress,
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w500,
                                               color: _muted,
                                             ),
                                           ),
@@ -2996,7 +3167,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                     : const Text(
                                         'Enter Delivery Address',
                                         style: TextStyle(
-                                          fontSize: 12.5,
+                                          fontSize: 14.5,
                                           fontWeight: FontWeight.w800,
                                           color: _ink,
                                         ),
@@ -3005,14 +3176,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               const Icon(
                                 Icons.chevron_right_rounded,
                                 color: Color(0xFF1D4ED8),
-                                size: 20,
+                                size: 22,
                               ),
                             ],
                           ),
                         ),
                       ),
 
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
 
                       // 2. Cart Items List
                       ...List.generate(cartList.length, (index) {
@@ -3028,11 +3199,11 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         ].join(' • ');
 
                         return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(9),
+                          margin: const EdgeInsets.only(bottom: 11),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(15),
                             border: Border.all(
                               color: _cardBorder,
                               width: 1.15,
@@ -3041,11 +3212,11 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           child: Row(
                             children: [
                               buildFoodThumbnail(
-                                cItem.item.imageUrl,
-                                size: 56,
-                                radius: 10,
+                                _primaryProductImage(cItem.item),
+                                size: 68,
+                                radius: 11,
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 11),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3054,15 +3225,16 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                       children: [
                                         buildFoodTypeBadge(
                                           cItem.item.itemType,
+                                          size: 15,
                                         ),
-                                        const SizedBox(width: 5),
+                                        const SizedBox(width: 6),
                                         Expanded(
                                           child: Text(
                                             cItem.item.name,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                              fontSize: 12.5,
+                                              fontSize: 14.5,
                                               fontWeight: FontWeight.w800,
                                               color: _ink,
                                             ),
@@ -3071,22 +3243,22 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                       ],
                                     ),
                                     if (subInfo.isNotEmpty) ...[
-                                      const SizedBox(height: 1.5),
+                                      const SizedBox(height: 2.5),
                                       Text(
                                         subInfo,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                          fontSize: 10,
+                                          fontSize: 11.5,
                                           color: _muted,
                                         ),
                                       ),
                                     ],
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 6),
                                     Text(
                                       money(cItem.totalPrice),
                                       style: const TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 15.5,
                                         fontWeight: FontWeight.w900,
                                         color: _ink,
                                       ),
@@ -3095,68 +3267,23 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Container(
-                                height: 29,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: const Color(0xFF94A3B8),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    InkWell(
-                                      onTap: () {
-                                        widget.onUpdateQuantity?.call(
-                                          cItem,
-                                          cItem.quantity - 1,
-                                        );
-                                        _recalculateLocalCouponDiscount();
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 9,
-                                          vertical: 4,
-                                        ),
-                                        child: Icon(
-                                          Icons.remove,
-                                          size: 13.5,
-                                          color: Color(0xFF1D4ED8),
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '${cItem.quantity}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w900,
-                                        color: _ink,
-                                      ),
-                                    ),
-                                    InkWell(
-                                      onTap: () {
-                                        widget.onUpdateQuantity?.call(
-                                          cItem,
-                                          cItem.quantity + 1,
-                                        );
-                                        _recalculateLocalCouponDiscount();
-                                      },
-                                      child: const Padding(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 9,
-                                          vertical: 4,
-                                        ),
-                                        child: Icon(
-                                          Icons.add,
-                                          size: 13.5,
-                                          color: Color(0xFF1D4ED8),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              _buildQuantityStepper(
+                                quantity: cItem.quantity,
+                                horizontalPad: 9,
+                                onDecrement: () {
+                                  widget.onUpdateQuantity?.call(
+                                    cItem,
+                                    cItem.quantity - 1,
+                                  );
+                                  _recalculateLocalCouponDiscount();
+                                },
+                                onIncrement: () {
+                                  widget.onUpdateQuantity?.call(
+                                    cItem,
+                                    cItem.quantity + 1,
+                                  );
+                                  _recalculateLocalCouponDiscount();
+                                },
                               ),
                             ],
                           ),
@@ -3168,11 +3295,11 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         onTap: () => setState(() => _currentTab = 1),
                         borderRadius: BorderRadius.circular(8),
                         child: const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 4),
+                          padding: EdgeInsets.symmetric(vertical: 5),
                           child: Text(
                             '+ Add more items',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 14,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF1D4ED8),
                             ),
@@ -3180,17 +3307,17 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         ),
                       ),
 
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
 
                       // 4. High-Contrast Cooking Instructions Card
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
+                          horizontal: 14,
+                          vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: _cardBorder,
                             width: 1.15,
@@ -3200,17 +3327,17 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           children: [
                             const Icon(
                               Icons.edit_outlined,
-                              size: 17,
+                              size: 20,
                               color: Color(0xFF1E293B),
                             ),
-                            const SizedBox(width: 9),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: TextField(
                                 controller: _cookingInstructionsController,
                                 maxLines: 2,
                                 minLines: 1,
                                 style: const TextStyle(
-                                  fontSize: 11.5,
+                                  fontSize: 13.5,
                                   fontWeight: FontWeight.w600,
                                   color: _ink,
                                 ),
@@ -3219,7 +3346,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                       'Add cooking instructions\n(e.g., less spicy, extra cheese)',
                                   hintStyle: TextStyle(
                                     color: Color(0xFF475569),
-                                    fontSize: 11,
+                                    fontSize: 12.5,
                                   ),
                                   border: InputBorder.none,
                                   isDense: true,
@@ -3233,18 +3360,18 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                       // Optional coupon strip when coupons exist or applied
                       if (_appliedCouponCode != null ||
                           _coupons.isNotEmpty) ...[
-                        const SizedBox(height: 9),
+                        const SizedBox(height: 10),
                         InkWell(
                           onTap: () => _openOffersSheet(fromCart: true),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 9,
+                              horizontal: 14,
+                              vertical: 11,
                             ),
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: _appliedCouponCode != null
                                     ? const Color(0xFF16A34A)
@@ -3256,19 +3383,19 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                               children: [
                                 Icon(
                                   Icons.local_offer_outlined,
-                                  size: 16,
+                                  size: 19,
                                   color: _appliedCouponCode != null
                                       ? const Color(0xFF15803D)
                                       : brand,
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 9),
                                 Expanded(
                                   child: Text(
                                     _appliedCouponCode != null
                                         ? 'Coupon $_appliedCouponCode applied (-${money(_couponDiscount)})'
                                         : 'Apply Offer / Coupon (${_coupons.length} available)',
                                     style: TextStyle(
-                                      fontSize: 11.5,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.w700,
                                       color: _appliedCouponCode != null
                                           ? const Color(0xFF14532D)
@@ -3284,14 +3411,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                     }),
                                     child: const Icon(
                                       Icons.close_rounded,
-                                      size: 15,
+                                      size: 18,
                                       color: _ink,
                                     ),
                                   )
                                 else
                                   const Icon(
                                     Icons.chevron_right_rounded,
-                                    size: 17,
+                                    size: 20,
                                     color: _ink,
                                   ),
                               ],
@@ -3300,13 +3427,13 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                         ),
                       ],
 
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
 
                       // 5. High-Contrast Bill Summary Card
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(15),
                           border: Border.all(
                             color: _cardBorder,
                             width: 1.15,
@@ -3317,10 +3444,10 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           children: [
                             Padding(
                               padding: const EdgeInsets.fromLTRB(
-                                13,
+                                15,
+                                14,
+                                15,
                                 12,
-                                13,
-                                10,
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3328,15 +3455,15 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                   const Text(
                                     'Bill Summary',
                                     style: TextStyle(
-                                      fontSize: 14,
+                                      fontSize: 17.5,
                                       fontWeight: FontWeight.w900,
                                       color: _ink,
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 10),
                                   _buildBillRow('Subtotal', money(_subtotal)),
                                   if (_effectiveTaxRate > 0) ...[
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 7),
                                     _buildBillRow(
                                       'GST (${_effectiveTaxRate % 1 == 0 ? _effectiveTaxRate.toInt() : _effectiveTaxRate}%)',
                                       money(_taxAmount),
@@ -3346,7 +3473,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                       (restaurant.freeDeliveryEnabled &&
                                           restaurant.freeDeliveryMinOrder >
                                               0)) ...[
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 7),
                                     _buildBillRow(
                                       'Delivery Charge',
                                       _deliveryFee == 0
@@ -3358,7 +3485,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                                     ),
                                   ],
                                   if (_couponDiscount > 0) ...[
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 7),
                                     _buildBillRow(
                                       'Coupon Discount',
                                       '-${money(_couponDiscount)}',
@@ -3370,13 +3497,13 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 13,
-                                vertical: 10,
+                                horizontal: 15,
+                                vertical: 12,
                               ),
                               decoration: const BoxDecoration(
                                 color: Color(0xFFEFF6FF),
                                 borderRadius: BorderRadius.vertical(
-                                  bottom: Radius.circular(13),
+                                  bottom: Radius.circular(14),
                                 ),
                                 border: Border(
                                   top: BorderSide(
@@ -3401,14 +3528,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
 
         if (cartList.isNotEmpty || widget.cartCount > 0)
           Container(
-            padding: const EdgeInsets.fromLTRB(14, 9, 14, 14),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(top: BorderSide(color: _cardBorder, width: 1.1)),
             ),
             child: SizedBox(
               width: double.infinity,
-              height: 46,
+              height: 52,
               child: ElevatedButton(
                 onPressed: _handleProceedToCheckout,
                 style: ElevatedButton.styleFrom(
@@ -3416,7 +3543,7 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(23),
+                    borderRadius: BorderRadius.circular(26),
                   ),
                 ),
                 child: const Row(
@@ -3429,14 +3556,14 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
                           'Proceed to Checkout',
                           maxLines: 1,
                           style: TextStyle(
-                            fontSize: 13.5,
+                            fontSize: 16,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
                     ),
-                    SizedBox(width: 7),
-                    Icon(Icons.arrow_forward_rounded, size: 16),
+                    SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_rounded, size: 20),
                   ],
                 ),
               ),
@@ -3455,18 +3582,23 @@ class _StorefrontMenuViewState extends State<StorefrontMenuView> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isBold ? 13 : 11.5,
-            fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
-            color: isBold ? _ink : _muted,
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: isBold ? 16.5 : 14,
+              fontWeight: isBold ? FontWeight.w900 : FontWeight.w500,
+              color: isBold ? _ink : _muted,
+            ),
           ),
         ),
+        const SizedBox(width: 8),
         Text(
           value,
           style: TextStyle(
-            fontSize: isBold ? 13.5 : 12,
+            fontSize: isBold ? 17 : 14.5,
             fontWeight: isBold ? FontWeight.w900 : FontWeight.w700,
             color: valueColor ?? _ink,
           ),
@@ -4072,9 +4204,9 @@ class _StorefrontMenuLoadingState extends State<StorefrontMenuLoading>
                     widget.avatar(
                       widget.restaurant?.logoUrl,
                       name.isEmpty ? 'Menu' : name,
-                      46,
+                      60,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4082,7 +4214,7 @@ class _StorefrontMenuLoadingState extends State<StorefrontMenuLoading>
                           Text(
                             name.isEmpty ? 'Opening menu' : name,
                             style: const TextStyle(
-                              fontSize: 15.5,
+                              fontSize: 18.5,
                               fontWeight: FontWeight.w900,
                               color: _ink,
                             ),
@@ -4094,7 +4226,7 @@ class _StorefrontMenuLoadingState extends State<StorefrontMenuLoading>
                                 : "Loading $name's menu...",
                             style: const TextStyle(
                               color: _muted,
-                              fontSize: 11,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -4113,29 +4245,29 @@ class _StorefrontMenuLoadingState extends State<StorefrontMenuLoading>
                   ),
                 ),
                 const SizedBox(height: 14),
-                _shimmerBox(138, radius: 16),
+                _shimmerBox(154, radius: 16),
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: _shimmerBox(72, radius: 13)),
+                    Expanded(child: _shimmerBox(82, radius: 14)),
                     const SizedBox(width: 8),
-                    Expanded(child: _shimmerBox(72, radius: 13)),
+                    Expanded(child: _shimmerBox(82, radius: 14)),
                     const SizedBox(width: 8),
-                    Expanded(child: _shimmerBox(72, radius: 13)),
+                    Expanded(child: _shimmerBox(82, radius: 14)),
                     const SizedBox(width: 8),
-                    Expanded(child: _shimmerBox(72, radius: 13)),
+                    Expanded(child: _shimmerBox(82, radius: 14)),
                   ],
                 ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    Expanded(child: _shimmerBox(166, radius: 14)),
+                    Expanded(child: _shimmerBox(216, radius: 14)),
                     const SizedBox(width: 10),
-                    Expanded(child: _shimmerBox(166, radius: 14)),
+                    Expanded(child: _shimmerBox(216, radius: 14)),
                   ],
                 ),
-                const SizedBox(height: 12),
-                _shimmerBox(64, radius: 14),
+                const SizedBox(height: 14),
+                _shimmerBox(76, radius: 16),
               ],
             ),
           ),
