@@ -62,6 +62,29 @@ class _PerformanceApi extends MobileCampaignApi {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(loadCampaignTestFonts);
+  testWidgets('shows the recorded reason for an all-failed campaign', (tester) async {
+    final campaign = {
+      ..._sampleWeekendPizzaCampaign(),
+      'id': '',
+      'stats': {'totalRecipients': 7, 'failed': 7},
+      'audience': {
+        'recipients': List.generate(7, (i) => {
+          'name': 'Customer $i', 'status': 'failed', 'error': 'Rate limit hit',
+        }),
+      },
+    };
+    await tester.pumpWidget(MaterialApp(home: MobileCampaignPerformanceScreen(
+      campaign: campaign, api: _PerformanceApi(), options: CampaignOptions({}),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Completed'), findsNothing);
+    expect(find.text('Failed'), findsWidgets);
+    expect(find.text('7 × Rate limit hit'), findsOneWidget);
+    await tester.tap(find.text('Customers'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rate limit hit'), findsWidgets);
+  });
+
   testWidgets('renders Campaign Performance Overview tab matching UI', (
     tester,
   ) async {

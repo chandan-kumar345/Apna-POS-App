@@ -20,6 +20,8 @@ router.get('/performance', (req, res, next) => loyaltyController.getPerformance(
 // Customer Loyalty & Point Accrual
 router.get('/customer/:phone', (req, res, next) => loyaltyController.getCustomerLoyalty(req, res, next));
 router.post('/earn', (req, res, next) => loyaltyController.awardPoints(req, res, next));
+router.get('/notifications', (req, res, next) => loyaltyController.getCashbackNotifications(req, res, next));
+router.post('/transactions/:id/retry-notification', (req, res, next) => loyaltyController.retryCashbackNotification(req, res, next));
 
 // OTP-Secured Redemption Flow
 router.post('/send-otp', (req, res, next) => loyaltyController.sendOtp(req, res, next));

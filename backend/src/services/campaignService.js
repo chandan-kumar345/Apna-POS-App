@@ -1617,12 +1617,7 @@ class CampaignService {
       if (Array.isArray(campaign.audience?.recipients) && campaign.audience.recipients.length > 0) {
         targetCustomers = campaign.audience.recipients;
       } else {
-        const query = {
-      $or: [
-        { businessId: bId },
-        { businessId: businessId ? businessId.toString() : null },
-      ],
-    };
+        const query = { businessId: bId };
         const maxLimit = campaign.audience?.recipientCount || 100;
         const dbCusts = await Customer.find(query).limit(maxLimit).lean();
         targetCustomers = dbCusts.map(c => ({
@@ -1633,6 +1628,7 @@ class CampaignService {
         }));
         campaign.audience.recipients = targetCustomers;
         campaign.audience.recipientCount = targetCustomers.length;
+        targetCustomers = campaign.audience.recipients;
       }
 
       if (!targetCustomers || targetCustomers.length === 0) {
@@ -1742,12 +1738,11 @@ class CampaignService {
             cust.status = 'sent';
             cust.messageId = msgId;
             cust.sentAt = new Date();
-            cust.deliveredAt = new Date();
             sentCount++;
           } else {
             failCount++;
             const errData = await waRes.json().catch(() => ({}));
-            const errMsg = errData?.error?.message || waRes.statusText;
+            const errMsg = whatsappService.formatCampaignFailure(errData?.error);
             cust.status = 'failed';
             cust.error = errMsg;
             console.warn(`[CampaignService] Failed sending to ${normalizedPhone}:`, errMsg);
@@ -1762,23 +1757,21 @@ class CampaignService {
 
       // Update campaign stats and recipient models
       const totalAttempted = sentCount + failCount;
-      const deliveredCount = sentCount;
-      const readCount = Math.floor(deliveredCount * 0.7);
 
       if (totalAttempted > 0) {
-        campaign.status = 'completed';
+        campaign.status = sentCount ? 'completed' : 'failed';
         campaign.stats = {
           totalRecipients: totalAttempted,
           messagesSent: sentCount,
-          delivered: deliveredCount,
-          read: readCount,
+          delivered: 0,
+          read: 0,
           failed: failCount,
-          deliveryRate: totalAttempted > 0 ? Number(((deliveredCount / totalAttempted) * 100).toFixed(1)) : 0,
+          deliveryRate: 0,
           completionRate: 100.0,
         };
         campaign.executionLogs.push({
           timestamp: new Date(),
-          status: 'sent',
+          status: sentCount ? 'sent' : 'failed',
           message: `Dispatched ${sentCount} WhatsApp messages via ${isKnowwu ? 'Knowwu' : (biz?.profile?.companyName || 'Business')} WhatsApp API (${failCount} failed).`,
           executedBy: 'whatsapp_dispatcher',
         });
@@ -1817,7 +1810,7 @@ class CampaignService {
             modified = true;
           } else if (incomingStatus === 'failed') {
             r.status = 'failed';
-            r.error = update.errors?.[0]?.message || 'Delivery failed';
+            r.error = whatsappService.formatCampaignFailure(update.errors?.[0]);
             modified = true;
           }
         }
@@ -1838,6 +1831,7 @@ class CampaignService {
         campaign.stats.delivered = delivered;
         campaign.stats.read = read;
         campaign.stats.failed = failed;
+        if (campaign.status === 'completed' && failed === campaign.audience.recipients.length) campaign.status = 'failed';
         campaign.stats.deliveryRate = sent > 0 ? Number(((delivered / sent) * 100).toFixed(1)) : 0;
         await campaign.save();
       }

@@ -503,6 +503,29 @@ class LoyaltyService {
     return null;
   }
 
+  /// Retry failed/untracked WhatsApp cashback notification without crediting the customer again
+  Future<Map<String, dynamic>> retryCashbackNotification(
+    String transactionId, {
+    bool force = false,
+  }) async {
+    final isAuth = await _authService.isAuthenticated();
+    if (!isAuth) {
+      throw Exception('Authentication required to retry notification');
+    }
+
+    final response = await _apiClient.post(
+      ApiEndpoints.loyaltyRetryNotification(transactionId),
+      data: {'force': force},
+    );
+
+    _performanceCache.clear();
+
+    if (response is Map<String, dynamic>) {
+      return response;
+    }
+    return {'success': false, 'message': 'Unexpected server response'};
+  }
+
   Future<void> _persistBrandingToPrefs(LoyaltyBrandingModel branding) async {
     try {
       final prefs = await SharedPreferences.getInstance();

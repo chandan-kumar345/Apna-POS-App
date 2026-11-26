@@ -11,7 +11,6 @@ import '../../campaign/mobile/customer_style.dart';
 import '../../notifications/screens/notifications_screen.dart';
 import 'create_loyalty_program_screen.dart';
 import 'loyalty_program_details_screen.dart';
-import 'loyalty_visit_made_screen.dart';
 
 class LoyaltyLandingScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -43,8 +42,6 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   LoyaltyBrandingModel? _brandingData;
-  bool _showAllPrograms = false;
-  int _programFilterIndex = 0; // 0: All, 1: Active, 2: Inactive
   int _lastCompletedOrderCount = -1;
   Timer? _dbRefreshDebounce;
 
@@ -149,19 +146,6 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     if (mounted) {
       _loadLoyaltyData(forceRefresh: true);
     }
-  }
-
-  void _navigateToVisitMade() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LoyaltyVisitMadeScreen(
-          companyName: _currentStoreName,
-          companyLogo: _companyLogo,
-          onCompleted: () => _loadLoyaltyData(forceRefresh: true),
-        ),
-      ),
-    );
   }
 
   void _openNotifications() {
@@ -275,18 +259,6 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
-  String get _currentStoreName {
-    final store = _db.restaurant?.name.trim();
-    if (store != null && store.isNotEmpty) return store;
-    final comp = _brandingData?.companyName.trim();
-    if (comp != null && comp.isNotEmpty) return comp;
-    return 'Pizza 47';
-  }
-
-  String get _companyLogo {
-    return _db.companyLogoPath ?? _brandingData?.companyLogo ?? '';
-  }
-
   Widget _buildTopHeader() {
     return PosScreenTopHeader(
       onLogoTap: widget.onOpenDrawer,
@@ -389,17 +361,9 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     final data = _brandingData ?? _loyaltyService.getDefaultLoyaltyBranding();
     final allPrograms = data.programs;
     final activePrograms = allPrograms.where((p) => p.isActive).toList();
-
-    List<LoyaltyProgramModel> displayedPrograms;
-    if (_showAllPrograms) {
-      displayedPrograms = allPrograms.where((p) {
-        if (_programFilterIndex == 1) return p.isActive;
-        if (_programFilterIndex == 2) return !p.isActive;
-        return true;
-      }).toList();
-    } else {
-      displayedPrograms = activePrograms.isNotEmpty ? activePrograms : allPrograms;
-    }
+    final inactivePrograms = allPrograms.where((p) => !p.isActive).toList();
+    final hasInactivePrograms = inactivePrograms.isNotEmpty;
+    final displayedPrograms = [...activePrograms, ...inactivePrograms];
 
     return RefreshIndicator(
       color: const Color(0xFF192452),
@@ -426,18 +390,13 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                   _buildMetricsGrid(data),
                   const SizedBox(height: 20),
 
-                  // Active Programs Section Header + View All ->
+                  // Programs Section Header
                   _buildProgramsSectionHeader(
                     displayedCount: displayedPrograms.length,
-                    totalCount: allPrograms.length,
+                    hasInactivePrograms: hasInactivePrograms,
                   ),
 
-                  if (_showAllPrograms) ...[
-                    const SizedBox(height: 10),
-                    _buildFilterRow(allPrograms),
-                  ],
-
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
                   // Program Cards List or Empty State
                   if (displayedPrograms.isNotEmpty)
@@ -529,7 +488,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                                 'Loyalty Program',
                                 style: TextStyle(
                                   fontFamily: 'Roboto',
-                                  fontSize: 23,
+                                  fontSize: 21,
                                   fontWeight: FontWeight.w800,
                                   color: Colors.white,
                                   letterSpacing: -0.4,
@@ -538,15 +497,15 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 5),
                         Text(
                           'Boost customer loyalty with cashback,\nrewards & more.',
                           style: TextStyle(
                             fontFamily: 'Roboto',
-                            fontSize: 12.8,
+                            fontSize: 11.8,
                             fontWeight: FontWeight.w500,
                             color: Colors.white.withValues(alpha: 0.86),
-                            height: 1.38,
+                            height: 1.36,
                           ),
                         ),
                       ],
@@ -681,7 +640,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                         'Cashback Rewards',
                         style: TextStyle(
                           fontFamily: 'Roboto',
-                          fontSize: 16.5,
+                          fontSize: 15.0,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF0F172A),
                           letterSpacing: -0.2,
@@ -692,7 +651,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                         'Give instant or future cashback on every order.',
                         style: TextStyle(
                           fontFamily: 'Roboto',
-                          fontSize: 12.2,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w500,
                           color: Color(0xFF475569),
                         ),
@@ -733,21 +692,21 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                 iconWidget: const Icon(
                   Icons.groups_rounded,
                   color: Color(0xFF059669),
-                  size: 24,
+                  size: 20,
                 ),
                 label: 'Members',
                 value: membersStr,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: _buildMetricCard(
                 gradient: const [Color(0xFFF3EEFF), Color(0xFFE9DEFF)],
                 shadowColor: const Color(0xFF8B5CF6),
                 badgeBg: const Color(0xFF8B5CF6).withValues(alpha: 0.14),
                 iconWidget: const SizedBox(
-                  width: 24,
-                  height: 24,
+                  width: 20,
+                  height: 20,
                   child: CustomPaint(painter: _StackedCoinsPainter()),
                 ),
                 label: 'Total Cashback',
@@ -756,7 +715,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
@@ -767,13 +726,13 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                 iconWidget: const Icon(
                   Icons.card_giftcard_rounded,
                   color: Color(0xFFEA8B07),
-                  size: 22,
+                  size: 18,
                 ),
                 label: 'Redemptions',
                 value: redemptionsStr,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: _buildRevenueMetricCard(
                 data: data,
@@ -795,7 +754,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     required String value,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -815,29 +774,34 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: badgeBg,
               shape: BoxShape.circle,
             ),
             child: Center(child: iconWidget),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Roboto',
-                    fontSize: 12.2,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF475569),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(
+                      fontFamily: 'Roboto',
+                      fontSize: 10.8,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                      color: Color(0xFF475569),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -848,7 +812,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                     value,
                     style: const TextStyle(
                       fontFamily: 'Roboto',
-                      fontSize: 21.5,
+                      fontSize: 19.0,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                       letterSpacing: -0.3,
@@ -871,7 +835,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     final isPositive = (growth ?? 0) >= 0;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -891,21 +855,21 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: const Color(0xFF0EA5E9).withValues(alpha: 0.14),
               shape: BoxShape.circle,
             ),
             child: const Center(
               child: SizedBox(
-                width: 22,
-                height: 22,
+                width: 19,
+                height: 19,
                 child: CustomPaint(painter: _MiniRevenueBarsPainter()),
               ),
             ),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -913,16 +877,21 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
               children: [
                 Row(
                   children: [
-                    const Flexible(
-                      child: Text(
-                        'Revenue',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: 'Roboto',
-                          fontSize: 12.2,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF475569),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: const Text(
+                          'Revenue',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontFamily: 'Roboto',
+                            fontSize: 10.8,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.2,
+                            color: Color(0xFF475569),
+                          ),
                         ),
                       ),
                     ),
@@ -934,7 +903,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                         padding: EdgeInsets.all(1),
                         child: Icon(
                           Icons.info_outline_rounded,
-                          size: 14.5,
+                          size: 13.5,
                           color: Color(0xFF64748B),
                         ),
                       ),
@@ -942,30 +911,30 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                   ],
                 ),
                 const SizedBox(height: 3),
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  runSpacing: 2,
                   children: [
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          revenueStr,
-                          style: const TextStyle(
-                            fontFamily: 'Roboto',
-                            fontSize: 20.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                            letterSpacing: -0.3,
-                          ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        revenueStr,
+                        style: const TextStyle(
+                          fontFamily: 'Roboto',
+                          fontSize: 18.0,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.3,
                         ),
                       ),
                     ),
-                    if (growth != null) ...[
-                      const SizedBox(width: 6),
+                    if (growth != null)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2.5,
+                          horizontal: 5,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: isPositive
@@ -980,7 +949,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                               isPositive
                                   ? Icons.trending_up_rounded
                                   : Icons.trending_down_rounded,
-                              size: 12,
+                              size: 10.5,
                               color: isPositive
                                   ? const Color(0xFF15803D)
                                   : const Color(0xFFB91C1C),
@@ -990,7 +959,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                               '${isPositive ? '+' : ''}${growth.round()}%',
                               style: TextStyle(
                                 fontFamily: 'Roboto',
-                                fontSize: 10.8,
+                                fontSize: 9.8,
                                 fontWeight: FontWeight.w800,
                                 color: isPositive
                                     ? const Color(0xFF15803D)
@@ -1000,7 +969,6 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                           ],
                         ),
                       ),
-                    ],
                   ],
                 ),
               ],
@@ -1013,16 +981,16 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
 
   Widget _buildProgramsSectionHeader({
     required int displayedCount,
-    required int totalCount,
+    required bool hasInactivePrograms,
   }) {
     return Row(
       children: [
         Expanded(
           child: Text(
-            '${_showAllPrograms ? 'All Programs' : 'Active Programs'} ($displayedCount)',
+            '${hasInactivePrograms ? 'All Programs' : 'Active Programs'} ($displayedCount)',
             style: const TextStyle(
               fontFamily: 'Roboto',
-              fontSize: 16.5,
+              fontSize: 15.0,
               fontWeight: FontWeight.w800,
               color: Color(0xFF0F172A),
               letterSpacing: -0.2,
@@ -1031,7 +999,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
         ),
         if (_isLoading)
           const Padding(
-            padding: EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: 4),
             child: SizedBox(
               width: 14,
               height: 14,
@@ -1050,151 +1018,11 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             icon: const Icon(
               Icons.refresh_rounded,
-              size: 18,
+              size: 17,
               color: Color(0xFF64748B),
             ),
           ),
-        const SizedBox(width: 4),
-        InkWell(
-          onTap: () => setState(() => _showAllPrograms = !_showAllPrograms),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _showAllPrograms ? 'Active Only' : 'View All',
-                  style: const TextStyle(
-                    fontFamily: 'Roboto',
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  _showAllPrograms
-                      ? Icons.filter_list_off_rounded
-                      : Icons.arrow_forward_rounded,
-                  size: 16,
-                  color: const Color(0xFF1E293B),
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
-    );
-  }
-
-  Widget _buildFilterRow(List<LoyaltyProgramModel> allPrograms) {
-    final activeCount = allPrograms.where((p) => p.isActive).length;
-    final inactiveCount = allPrograms.where((p) => !p.isActive).length;
-    final tabs = [
-      ('All', allPrograms.length),
-      ('Active', activeCount),
-      ('Inactive', inactiveCount),
-    ];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (int i = 0; i < tabs.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            InkWell(
-              onTap: () => setState(() => _programFilterIndex = i),
-              borderRadius: BorderRadius.circular(18),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: _programFilterIndex == i
-                      ? const Color(0xFF0A4B67)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: _programFilterIndex == i
-                        ? const Color(0xFF0A4B67)
-                        : const Color(0xFFCBD5E1),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      tabs[i].$1,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _programFilterIndex == i
-                            ? Colors.white
-                            : const Color(0xFF334155),
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _programFilterIndex == i
-                            ? Colors.white.withValues(alpha: 0.22)
-                            : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${tabs[i].$2}',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: _programFilterIndex == i
-                              ? Colors.white
-                              : const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(width: 8),
-          InkWell(
-            onTap: _navigateToVisitMade,
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDFA),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFF99F6E4)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.card_membership_rounded,
-                    size: 14,
-                    color: Color(0xFF0F766E),
-                  ),
-                  SizedBox(width: 5),
-                  Text(
-                    'Visit Stamp Card',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F766E),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1230,17 +1058,17 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
           onTap: () => _navigateToProgramDetails(program),
           borderRadius: BorderRadius.circular(20),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 13),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Circular icon badge
                     Container(
-                      width: 48,
-                      height: 48,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: iconBg,
                         shape: BoxShape.circle,
@@ -1250,136 +1078,162 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                             ? const Icon(
                                 Icons.card_membership_rounded,
                                 color: Color(0xFFD97706),
-                                size: 22,
+                                size: 19,
                               )
                             : const SizedBox(
-                                width: 26,
-                                height: 26,
+                                width: 22,
+                                height: 22,
                                 child: CustomPaint(
                                   painter: _CashbackLoopPainter(),
                                 ),
                               ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
 
-                    // Title + Description
+                    // Title + Active Pill + Description
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            program.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'Roboto',
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                              letterSpacing: -0.2,
-                            ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  program.title,
+                                  style: const TextStyle(
+                                    fontFamily: 'Roboto',
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.2,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: program.isActive
+                                      ? const Color(0xFFDCFCE7)
+                                      : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Text(
+                                  program.isActive ? 'Active' : 'Inactive',
+                                  style: TextStyle(
+                                    fontFamily: 'Roboto',
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: program.isActive
+                                        ? const Color(0xFF15803D)
+                                        : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                color: Color(0xFF475569),
+                                size: 18,
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 3),
                           Text(
                             subtitleText,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontFamily: 'Roboto',
-                              fontSize: 12.2,
+                              fontSize: 11.2,
                               fontWeight: FontWeight.w500,
                               color: Color(0xFF64748B),
-                              height: 1.32,
+                              height: 1.3,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-
-                    // Active/Inactive Pill + Chevron
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: program.isActive
-                            ? const Color(0xFFDCFCE7)
-                            : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        program.isActive ? 'Active' : 'Inactive',
-                        style: TextStyle(
-                          fontFamily: 'Roboto',
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: program.isActive
-                              ? const Color(0xFF15803D)
-                              : const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Color(0xFF475569),
-                      size: 20,
-                    ),
                   ],
                 ),
 
-                const SizedBox(height: 12),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
                 const SizedBox(height: 10),
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 8),
 
                 // Metadata Row: Valid till | Used by: X customers
                 Row(
                   children: [
-                    const Icon(
-                      Icons.calendar_today_outlined,
-                      size: 14,
-                      color: Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 6),
                     Flexible(
-                      child: Text(
-                        'Valid till: ${program.formattedValidTill}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Roboto',
-                          fontSize: 12.2,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF475569),
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.calendar_today_outlined,
+                            size: 12.5,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Valid till: ${program.formattedValidTill}',
+                                maxLines: 1,
+                                softWrap: false,
+                                style: const TextStyle(
+                                  fontFamily: 'Roboto',
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: -0.1,
+                                  color: Color(0xFF475569),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Container(
                       width: 1,
-                      height: 14,
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
+                      height: 12,
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
                       color: const Color(0xFFCBD5E1),
                     ),
-                    const Icon(
-                      Icons.people_outline_rounded,
-                      size: 15.5,
-                      color: Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 6),
                     Flexible(
-                      child: Text(
-                        customerLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Roboto',
-                          fontSize: 12.2,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF475569),
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.people_outline_rounded,
+                            size: 13.5,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                customerLabel,
+                                maxLines: 1,
+                                softWrap: false,
+                                style: const TextStyle(
+                                  fontFamily: 'Roboto',
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: -0.1,
+                                  color: Color(0xFF475569),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -1478,22 +1332,32 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
           child: InkWell(
             onTap: _navigateToCreateProgram,
             borderRadius: BorderRadius.circular(26),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.add_rounded, color: Colors.white, size: 22),
-                SizedBox(width: 8),
-                Text(
-                  'Create Loyalty Program',
-                  style: TextStyle(
-                    fontFamily: 'Roboto',
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: 0.1,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 6),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Create Loyalty Program',
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          fontFamily: 'Roboto',
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

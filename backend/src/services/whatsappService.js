@@ -108,6 +108,11 @@ class WhatsAppService {
   /**
    * Helper to format descriptive, actionable error message if Meta rejects with appsecret_proof error
    */
+  formatCampaignFailure(error) {
+    const reason = error?.error_data?.details || error?.error_user_msg || error?.message || error?.title || 'WhatsApp did not provide a failure reason.';
+    return error?.code != null ? `${reason} (WhatsApp code ${error.code})` : reason;
+  }
+
   formatMetaErrorMessage(data, fallbackMessage = 'WhatsApp API request failed') {
     const userMsg = data?.error?.error_user_msg || data?.error?.error_user_title;
     const metaMsg = userMsg ? `${userMsg} (${data?.error?.message || ''})` : (data?.error?.message || fallbackMessage);
@@ -1007,6 +1012,21 @@ class WhatsAppService {
     throw ApiError.badRequest(errMsg, null, errCode || 'OTP_DISPATCH_FAILED');
   }
 
+  _sanitizeTemplateParam(value, fallback = 'N/A') {
+    if (value === undefined || value === null) return fallback;
+    const cleaned = String(value)
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/ {2,}/g, ' ')
+      .trim();
+    return cleaned || fallback;
+  }
+
+  _formatCashbackAmountText(value) {
+    const num = Number(value || 0);
+    if (!Number.isFinite(num)) return '0';
+    return Number.isInteger(num) ? String(num) : num.toFixed(2).replace(/\.?0+$/, '');
+  }
+
   /**
    * Send Loyalty Cashback Earned notification message via WhatsApp Utility Template or direct text
    */
@@ -1026,9 +1046,18 @@ class WhatsAppService {
       throw ApiError.badRequest(`Invalid customer WhatsApp phone number: ${to}`, null, 'INVALID_PHONE_NUMBER');
     }
 
-    const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
-    const activeAccessToken = accessToken || this.accessToken;
-    const activeAppSecret = appSecret || this.appSecret;
+    const cleanOverridePhoneId = phoneNumberId ? String(phoneNumberId).trim() : '';
+    const cleanOverrideToken = accessToken ? String(accessToken).trim().replace(/^Bearer\s+/i, '') : '';
+    const cleanOverrideSecret = appSecret ? String(appSecret).trim() : '';
+
+    // Prevent mixing a store phoneNumberId with the global fallback token (or vice versa)
+    const hasPartialOverride =
+      (cleanOverridePhoneId && !cleanOverrideToken) ||
+      (!cleanOverridePhoneId && cleanOverrideToken);
+
+    const activePhoneNumberId = cleanOverridePhoneId || this.phoneNumberId;
+    const activeAccessToken = (cleanOverrideToken || this.accessToken || '').trim().replace(/^Bearer\s+/i, '');
+    const activeAppSecret = cleanOverrideSecret || this.appSecret;
 
     if (
       process.env.NODE_ENV === 'test' ||
@@ -1042,6 +1071,30 @@ class WhatsAppService {
         messageId: `wamid.HBg${Date.now()}${Math.floor(Math.random() * 1000000)}==`,
         recipient: normalizedPhone,
         isSimulated: true,
+        via: 'simulated',
+        whatsappPhoneNumberId: activePhoneNumberId || '',
+      };
+    }
+
+    if (hasPartialOverride) {
+      return {
+        success: false,
+        recipient: normalizedPhone,
+        errorCode: 'INCOMPLETE_WHATSAPP_CREDENTIALS',
+        error: 'Store WhatsApp credentials are incomplete: both Phone Number ID and Access Token are required.',
+        whatsappPhoneNumberId: cleanOverridePhoneId || '',
+        attempts: [],
+      };
+    }
+
+    if (!activePhoneNumberId) {
+      return {
+        success: false,
+        recipient: normalizedPhone,
+        errorCode: 'MISSING_PHONE_NUMBER_ID',
+        error: 'WhatsApp Phone Number ID is not configured.',
+        whatsappPhoneNumberId: '',
+        attempts: [],
       };
     }
 
@@ -1050,39 +1103,59 @@ class WhatsAppService {
       appSecret: activeAppSecret,
     });
 
-    // 1. First attempt: Utility template ('loyalty_cashback_earned' or 'order_cashback_update')
+    const cleanCustomerName = this._sanitizeTemplateParam(customerName, 'Valued Customer');
+    const cleanBusinessName = this._sanitizeTemplateParam(businessName, 'Apna POS');
+    const earnedText = this._formatCashbackAmountText(cashbackEarned);
+    const balanceText = this._formatCashbackAmountText(availableBalance);
+    const cleanOrderNumber = this._sanitizeTemplateParam(orderNumber, '');
+
+    // 1. First attempt: Approved Meta utility templates
     const templateCandidates = [
       {
         name: 'loyalty_cashback_earned',
         lang: 'en',
         parameters: [
-          { type: 'text', text: customerName || 'Valued Customer' },
-          { type: 'text', text: String(cashbackEarned) },
-          { type: 'text', text: businessName || 'Apna POS' },
-          { type: 'text', text: String(availableBalance) },
+          { type: 'text', text: cleanCustomerName },
+          { type: 'text', text: earnedText },
+          { type: 'text', text: cleanBusinessName },
+          { type: 'text', text: balanceText },
         ],
       },
       {
         name: 'loyalty_cashback_earned',
         lang: 'en_US',
         parameters: [
-          { type: 'text', text: customerName || 'Valued Customer' },
-          { type: 'text', text: String(cashbackEarned) },
-          { type: 'text', text: businessName || 'Apna POS' },
-          { type: 'text', text: String(availableBalance) },
+          { type: 'text', text: cleanCustomerName },
+          { type: 'text', text: earnedText },
+          { type: 'text', text: cleanBusinessName },
+          { type: 'text', text: balanceText },
         ],
       },
       {
         name: 'order_cashback_update',
         lang: 'en',
         parameters: [
-          { type: 'text', text: customerName || 'Valued Customer' },
-          { type: 'text', text: businessName || 'Apna POS' },
-          { type: 'text', text: `₹${cashbackEarned}` },
-          { type: 'text', text: `₹${availableBalance}` },
+          { type: 'text', text: cleanCustomerName },
+          { type: 'text', text: cleanBusinessName },
+          { type: 'text', text: `₹${earnedText}` },
+          { type: 'text', text: `₹${balanceText}` },
+        ],
+      },
+      {
+        name: 'order_cashback_update',
+        lang: 'en_US',
+        parameters: [
+          { type: 'text', text: cleanCustomerName },
+          { type: 'text', text: cleanBusinessName },
+          { type: 'text', text: `₹${earnedText}` },
+          { type: 'text', text: `₹${balanceText}` },
         ],
       },
     ];
+
+    const attemptErrors = [];
+    const fatalMetaCodes = new Set([10, 190, 200, 131042, 131048, 131056, 130429]);
+    let stopRetriesEarly = false;
 
     for (const t of templateCandidates) {
       try {
@@ -1120,54 +1193,128 @@ class WhatsAppService {
             messageId: data.messages[0].id,
             recipient: normalizedPhone,
             viaTemplate: true,
-            templateName: t.name,
+            via: 'template',
+            templateName: `${t.name}:${t.lang}`,
+            whatsappPhoneNumberId: activePhoneNumberId,
+            attempts: attemptErrors,
           };
-        } else {
-          console.warn(`[WhatsAppService] Template '${t.name}' (${t.lang}) attempt info:`, data?.error?.message || JSON.stringify(data));
+        }
+
+        const metaErr = data?.error || {};
+        const numericCode = Number(metaErr.code);
+        const errorCode = metaErr.code != null ? String(metaErr.code) : (res.status ? `HTTP_${res.status}` : 'TEMPLATE_SEND_FAILED');
+        const rawDetail = metaErr?.error_data?.details || metaErr?.error_user_msg || metaErr?.message || `HTTP ${res.status}`;
+        const formattedErr = data?.error ? this.formatMetaErrorMessage(data, rawDetail) : rawDetail;
+
+        attemptErrors.push({
+          channel: 'template',
+          template: `${t.name}:${t.lang}`,
+          httpStatus: res.status || null,
+          code: errorCode,
+          subcode: metaErr.error_subcode != null ? String(metaErr.error_subcode) : '',
+          message: formattedErr,
+          rawMessage: metaErr?.message || rawDetail,
+        });
+
+        console.warn(`[WhatsAppService] Template '${t.name}' (${t.lang}) failed (code ${errorCode}):`, rawDetail);
+
+        // Stop trying additional templates on account/auth/rate-limit/appsecret_proof errors
+        const isAppSecretErr = numericCode === 100 && String(metaErr?.message || '').toLowerCase().includes('appsecret_proof');
+        if (fatalMetaCodes.has(numericCode) || isAppSecretErr) {
+          stopRetriesEarly = true;
+          break;
         }
       } catch (err) {
+        attemptErrors.push({
+          channel: 'template',
+          template: `${t.name}:${t.lang}`,
+          code: err.code || 'NETWORK_ERROR',
+          message: err.message || 'Network request failed',
+        });
         console.warn(`[WhatsAppService] Loyalty template dispatch notice (${t.name}):`, err.message);
       }
     }
 
-    // 2. Second attempt: Direct formatted WhatsApp message
-    const textBody = `*🎉 Congratulations from ${businessName}! 🎉*\n\nYou have earned *₹${cashbackEarned} cashback* on your order${orderNumber ? ` (#${orderNumber})` : ''}!\n\n💰 *Total Available Cashback Balance:* *₹${availableBalance}*\n\nYou can redeem your available cashback directly on your next order at ${businessName}.\n\nThank you for choosing us!`;
-    const textPayload = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: normalizedPhone,
-      type: 'text',
-      text: { preview_url: false, body: textBody },
+    // 2. Second attempt: Direct formatted WhatsApp message (only works inside 24-hour customer window)
+    if (!stopRetriesEarly) {
+      const textBody = `*🎉 Congratulations from ${cleanBusinessName}! 🎉*\n\nYou have earned *₹${earnedText} cashback* on your order${cleanOrderNumber ? ` (#${cleanOrderNumber})` : ''}!\n\n💰 *Total Available Cashback Balance:* *₹${balanceText}*\n\nYou can redeem your available cashback directly on your next order at ${cleanBusinessName}.\n\nThank you for choosing us!`;
+      const textPayload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizedPhone,
+        type: 'text',
+        text: { preview_url: false, body: textBody },
+      };
+
+      try {
+        const textRes = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${activeAccessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(textPayload),
+        });
+
+        const textData = await textRes.json().catch(() => ({}));
+        if (textRes.ok && textData?.messages?.[0]?.id) {
+          console.log(`[WhatsAppService] ✅ Loyalty cashback notification sent via direct text to ${normalizedPhone}`);
+          return {
+            success: true,
+            messageId: textData.messages[0].id,
+            recipient: normalizedPhone,
+            viaText: true,
+            via: 'text',
+            templateName: '',
+            whatsappPhoneNumberId: activePhoneNumberId,
+            attempts: attemptErrors,
+          };
+        }
+
+        const textErr = textData?.error || {};
+        const textCode = textErr.code != null ? String(textErr.code) : (textRes.status ? `HTTP_${textRes.status}` : 'TEXT_SEND_FAILED');
+        const textRawDetail = textErr?.error_data?.details || textErr?.error_user_msg || textErr?.message || `HTTP ${textRes.status}`;
+        const textFormatted = textData?.error ? this.formatMetaErrorMessage(textData, textRawDetail) : textRawDetail;
+
+        attemptErrors.push({
+          channel: 'text',
+          template: '',
+          httpStatus: textRes.status || null,
+          code: textCode,
+          subcode: textErr.error_subcode != null ? String(textErr.error_subcode) : '',
+          message: textFormatted,
+          rawMessage: textErr?.message || textRawDetail,
+        });
+      } catch (e) {
+        attemptErrors.push({
+          channel: 'text',
+          template: '',
+          code: e.code || 'NETWORK_ERROR',
+          message: e.message || 'Direct text request failed',
+        });
+        console.warn(`[WhatsAppService] Direct text message failed: ${e.message}`);
+      }
+    }
+
+    // Prefer a template failure reason over a generic 24h window rejection on text fallback
+    const templateError = attemptErrors.find((a) => a.channel === 'template' && a.code && a.code !== '132001');
+    const firstTemplateError = attemptErrors.find((a) => a.channel === 'template');
+    const primaryFailure = templateError || firstTemplateError || attemptErrors[0] || {
+      code: 'WHATSAPP_DELIVERY_FAILED',
+      message: 'WhatsApp message delivery failed',
     };
 
-    try {
-      const textRes = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${activeAccessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(textPayload),
-      });
-
-      const textData = await textRes.json().catch(() => ({}));
-      if (textRes.ok && textData?.messages?.[0]?.id) {
-        console.log(`[WhatsAppService] ✅ Loyalty cashback notification sent via direct text to ${normalizedPhone}`);
-        return {
-          success: true,
-          messageId: textData.messages[0].id,
-          recipient: normalizedPhone,
-          viaText: true,
-        };
-      }
-    } catch (e) {
-      console.warn(`[WhatsAppService] Direct text message failed: ${e.message}`);
-    }
+    const errorSummary = primaryFailure.code && !String(primaryFailure.message).includes(String(primaryFailure.code))
+      ? `${primaryFailure.message} (Meta code ${primaryFailure.code})`
+      : primaryFailure.message;
 
     return {
       success: false,
       recipient: normalizedPhone,
-      error: 'WhatsApp message delivery failed',
+      error: errorSummary || 'WhatsApp message delivery failed',
+      errorCode: String(primaryFailure.code || 'WHATSAPP_DELIVERY_FAILED'),
+      whatsappPhoneNumberId: activePhoneNumberId,
+      attempts: attemptErrors,
     };
   }
 

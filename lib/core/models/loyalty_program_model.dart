@@ -498,6 +498,11 @@ class RecentActivityModel {
   final String orderNumber;
   final double orderValue;
   final double cashbackAmount;
+  final String whatsappStatus;
+  final String whatsappMessageId;
+  final String whatsappError;
+  final String whatsappErrorCode;
+  final int whatsappAttempts;
   final String date; // 'Aug 20, 2025 3:10 PM'
   final String createdAt;
 
@@ -512,6 +517,11 @@ class RecentActivityModel {
     this.orderNumber = '',
     this.orderValue = 0.0,
     this.cashbackAmount = 0.0,
+    this.whatsappStatus = 'not_applicable',
+    this.whatsappMessageId = '',
+    this.whatsappError = '',
+    this.whatsappErrorCode = '',
+    this.whatsappAttempts = 0,
     required this.date,
     this.createdAt = '',
   });
@@ -539,6 +549,11 @@ class RecentActivityModel {
       orderNumber: json['orderNumber']?.toString() ?? '',
       orderValue: (json['orderValue'] as num?)?.toDouble() ?? 0.0,
       cashbackAmount: rawCashback ?? fallbackPts,
+      whatsappStatus: json['whatsappStatus']?.toString() ?? 'not_applicable',
+      whatsappMessageId: json['whatsappMessageId']?.toString() ?? '',
+      whatsappError: json['whatsappError']?.toString() ?? '',
+      whatsappErrorCode: json['whatsappErrorCode']?.toString() ?? '',
+      whatsappAttempts: (json['whatsappAttempts'] as num?)?.toInt() ?? 0,
       date: json['date']?.toString() ?? '',
       createdAt: json['createdAt']?.toString() ?? '',
     );

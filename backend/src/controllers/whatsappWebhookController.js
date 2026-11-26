@@ -2,6 +2,7 @@ const whatsappService = require('../services/whatsappService');
 const ebillService = require('../services/ebillService');
 const whatsappChatService = require('../services/whatsappChatService');
 const campaignService = require('../services/campaignService');
+const loyaltyService = require('../services/loyaltyService');
 
 class WhatsAppWebhookController {
   /**
@@ -39,12 +40,13 @@ class WhatsAppWebhookController {
       // 2. Extract delivery status updates
       const statusUpdates = whatsappService.extractStatusesFromPayload(req.body);
 
-      // 3. Update eBills, live chat, and campaign recipient statuses
+      // 3. Update eBills, live chat, campaign, and loyalty cashback recipient statuses
       for (const update of statusUpdates) {
         try {
           await ebillService.processWebhookStatusUpdate(update);
           await whatsappChatService.processWebhookStatusUpdate(update);
           await campaignService.processWebhookStatusUpdate(update);
+          await loyaltyService.processWebhookStatusUpdate(update);
         } catch (updateErr) {
           console.error('[WhatsAppWebhook] Error updating status for message:', update.messageId, updateErr);
         }

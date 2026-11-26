@@ -3,9 +3,11 @@ const LoyaltyProgram = require('../models/LoyaltyProgram');
 const CustomerLoyalty = require('../models/CustomerLoyalty');
 const LoyaltyTransaction = require('../models/LoyaltyTransaction');
 const Business = require('../models/Business');
+const User = require('../models/User');
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
-const Notification = require('../models/Notification');
+const NotificationModule = require('../models/Notification');
+const Notification = NotificationModule.Notification || NotificationModule;
 const ApiError = require('../utils/ApiError');
 
 class LoyaltyService {
@@ -724,7 +726,15 @@ class LoyaltyService {
         })
       : null;
     if (existingEarnTx) {
-      return { earned: false, reason: 'Points already awarded for this order' };
+      return {
+        earned: false,
+        reason: 'Points already awarded for this order',
+        transactionId: String(existingEarnTx._id),
+        whatsappStatus: existingEarnTx.whatsappStatus || 'not_applicable',
+        whatsappMessageId: existingEarnTx.whatsappMessageId || null,
+        whatsappError: existingEarnTx.whatsappError || '',
+        whatsappErrorCode: existingEarnTx.whatsappErrorCode || '',
+      };
     }
 
     const visitConfig = await this.getVisitConfig(businessId);
@@ -891,7 +901,8 @@ class LoyaltyService {
     }
 
     const earnProgramId = appliedCashbackPrograms.length > 0 ? appliedCashbackPrograms[0].id : 'prog_visit_made';
-    await LoyaltyTransaction.create({
+    const resolvedCustomerName = order.customerName || customerLoyalty.customerName || 'Valued Customer';
+    const earnTx = await LoyaltyTransaction.create({
       businessId,
       customerPhone: cleanPhone,
       orderId: order._id || (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null),
@@ -903,52 +914,64 @@ class LoyaltyService {
       balanceAfter: customerLoyalty.pointsBalance,
       messageHeader: 'APNA POS',
       message: msg,
+      whatsappStatus: totalCashbackAwarded > 0 ? 'pending' : 'not_applicable',
+      whatsappMetadata:
+        totalCashbackAwarded > 0
+          ? {
+              customerName: resolvedCustomerName,
+              businessName: programName || 'Apna POS',
+              cashbackEarned: totalCashbackAwarded,
+              availableBalance: customerLoyalty.cashbackBalance,
+              orderNumber: order.orderNumber || '',
+              attemptErrors: [],
+            }
+          : {},
     });
+
+    // Send automated WhatsApp notification for earned cashback & record result
+    let whatsappNotification = null;
+    if (totalCashbackAwarded > 0) {
+      whatsappNotification = await this._dispatchAndRecordCashbackWhatsApp(earnTx, {
+        businessId,
+        phone: cleanPhone,
+        customerName: resolvedCustomerName,
+        businessName: programName || 'Apna POS',
+        cashbackEarned: totalCashbackAwarded,
+        availableBalance: customerLoyalty.cashbackBalance,
+        orderNumber: order.orderNumber || '',
+      });
+    }
 
     try {
       await Notification.create({
         businessId,
-        type: 'promotion',
+        type: totalCashbackAwarded > 0 ? 'whatsapp_message' : 'system',
         title: totalCashbackAwarded > 0 ? `[APNA POS] ₹${totalCashbackAwarded} Cashback Earned` : `[APNA POS] ${pointsAwarded} ${pointsName} Earned`,
         message: msg,
-        read: false,
-        recipientPhone: cleanPhone,
+        isRead: false,
+        entityType: 'order',
+        entityId: order._id ? String(order._id) : (order.orderNumber || null),
         metadata: {
+          transactionId: String(earnTx._id),
+          recipientPhone: cleanPhone,
           pointsEarned: pointsAwarded,
           cashbackEarned: totalCashbackAwarded,
           newBalance: customerLoyalty.pointsBalance,
           newCashbackBalance: customerLoyalty.cashbackBalance,
           orderNumber: order.orderNumber,
+          whatsappStatus: earnTx.whatsappStatus,
+          whatsappMessageId: earnTx.whatsappMessageId || null,
+          whatsappError: earnTx.whatsappError || '',
+          whatsappErrorCode: earnTx.whatsappErrorCode || '',
         },
       });
     } catch (e) {
       // Non-blocking
     }
 
-    // Send automated WhatsApp notification for earned cashback
-    if (totalCashbackAwarded > 0) {
-      try {
-        const business = await Business.findById(businessId).lean();
-        const storeName = business?.name || programName || 'Apna POS';
-        const whatsappService = require('./whatsappService');
-        await whatsappService.sendLoyaltyCashbackEarnedMessage({
-          to: cleanPhone,
-          customerName: order.customerName || customerLoyalty.customerName || 'Valued Customer',
-          businessName: storeName,
-          cashbackEarned: totalCashbackAwarded,
-          availableBalance: customerLoyalty.cashbackBalance,
-          orderNumber: order.orderNumber || '',
-          phoneNumberId: business?.whatsappSettings?.phoneNumberId,
-          accessToken: business?.whatsappSettings?.accessToken,
-          appSecret: business?.whatsappSettings?.appSecret,
-        });
-      } catch (waErr) {
-        console.warn('[awardPointsForCompletedOrder] WhatsApp cashback notification notice:', waErr.message);
-      }
-    }
-
     return {
       earned: true,
+      transactionId: String(earnTx._id),
       pointsAwarded,
       cashbackAwarded: totalCashbackAwarded,
       newBalance: customerLoyalty.pointsBalance,
@@ -957,6 +980,7 @@ class LoyaltyService {
       unlockedStages: unlockedIds,
       appliedPrograms: appliedCashbackPrograms,
       message: msg,
+      whatsappNotification,
     };
   }
 
@@ -1061,12 +1085,12 @@ class LoyaltyService {
     try {
       await Notification.create({
         businessId,
-        type: 'alert',
+        type: 'whatsapp_message',
         title: '[APNA POS] Loyalty Redemption OTP',
         message: otpMessage,
-        read: false,
-        recipientPhone: cleanPhone,
-        metadata: { otp, stageId: effectiveStageId, discountValue, pointsToRedeem: requiredPoints, redemptionType },
+        isRead: false,
+        entityType: 'system',
+        metadata: { recipientPhone: cleanPhone, otp, stageId: effectiveStageId, discountValue, pointsToRedeem: requiredPoints, redemptionType },
       });
     } catch (e) {
       // Non-blocking
@@ -1074,16 +1098,17 @@ class LoyaltyService {
 
     // Send WhatsApp OTP to customer
     try {
+      const waCreds = await this._resolveStoreWhatsAppContext(businessId, storeName);
       const whatsappService = require('./whatsappService');
       await whatsappService.sendOtpMessage({
         to: cleanPhone,
         otpCode: otp,
         purpose: 'loyalty_redemption',
         amount: discountValue,
-        businessName: storeName,
-        phoneNumberId: business?.whatsappSettings?.phoneNumberId,
-        accessToken: business?.whatsappSettings?.accessToken,
-        appSecret: business?.whatsappSettings?.appSecret,
+        businessName: waCreds.storeName,
+        phoneNumberId: waCreds.phoneNumberId,
+        accessToken: waCreds.accessToken,
+        appSecret: waCreds.appSecret,
       });
     } catch (waErr) {
       console.warn('[sendLoyaltyRedemptionOtp] WhatsApp OTP dispatch notice:', waErr.message);
@@ -1718,6 +1743,11 @@ class LoyaltyService {
         orderNumber: orderNumber,
         orderValue: orderValue,
         cashbackAmount: cashbackAmount,
+        whatsappStatus: tx.whatsappStatus || (cashbackAmount > 0 && !isRedeem ? 'not_applicable' : 'not_applicable'),
+        whatsappMessageId: tx.whatsappMessageId || '',
+        whatsappError: tx.whatsappError || '',
+        whatsappErrorCode: tx.whatsappErrorCode || '',
+        whatsappAttempts: Number(tx.whatsappAttempts || 0),
         date: dateStr,
         createdAt: txDate ? txDate.toISOString() : '',
       };
@@ -2011,6 +2041,343 @@ class LoyaltyService {
       program: targetProgram,
       programs: loyaltyDoc.programs,
     };
+  }
+
+  /**
+   * Resolve store name and clean WhatsApp credentials pair (Business -> Owner User fallback)
+   */
+  async _resolveStoreWhatsAppContext(businessId, fallbackName = 'Apna POS') {
+    const business = await Business.findById(businessId).lean();
+    const storeName =
+      business?.profile?.companyName?.trim() ||
+      business?.profile?.name?.trim() ||
+      business?.name?.trim() ||
+      String(fallbackName || '').trim() ||
+      'Apna POS';
+
+    const cleanCreds = (source) => {
+      if (!source) return null;
+      const phoneNumberId = (source.phoneNumberId || '').toString().trim();
+      const accessToken = (source.accessToken || '').toString().trim().replace(/^Bearer\s+/i, '');
+      const appSecret = (source.appSecret || '').toString().trim();
+      return { phoneNumberId, accessToken, appSecret };
+    };
+
+    const bizCreds = cleanCreds(business?.whatsappSettings);
+    let userCreds = null;
+    if ((!bizCreds || !bizCreds.phoneNumberId || !bizCreds.accessToken) && business?.ownerId) {
+      const owner = await User.findById(business.ownerId).select('whatsappSettings').lean();
+      userCreds = cleanCreds(owner?.whatsappSettings);
+    }
+
+    if (bizCreds && bizCreds.phoneNumberId && bizCreds.accessToken) {
+      return {
+        storeName,
+        phoneNumberId: bizCreds.phoneNumberId,
+        accessToken: bizCreds.accessToken,
+        appSecret: bizCreds.appSecret || null,
+      };
+    }
+
+    if (userCreds && userCreds.phoneNumberId && userCreds.accessToken) {
+      return {
+        storeName,
+        phoneNumberId: userCreds.phoneNumberId,
+        accessToken: userCreds.accessToken,
+        appSecret: userCreds.appSecret || null,
+      };
+    }
+
+    const partial =
+      bizCreds && (bizCreds.phoneNumberId || bizCreds.accessToken)
+        ? bizCreds
+        : userCreds && (userCreds.phoneNumberId || userCreds.accessToken)
+          ? userCreds
+          : null;
+
+    if (partial) {
+      return {
+        storeName,
+        phoneNumberId: partial.phoneNumberId || null,
+        accessToken: partial.accessToken || null,
+        appSecret: partial.appSecret || null,
+      };
+    }
+
+    return {
+      storeName,
+      phoneNumberId: null,
+      accessToken: null,
+      appSecret: null,
+    };
+  }
+
+  /**
+   * Dispatch cashback WhatsApp alert and persist status, wamid, or Meta error details on LoyaltyTransaction
+   */
+  async _dispatchAndRecordCashbackWhatsApp(
+    earnTx,
+    { businessId, phone, customerName, businessName, cashbackEarned, availableBalance, orderNumber = '' }
+  ) {
+    const waCreds = await this._resolveStoreWhatsAppContext(businessId, businessName);
+    const whatsappService = require('./whatsappService');
+    const resolvedCustomerName = customerName || 'Valued Customer';
+    const now = new Date();
+
+    let waResult = null;
+    let thrownErr = null;
+    try {
+      waResult = await whatsappService.sendLoyaltyCashbackEarnedMessage({
+        to: phone,
+        customerName: resolvedCustomerName,
+        businessName: waCreds.storeName,
+        cashbackEarned,
+        availableBalance,
+        orderNumber,
+        phoneNumberId: waCreds.phoneNumberId,
+        accessToken: waCreds.accessToken,
+        appSecret: waCreds.appSecret,
+      });
+    } catch (waErr) {
+      thrownErr = waErr;
+      console.warn('[LoyaltyService] WhatsApp cashback notification failed:', waErr.message);
+    }
+
+    earnTx.whatsappAttempts = Number(earnTx.whatsappAttempts || 0) + 1;
+    earnTx.whatsappLastAttemptAt = now;
+    earnTx.whatsappMetadata = {
+      ...(earnTx.whatsappMetadata || {}),
+      customerName: resolvedCustomerName,
+      businessName: waCreds.storeName,
+      cashbackEarned,
+      availableBalance,
+      orderNumber: orderNumber || earnTx.orderNumber || '',
+      lastAttemptErrors: Array.isArray(waResult?.attempts) ? waResult.attempts : [],
+    };
+
+    if (waResult?.success) {
+      earnTx.whatsappStatus = waResult.isSimulated ? 'simulated' : 'accepted';
+      earnTx.whatsappMessageId = waResult.messageId || earnTx.whatsappMessageId || null;
+      earnTx.whatsappPhoneNumberId = waResult.whatsappPhoneNumberId || waCreds.phoneNumberId || '';
+      earnTx.whatsappTemplateName = waResult.templateName || '';
+      earnTx.whatsappVia = waResult.via || (waResult.isSimulated ? 'simulated' : (waResult.viaTemplate ? 'template' : 'text'));
+      earnTx.whatsappError = '';
+      earnTx.whatsappErrorCode = '';
+    } else {
+      earnTx.whatsappStatus = 'failed';
+      earnTx.whatsappPhoneNumberId = waResult?.whatsappPhoneNumberId || waCreds.phoneNumberId || '';
+      earnTx.whatsappTemplateName = '';
+      earnTx.whatsappVia = '';
+      earnTx.whatsappError = waResult?.error || thrownErr?.message || 'WhatsApp message delivery failed';
+      earnTx.whatsappErrorCode = String(waResult?.errorCode || thrownErr?.code || 'WHATSAPP_DELIVERY_FAILED');
+    }
+
+    earnTx.markModified('whatsappMetadata');
+    await earnTx.save();
+
+    return {
+      status: earnTx.whatsappStatus,
+      messageId: earnTx.whatsappMessageId || null,
+      phoneNumberId: earnTx.whatsappPhoneNumberId || '',
+      templateName: earnTx.whatsappTemplateName || '',
+      via: earnTx.whatsappVia || '',
+      error: earnTx.whatsappError || '',
+      errorCode: earnTx.whatsappErrorCode || '',
+      attempts: earnTx.whatsappAttempts,
+      lastAttemptAt: earnTx.whatsappLastAttemptAt,
+    };
+  }
+
+  /**
+   * Process asynchronous Meta delivery/read/failure webhook status updates for loyalty notifications
+   */
+  async processWebhookStatusUpdate(update) {
+    if (!update || !update.messageId) return null;
+
+    const tx = await LoyaltyTransaction.findOne({ whatsappMessageId: update.messageId });
+    if (!tx) return null;
+
+    const incoming = String(update.status || '').toLowerCase();
+    let modified = false;
+
+    if (incoming === 'read') {
+      tx.whatsappStatus = 'read';
+      tx.whatsappDeliveredAt = tx.whatsappDeliveredAt || update.timestamp || new Date();
+      tx.whatsappError = '';
+      tx.whatsappErrorCode = '';
+      modified = true;
+    } else if (incoming === 'delivered' && tx.whatsappStatus !== 'read') {
+      tx.whatsappStatus = 'delivered';
+      tx.whatsappDeliveredAt = tx.whatsappDeliveredAt || update.timestamp || new Date();
+      tx.whatsappError = '';
+      tx.whatsappErrorCode = '';
+      modified = true;
+    } else if (incoming === 'sent' && !['delivered', 'read'].includes(tx.whatsappStatus)) {
+      tx.whatsappStatus = 'sent';
+      modified = true;
+    } else if (incoming === 'failed') {
+      const whatsappService = require('./whatsappService');
+      const firstErr = Array.isArray(update.errors) ? update.errors[0] : update.errors;
+      tx.whatsappStatus = 'failed';
+      tx.whatsappError = firstErr
+        ? whatsappService.formatCampaignFailure(firstErr)
+        : 'WhatsApp delivery failed asynchronously';
+      tx.whatsappErrorCode = firstErr?.code != null ? String(firstErr.code) : 'WEBHOOK_FAILED';
+      tx.whatsappMetadata = {
+        ...(tx.whatsappMetadata || {}),
+        webhookError: firstErr || null,
+        webhookFailedAt: update.timestamp || new Date(),
+      };
+      tx.markModified('whatsappMetadata');
+      modified = true;
+    }
+
+    if (modified) {
+      await tx.save();
+    }
+    return tx;
+  }
+
+  /**
+   * Retry a failed/untracked cashback WhatsApp notification without crediting the customer twice
+   */
+  async retryCashbackNotification(businessId, transactionOrOrderId, { force = false } = {}) {
+    if (!businessId) throw ApiError.badRequest('Business ID is required');
+    if (!transactionOrOrderId) throw ApiError.badRequest('Transaction ID or Order ID is required');
+
+    const idStr = String(transactionOrOrderId).trim();
+    const orConditions = [{ orderNumber: idStr }];
+    if (mongoose.Types.ObjectId.isValid(idStr)) {
+      orConditions.unshift({ _id: idStr }, { orderId: idStr });
+    }
+
+    const tx = await LoyaltyTransaction.findOne({
+      businessId,
+      type: 'earn',
+      $or: orConditions,
+    });
+
+    if (!tx) {
+      throw ApiError.notFound('Loyalty earn transaction not found');
+    }
+
+    const cashbackAwarded = Number(tx.discountAmount || tx.whatsappMetadata?.cashbackEarned || 0);
+    if (cashbackAwarded <= 0) {
+      throw ApiError.badRequest('This loyalty transaction has no cashback award to notify');
+    }
+
+    if (['sent', 'delivered', 'read', 'accepted'].includes(tx.whatsappStatus) && !force) {
+      return {
+        success: true,
+        retried: false,
+        alreadySent: true,
+        customerCreditedAgain: false,
+        transactionId: String(tx._id),
+        orderNumber: tx.orderNumber || '',
+        customerPhone: tx.customerPhone,
+        cashbackAwarded,
+        message: `WhatsApp notification status is already '${tx.whatsappStatus}'. Pass force=true to resend.`,
+        notification: {
+          status: tx.whatsappStatus,
+          messageId: tx.whatsappMessageId || null,
+          templateName: tx.whatsappTemplateName || '',
+          via: tx.whatsappVia || '',
+          error: tx.whatsappError || '',
+          errorCode: tx.whatsappErrorCode || '',
+          attempts: Number(tx.whatsappAttempts || 0),
+          lastAttemptAt: tx.whatsappLastAttemptAt || null,
+          deliveredAt: tx.whatsappDeliveredAt || null,
+        },
+      };
+    }
+
+    const meta = tx.whatsappMetadata || {};
+    const [customerLoyalty, orderDoc] = await Promise.all([
+      this._findCustomerLoyalty(businessId, tx.customerPhone),
+      tx.orderId ? Order.findOne({ _id: tx.orderId, businessId }).select('customerName orderNumber').lean() : null,
+    ]);
+
+    const customerName =
+      meta.customerName ||
+      orderDoc?.customerName ||
+      customerLoyalty?.customerName ||
+      'Valued Customer';
+    const availableBalance =
+      customerLoyalty?.cashbackBalance != null
+        ? Number(customerLoyalty.cashbackBalance)
+        : Number(meta.availableBalance ?? cashbackAwarded);
+    const orderNumber = tx.orderNumber || orderDoc?.orderNumber || meta.orderNumber || '';
+
+    const notification = await this._dispatchAndRecordCashbackWhatsApp(tx, {
+      businessId,
+      phone: tx.customerPhone,
+      customerName,
+      businessName: meta.businessName || '',
+      cashbackEarned: cashbackAwarded,
+      availableBalance,
+      orderNumber,
+    });
+
+    return {
+      success: notification.status !== 'failed',
+      retried: true,
+      alreadySent: false,
+      customerCreditedAgain: false,
+      transactionId: String(tx._id),
+      orderNumber,
+      customerPhone: tx.customerPhone,
+      cashbackAwarded,
+      notification,
+    };
+  }
+
+  /**
+   * List cashback earn transactions with WhatsApp notification delivery status & errors
+   */
+  async getCashbackNotifications(businessId, { status = '', limit = 50 } = {}) {
+    if (!businessId) throw ApiError.badRequest('Business ID is required');
+
+    const query = {
+      businessId,
+      type: 'earn',
+      discountAmount: { $gt: 0 },
+    };
+
+    const cleanStatus = String(status || '').trim();
+    if (cleanStatus) {
+      const statuses = cleanStatus.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+      if (statuses.length > 0) {
+        query.whatsappStatus = { $in: statuses };
+      }
+    }
+
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const docs = await LoyaltyTransaction.find(query)
+      .sort({ createdAt: -1 })
+      .limit(safeLimit)
+      .lean();
+
+    return docs.map((tx) => ({
+      id: String(tx._id),
+      orderId: tx.orderId ? String(tx.orderId) : null,
+      orderNumber: tx.orderNumber || '',
+      customerPhone: tx.customerPhone,
+      cashbackEarned: Number(tx.discountAmount || 0),
+      whatsappStatus: tx.whatsappStatus || 'not_applicable',
+      whatsappMessageId: tx.whatsappMessageId || null,
+      whatsappPhoneNumberId: tx.whatsappPhoneNumberId || '',
+      whatsappTemplateName: tx.whatsappTemplateName || '',
+      whatsappVia: tx.whatsappVia || '',
+      whatsappError: tx.whatsappError || '',
+      whatsappErrorCode: tx.whatsappErrorCode || '',
+      whatsappAttempts: Number(tx.whatsappAttempts || 0),
+      whatsappLastAttemptAt: tx.whatsappLastAttemptAt || null,
+      whatsappDeliveredAt: tx.whatsappDeliveredAt || null,
+      attemptErrors: Array.isArray(tx.whatsappMetadata?.lastAttemptErrors)
+        ? tx.whatsappMetadata.lastAttemptErrors
+        : [],
+      createdAt: tx.createdAt,
+    }));
   }
 }
 

@@ -186,6 +186,42 @@ class LoyaltyController {
       next(err);
     }
   }
+
+  async getCashbackNotifications(req, res, next) {
+    try {
+      const businessId = this._getBusinessId(req);
+      const { status = '', limit = 50 } = req.query;
+      const result = await loyaltyService.getCashbackNotifications(businessId, { status, limit });
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async retryCashbackNotification(req, res, next) {
+    try {
+      const businessId = this._getBusinessId(req);
+      const { id } = req.params;
+      const { force = false } = req.body || {};
+      const result = await loyaltyService.retryCashbackNotification(businessId, id, {
+        force: force === true || force === 'true',
+      });
+      res.json({
+        success: result.success,
+        message: result.alreadySent
+          ? result.message
+          : result.success
+            ? 'Cashback WhatsApp notification retried successfully without double-crediting'
+            : `Cashback notification retry failed: ${result.notification?.error || 'WhatsApp error'}`,
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new LoyaltyController();

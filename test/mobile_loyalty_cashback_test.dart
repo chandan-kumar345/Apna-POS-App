@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:apna_pos/core/models/loyalty_program_model.dart';
 import 'package:apna_pos/features/loyalty/screens/loyalty_landing_screen.dart';
@@ -90,20 +91,13 @@ void main() {
       expect(find.text('₹5,420'), findsOneWidget);
       expect(find.text('+18%'), findsOneWidget);
 
-      // Active programs section & dynamic metadata
-      expect(find.text('Active Programs (1)'), findsOneWidget);
-      expect(find.text('View All'), findsOneWidget);
+      // Programs section & dynamic metadata (without View All)
+      expect(find.text('All Programs (2)'), findsOneWidget);
+      expect(find.text('View All'), findsNothing);
       expect(find.text('Cashback on Every Order'), findsOneWidget);
       expect(find.text('Give cashback to customers on their orders.'), findsOneWidget);
       expect(find.text('Valid till: 23 Nov 2026'), findsOneWidget);
       expect(find.text('Used by: 5 customers'), findsOneWidget);
-
-      // Inactive program hidden until View All is tapped
-      expect(find.text('Weekend Bonus Cashback'), findsNothing);
-      await tester.tap(find.text('View All'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text('All Programs (2)'), findsOneWidget);
       expect(find.text('Weekend Bonus Cashback'), findsOneWidget);
 
       // Revenue info dialog opens cleanly
@@ -326,6 +320,68 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.getTopLeft(find.text('Next')).dy, equals(beforeNext));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('LoyaltyLandingScreen shows complete texts without truncation or View All at 360px width', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final branding = LoyaltyBrandingModel(
+        companyName: 'Pizza 47',
+        companyLogo: '',
+        members: 7,
+        totalCashback: 521,
+        redemptions: 3,
+        revenue: 8711,
+        revenueGrowthPercent: 414,
+        programs: [
+          LoyaltyProgramModel(
+            id: 'prog_cashback_1',
+            type: LoyaltyType.cashback,
+            title: 'Cashback on Every Order',
+            description: 'Give cashback to customers on every purchase to build long-term loyalty.',
+            earningRule: 'Get 5% cashback on all orders',
+            validity: '20 Feb 2027',
+            membersCount: 2,
+            isActive: true,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        buildTestWidget(
+          LoyaltyLandingScreen(
+            showHeader: false,
+            initialBranding: branding,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Active Programs (1)'), findsOneWidget);
+      expect(find.text('View All'), findsNothing);
+
+      for (final expectedText in const [
+        'Members',
+        'Total Cashback',
+        'Redemptions',
+        'Revenue',
+        '₹8,711',
+        '+414%',
+        'Cashback on Every Order',
+        'Give cashback to customers on every purchase to build long-term loyalty.',
+        'Valid till: 20 Feb 2027',
+        'Used by: 2 customers',
+      ]) {
+        final finder = find.text(expectedText);
+        expect(finder, findsOneWidget, reason: '$expectedText should be displayed');
+        final paragraph = tester.renderObject<RenderParagraph>(finder);
+        expect(paragraph.didExceedMaxLines, isFalse, reason: '$expectedText must not truncate');
+      }
+
       expect(tester.takeException(), isNull);
     });
   });

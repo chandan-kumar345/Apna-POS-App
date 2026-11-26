@@ -50,6 +50,7 @@ class _LoyaltyProgramDetailsScreenState
   late bool _isActive;
   bool _isToggling = false;
   bool _isLoadingAnalytics = false;
+  String? _retryingTxId;
   String _selectedDateRange = 'Last 30 Days';
   LoyaltyPerformanceModel? _performance;
 
@@ -134,6 +135,44 @@ class _LoyaltyProgramDetailsScreenState
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _retryWhatsappNotification(RecentActivityModel tx) async {
+    if (tx.id.isEmpty || _retryingTxId == tx.id) return;
+    setState(() => _retryingTxId = tx.id);
+    try {
+      final res = await _loyaltyService.retryCashbackNotification(tx.id);
+      if (!mounted) return;
+      final success = res['success'] == true;
+      final msg =
+          res['message']?.toString() ??
+          (success
+              ? 'Cashback WhatsApp notification sent without crediting twice'
+              : 'WhatsApp retry failed');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: success
+              ? const Color(0xFF10B981)
+              : const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      await _loadAnalytics(forceRefresh: true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not retry WhatsApp notification: $e'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted && _retryingTxId == tx.id) {
+        setState(() => _retryingTxId = null);
+      }
+    }
   }
 
   Future<void> _confirmDeactivate() async {
@@ -1726,44 +1765,58 @@ class _LoyaltyProgramDetailsScreenState
           Expanded(
             flex: 19,
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                decoration: BoxDecoration(
-                  color: isRedeemed
-                      ? const Color(0xFFDCFCE7)
-                      : const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isRedeemed
-                          ? Icons.check_rounded
-                          : Icons.access_time_rounded,
-                      size: 10.5,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2.5,
+                    ),
+                    decoration: BoxDecoration(
                       color: isRedeemed
-                          ? const Color(0xFF16A34A)
-                          : const Color(0xFFD97706),
+                          ? const Color(0xFFDCFCE7)
+                          : const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(width: 3),
-                    Flexible(
-                      child: Text(
-                        isRedeemed ? 'Redeemed' : 'Earned',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: 'Roboto',
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isRedeemed
+                              ? Icons.check_rounded
+                              : Icons.access_time_rounded,
+                          size: 10.5,
                           color: isRedeemed
-                              ? const Color(0xFF15803D)
-                              : const Color(0xFFB45309),
+                              ? const Color(0xFF16A34A)
+                              : const Color(0xFFD97706),
                         ),
-                      ),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            isRedeemed ? 'Redeemed' : 'Earned',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: 'Roboto',
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: isRedeemed
+                                  ? const Color(0xFF15803D)
+                                  : const Color(0xFFB45309),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  if (!isRedeemed &&
+                      tx.cashbackAmount > 0 &&
+                      tx.id.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    _buildWhatsappStatusBadge(tx),
                   ],
-                ),
+                ],
               ),
             ),
           ),
@@ -1784,6 +1837,86 @@ class _LoyaltyProgramDetailsScreenState
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildWhatsappStatusBadge(RecentActivityModel tx) {
+    final st = tx.whatsappStatus.toLowerCase();
+    final isRetrying = _retryingTxId == tx.id;
+    final canRetry =
+        st == 'failed' ||
+        st == 'pending' ||
+        st == 'not_applicable' ||
+        st.isEmpty;
+
+    String label;
+    Color textColor;
+    Color bgColor;
+
+    if (isRetrying) {
+      label = 'Retrying WA...';
+      textColor = const Color(0xFF0369A1);
+      bgColor = const Color(0xFFE0F2FE);
+    } else if (st == 'failed') {
+      label = 'WA Failed · Retry';
+      textColor = const Color(0xFFB91C1C);
+      bgColor = const Color(0xFFFEE2E2);
+    } else if (st == 'pending' || st == 'not_applicable' || st.isEmpty) {
+      label = 'Send WA';
+      textColor = const Color(0xFFB45309);
+      bgColor = const Color(0xFFFEF3C7);
+    } else if (st == 'delivered' || st == 'read') {
+      label = st == 'read' ? 'WA Read' : 'WA Delivered';
+      textColor = const Color(0xFF15803D);
+      bgColor = const Color(0xFFDCFCE7);
+    } else if (st == 'simulated') {
+      label = 'WA Simulated';
+      textColor = const Color(0xFF475569);
+      bgColor = const Color(0xFFF1F5F9);
+    } else {
+      label = 'WA Sent';
+      textColor = const Color(0xFF0369A1);
+      bgColor = const Color(0xFFE0F2FE);
+    }
+
+    final tooltipText = tx.whatsappError.isNotEmpty
+        ? (tx.whatsappErrorCode.isNotEmpty
+              ? '[${tx.whatsappErrorCode}] ${tx.whatsappError}'
+              : tx.whatsappError)
+        : (canRetry
+              ? 'Tap to retry WhatsApp alert without crediting again'
+              : (tx.whatsappMessageId.isNotEmpty
+                    ? 'Meta ID: ${tx.whatsappMessageId}'
+                    : label));
+
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 8.5,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
+      ),
+    );
+
+    return Tooltip(
+      message: tooltipText,
+      child: canRetry
+          ? InkWell(
+              onTap: isRetrying ? null : () => _retryWhatsappNotification(tx),
+              borderRadius: BorderRadius.circular(8),
+              child: chip,
+            )
+          : chip,
     );
   }
 

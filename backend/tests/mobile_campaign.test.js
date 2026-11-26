@@ -151,6 +151,19 @@ test('queue uses provider approval, a single wallet debit and actual monotonical
   expect((await wallet.getOrCreateWallet(businessId)).balance).toBeCloseTo(98.94);
 });
 
+test('last failed receipt updates a completed campaign and keeps the provider reason', async () => {
+  await save();
+  await approve();
+  await launch();
+  await cron.processScheduledCampaignsJob();
+  await campaigns.processWebhookStatusUpdate({messageId:'provider-receipt', status:'failed',
+    errors:[{code:130429, message:'Request failed', error_data:{details:'Rate limit hit'}}]});
+  const c = await Campaign.findById(key);
+  expect(c.status).toBe('failed');
+  expect(c.stats.failed).toBe(1);
+  expect(c.audience.recipients[0].error).toBe('Rate limit hit (WhatsApp code 130429)');
+});
+
 test.each([
   ['flat_discount',{discountAmount:100},[],100],
   ['free_gift',{giftItem:'bread',giftQty:2},[{productId:'bread',quantity:3,price:80}],160],

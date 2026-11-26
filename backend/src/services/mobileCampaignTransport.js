@@ -41,7 +41,9 @@ async function graph(credentials, path, payload, queryParams) {
     ...(payload && { body: JSON.stringify(payload) }) });
   const data = await response.json();
   if (!response.ok) {
-    const err = new Error(whatsapp.formatMetaErrorMessage(data, 'WhatsApp request failed'));
+    const err = new Error(path.endsWith('/messages')
+      ? whatsapp.formatCampaignFailure(data.error)
+      : whatsapp.formatMetaErrorMessage(data, 'WhatsApp request failed'));
     err.transient = response.status === 429 || response.status >= 500;
     throw err;
   }

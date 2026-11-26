@@ -18,16 +18,25 @@ async function recount(filter) {
     { $round: [{ $multiply: [{ $divide: [{ $cond: [{ $gt: ['$stats.delivered', 0] }, '$stats.delivered', '$stats.messagesSent'] }, { $add: ['$stats.messagesSent', '$stats.failed'] }] }, 100] }, 1] }, 0] } } }]);
 }
 
+// The final failed receipt can arrive on either side of the worker releasing its lock.
+async function reconcileCompleted(campaign) {
+  await Campaign.updateOne({
+    _id: campaign._id, businessId: campaign.businessId, status: 'completed',
+    'stats.failed': { $gt: 0 }, $expr: { $eq: ['$stats.failed', { $size: '$audience.recipients' }] },
+  }, { $set: { status: 'failed', 'mobileStudio.note': 'Delivery failed for every recipient. See delivery results for the reasons.' } });
+}
+
 async function receipt(campaign, update) {
   const status = String(update.status || '').toLowerCase();
   const previous = { delivered: ['sent'], read: ['sent', 'delivered'], failed: ['sent'] }[status];
   if (!previous) return;
   const filter = { _id: campaign._id, businessId: campaign.businessId };
   const fields = { 'audience.recipients.$.status': status };
-  if (status === 'failed') fields['audience.recipients.$.error'] = update.errors?.[0]?.message || 'Delivery failed';
+  if (status === 'failed') fields['audience.recipients.$.error'] = require('./whatsappService').formatCampaignFailure(update.errors?.[0]);
   else fields['audience.recipients.$.deliveredAt'] = update.timestamp || new Date();
   await Campaign.updateOne({ ...filter, 'audience.recipients': { $elemMatch: { messageId: update.messageId, status: { $in: previous } } } }, { $set: fields });
   await recount(filter);
+  if (status === 'failed') await reconcileCompleted(campaign);
 }
 
 async function reserveCoupon(c) {
@@ -141,9 +150,10 @@ async function run(campaign) {
     if (!final.stats.messagesSent && coupon) {
       await Coupon.updateOne({ _id: coupon._id, businessId: c.businessId }, { $set: { isActive: false } });
     }
-    return await release(final.stats.messagesSent ? 'completed' : 'failed',
+    await release(final.stats.messagesSent ? 'completed' : 'failed',
       final.stats.failed ? (final.stats.messagesSent + ' sent · ' + final.stats.failed + ' failed. ' +
       (final.audience.recipients.find(r => r.error)?.error || '')) : 'Dispatch completed', { 'stats.completionRate': 100 });
+    if (final.stats.messagesSent) await reconcileCompleted(c);
   } catch (err) {
     if (!dispatchStarted && (err.transient || ['TypeError', 'TimeoutError'].includes(err.name))) {
       return await release('scheduled', 'Waiting to reconnect to WhatsApp', { 'mobileStudio.nextCheckAt': new Date(Date.now() + 5 * 60000) });

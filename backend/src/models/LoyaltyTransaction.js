@@ -58,6 +58,53 @@ const loyaltyTransactionSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    whatsappStatus: {
+      type: String,
+      enum: ['not_applicable', 'pending', 'accepted', 'sent', 'delivered', 'read', 'failed', 'simulated'],
+      default: 'not_applicable',
+      index: true,
+    },
+    whatsappMessageId: {
+      type: String,
+      default: null,
+    },
+    whatsappPhoneNumberId: {
+      type: String,
+      default: '',
+    },
+    whatsappTemplateName: {
+      type: String,
+      default: '',
+    },
+    whatsappVia: {
+      type: String,
+      enum: ['', 'template', 'text', 'simulated'],
+      default: '',
+    },
+    whatsappError: {
+      type: String,
+      default: '',
+    },
+    whatsappErrorCode: {
+      type: String,
+      default: '',
+    },
+    whatsappAttempts: {
+      type: Number,
+      default: 0,
+    },
+    whatsappLastAttemptAt: {
+      type: Date,
+      default: null,
+    },
+    whatsappDeliveredAt: {
+      type: Date,
+      default: null,
+    },
+    whatsappMetadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
   },
   {
     timestamps: true,
@@ -71,6 +118,8 @@ const loyaltyTransactionSchema = new mongoose.Schema(
     },
   }
 );
+
+loyaltyTransactionSchema.index({ whatsappMessageId: 1 }, { sparse: true });
 
 const LoyaltyTransaction = mongoose.model('LoyaltyTransaction', loyaltyTransactionSchema);
 

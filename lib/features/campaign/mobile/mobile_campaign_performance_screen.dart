@@ -556,14 +556,16 @@ class _MobileCampaignPerformanceScreenState
             : 'Coupon active until 30 Nov');
 
     final rawStatus = (_c['status'] ?? 'completed').toString().toLowerCase();
-    final isCompleted = rawStatus == 'completed' || rawStatus == 'sent';
+    final stats = _getStats();
+    final allFailed = stats.failed > 0 && stats.failed == stats.recipients &&
+        (rawStatus == 'completed' || rawStatus == 'sent');
 
     Color statusBg;
     Color statusFg;
     IconData? statusIcon;
     String statusText;
 
-    switch (rawStatus) {
+    switch (allFailed ? 'failed' : rawStatus) {
       case 'completed':
       case 'sent':
         statusBg = const Color(0xFFDCFCE7);
@@ -1262,6 +1264,11 @@ class _MobileCampaignPerformanceScreenState
     final deliveryRateStr =
         '${stats.deliveryRate.toStringAsFixed(1)}% delivery rate';
 
+    final reasons = <String, int>{};
+    for (final recipient in _recipients.where((r) => r['status'] == 'failed')) {
+      reasons.update(_failureReason(recipient), (count) => count + 1, ifAbsent: () => 1);
+    }
+
     // Segment ratios for the progress bar
     final total = stats.recipients > 0 ? stats.recipients : 1;
     final readFlex = (stats.read * 1000 / total).round();
@@ -1410,6 +1417,13 @@ class _MobileCampaignPerformanceScreenState
             label: 'Failed to deliver',
             count: fmt.format(stats.failed),
           ),
+          if (stats.failed > 0) ...[
+            const Divider(),
+            const Text('Failure reasons', style: TextStyle(fontWeight: FontWeight.bold)),
+            for (final entry in reasons.entries)
+              Text('${entry.value} × ${entry.key}'),
+            if (reasons.isEmpty) const Text('No failure reason was recorded.'),
+          ],
         ],
       ),
     );
@@ -1651,6 +1665,7 @@ class _MobileCampaignPerformanceScreenState
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (item['status'] == 'failed') Text(_failureReason(item)),
                     ],
                   ),
                 ),
@@ -1660,6 +1675,11 @@ class _MobileCampaignPerformanceScreenState
           ),
         ],
     ];
+  }
+
+  String _failureReason(Map<String, dynamic> recipient) {
+    final reason = recipient['error']?.toString().trim() ?? '';
+    return reason.isEmpty ? 'No failure reason was recorded.' : reason;
   }
 
   Widget _customerStatusChip(String status) {

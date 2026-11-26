@@ -507,6 +507,9 @@ class ApiEndpoints {
   static const String loyaltyConfig = '/loyalty/config';
   static const String loyaltyPerformance = '/loyalty/performance';
   static const String loyaltyCustomer = '/loyalty/customer';
+  static const String loyaltyNotifications = '/loyalty/notifications';
+  static String loyaltyRetryNotification(String transactionId) =>
+      '/loyalty/transactions/$transactionId/retry-notification';
   static const String loyaltySendOtp = '/loyalty/send-otp';
   static const String loyaltyVerifyOtp = '/loyalty/verify-otp';
   static const String loyaltyRedeem = '/loyalty/redeem';
