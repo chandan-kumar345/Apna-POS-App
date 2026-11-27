@@ -48,7 +48,7 @@ test('approval is tied to selected language and category',async () => {
     {name:'apna_test',language:'en_US',category:'MARKETING',status:'APPROVED'},
     {name:'apna_test',language:'en',category:'UTILITY',status:'APPROVED'},
   ]}));
-  expect(await transport.approval(c,account)).toBe('REJECTED');
+  expect(await transport.approval(c,account,false)).toBe('REJECTED');
   expect(mock).toHaveBeenCalledTimes(1);
 });
 

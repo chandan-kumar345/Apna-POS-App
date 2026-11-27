@@ -490,7 +490,7 @@ class _MetaPartnerChannelScreenState extends State<MetaPartnerChannelScreen>
                   size: 20,
                 ),
                 label: Text(
-                  _connected ? 'Reconnect with Meta' : 'Connect with Meta',
+                  _connected ? 'Reconnect with Meta' : 'Continue with Facebook',
                   textAlign: TextAlign.center,
                 ),
               ),

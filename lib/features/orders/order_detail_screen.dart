@@ -343,10 +343,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         await _db.updateOrderStatus(order.id, OrderStatus.preparing);
       }
       await _loadOrder();
+      final printedOrder = (_order ?? order).copyWith(status: OrderStatus.preparing);
+      bool kotPrinted = false;
+      try {
+        kotPrinted = await BluetoothPrinterService().printKotIfConnected(
+          order: printedOrder,
+          restaurant: _db.restaurant,
+        );
+      } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Order #${order.orderNumber} accepted! Status updated to Preparing.'),
+            content: Text(
+              'Order #${order.orderNumber} accepted!${kotPrinted ? ' (KOT Printed)' : ''} Status updated to Preparing.',
+            ),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),

@@ -926,11 +926,14 @@ class _IncomingOrderAcceptScreenState extends State<IncomingOrderAcceptScreen> {
 
       unawaited(_db.syncOrdersOnly());
 
-      // Auto-print KOT if printer available
+      // Auto-print KOT only if printer is connected
       bool kotPrinted = false;
       try {
         final printer = BluetoothPrinterService();
-        kotPrinted = await printer.printKOT(order: updatedOrder);
+        kotPrinted = await printer.printKotIfConnected(
+          order: updatedOrder,
+          restaurant: _db.restaurant,
+        );
       } catch (_) {}
 
       // Update Firestore Storefront Order Status

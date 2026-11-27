@@ -409,21 +409,11 @@ class LoyaltyService {
               ? (response['data'] as Map<String, dynamic>)
               : (response as Map<String, dynamic>);
 
-          final testOtp = resData['otpDebug'] ??
-              (resData['message']?.toString().contains('OTP generated:') == true
-                  ? resData['message'].toString().split('OTP generated:').last.trim()
-                  : null);
-
-          debugPrint('\n================================================================');
-          debugPrint('🔑 [LOYALTY REDEEM OTP TEST - FLUTTER TERMINAL OUTPUT]');
-          debugPrint('📱 Customer Phone : ${phone.trim()}');
-          if (testOtp != null) {
-            debugPrint('🔢 OTP Code       : >>> $testOtp <<<');
-          } else {
-            debugPrint('🔢 Response Msg   : ${resData['message']}');
-          }
-          debugPrint('🎁 Stage ID       : $stageId');
-          debugPrint('================================================================\n');
+          final rawMsg = resData['message']?.toString().trim() ?? '';
+          final safeMsg = (rawMsg.isEmpty || rawMsg.contains('OTP generated:'))
+              ? 'OTP sent to customer WhatsApp'
+              : rawMsg;
+          debugPrint('[LoyaltyService.sendRedemptionOtp] $safeMsg (phone=${phone.trim()}, stageId=$stageId)');
 
           return resData;
         }

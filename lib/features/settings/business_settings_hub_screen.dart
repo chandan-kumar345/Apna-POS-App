@@ -4569,7 +4569,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         children: [
                           _buildSettingCard(
                             width: cardWidth,
-                            title: 'Meta Partner Channel',
+                            title: 'Meta Partner Solution',
                             subtitle: db.isMetaPartnerConnected ? 'Tech Partner • Connected' : 'Tech Provider & WABA Hub',
                             icon: Icons.hub_rounded,
                             accentColor: const Color(0xFF1877F2),

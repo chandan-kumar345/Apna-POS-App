@@ -293,7 +293,6 @@ async function followUp(businessId, key, input, userId) {
     'Choose a finished campaign with an approved customer message.');
   check(c.couponSettings.expiryDate > new Date(), 'This campaign has expired.');
   check(input.confirmedOptIn === true, 'Confirm that these customers opted in.');
-  const history = new Map(c.audience.recipients.map(r => [whatsapp.normalizePhoneNumber(r.phone), r]));
   let members;
   if (mode === 'new') {
     const phones = input.phones || [];
@@ -304,8 +303,9 @@ async function followUp(businessId, key, input, userId) {
     });
     const group = input.groupId ? await AudienceGroup.findOne({ _id: id(input.groupId), businessId }).lean() : null;
     check(!input.groupId || group, 'Choose a group from this business.');
-    members = recipientsFor({ numbers: [...(group?.numbers || []), ...manual] }).filter(r => !history.has(r.phone));
+    members = recipientsFor({ numbers: [...(group?.numbers || []), ...manual] });
   } else {
+    const history = new Map(c.audience.recipients.map(r => [whatsapp.normalizePhoneNumber(r.phone), r]));
     members = recipientsFor({ numbers: [...history.values()].filter(r => mode === 'all' || r.status === 'failed') });
   }
   check(members.length, 'There are no eligible contacts for this send.');

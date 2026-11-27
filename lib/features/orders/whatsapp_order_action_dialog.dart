@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
+import '../../core/models/menu_item_model.dart';
+import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/services/order_service.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/services/socket_service.dart';
@@ -333,6 +335,69 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
     return price;
   }
 
+  OrderModel _buildAcceptedOrderModel() {
+    final existing = _db.orders
+        .where(
+          (o) =>
+              (widget.orderId.isNotEmpty && o.id == widget.orderId) ||
+              (widget.orderNumber.isNotEmpty && o.orderNumber == widget.orderNumber),
+        )
+        .firstOrNull;
+    if (existing != null && existing.items.isNotEmpty) {
+      return existing.copyWith(status: OrderStatus.preparing);
+    }
+
+    final parsedItems = <CartItemModel>[];
+    for (int i = 0; i < widget.items.length; i++) {
+      final item = widget.items[i];
+      final actualItem = item['item'] is Map
+          ? Map<String, dynamic>.from(item['item'] as Map)
+          : item;
+      final name = (actualItem['name'] ?? actualItem['title'] ?? item['name'] ?? 'Item ${i + 1}').toString();
+      final qty = (item['quantity'] is num)
+          ? (item['quantity'] as num).toInt()
+          : (int.tryParse(item['quantity']?.toString() ?? '1') ?? 1);
+      final price = _resolveItemPrice(item, actualItem, qty);
+      final note = (item['notes'] ?? item['note'] ?? actualItem['notes'] ?? actualItem['note'])?.toString();
+
+      parsedItems.add(
+        CartItemModel(
+          item: MenuItemModel(
+            id: (actualItem['id'] ?? actualItem['productId'] ?? item['productId'] ?? 'item_$i').toString(),
+            name: name,
+            price: price,
+            category: (actualItem['category'] ?? item['category'] ?? 'General').toString(),
+            description: name,
+            itemType: (actualItem['isVeg'] == true || item['isVeg'] == true) ? 'Veg' : 'Non-Veg',
+          ),
+          quantity: qty,
+          note: note,
+        ),
+      );
+    }
+
+    final lowerType = widget.orderType.toLowerCase();
+    final resolvedType = lowerType.contains('delivery')
+        ? OrderType.delivery
+        : (lowerType.contains('dine') ? OrderType.dineIn : OrderType.takeaway);
+
+    return OrderModel(
+      id: widget.orderId,
+      orderNumber: widget.orderNumber,
+      customerName: widget.customerName,
+      customerPhone: widget.customerPhone,
+      deliveryAddress: widget.deliveryAddress,
+      orderType: resolvedType,
+      status: OrderStatus.preparing,
+      items: parsedItems,
+      subtotal: widget.totalAmount,
+      taxAmount: 0.0,
+      totalAmount: widget.totalAmount,
+      orderSource: 'whatsapp',
+      createdAt: widget.createdAt.toIso8601String(),
+    );
+  }
+
   Future<void> _handleAccept() async {
     if (_isProcessing) return;
     SoundService.stopOrderRingtone();
@@ -361,9 +426,19 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
         prepTimeMinutes: _selectedPrepTime,
       );
 
+      // 3. Auto-print KOT if printer is connected
+      bool kotPrinted = false;
+      try {
+        kotPrinted = await BluetoothPrinterService().printKotIfConnected(
+          order: _buildAcceptedOrderModel(),
+          restaurant: _db.restaurant,
+        );
+      } catch (_) {}
+
       if (mounted) {
+        final messenger = ScaffoldMessenger.maybeOf(context);
         Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger?.showSnackBar(
           SnackBar(
             content: Row(
               children: [
@@ -371,7 +446,7 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Order #${widget.orderNumber} Accepted! Confirmation sent to customer on WhatsApp.',
+                    'Order #${widget.orderNumber} Accepted!${kotPrinted ? ' (KOT Printed)' : ''} Confirmation sent to customer on WhatsApp.',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -533,8 +608,9 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
       );
 
       if (mounted) {
+        final messenger = ScaffoldMessenger.maybeOf(context);
         Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger?.showSnackBar(
           SnackBar(
             content: Row(
               children: [
@@ -1439,12 +1515,16 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
             children: [
               SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
               SizedBox(width: 10),
-              Text(
-                'Updating order & notifying customer...',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF0F2B48),
+              Flexible(
+                child: Text(
+                  'Updating order & notifying customer...',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F2B48),
+                  ),
                 ),
               ),
             ],

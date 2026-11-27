@@ -348,4 +348,142 @@ describe('Loyalty Cashback WhatsApp Delivery Tracking, Webhook & Idempotent Retr
     expect(refreshedCustomer.cashbackBalance).toBe(55);
     expect(refreshedCustomer.totalCashbackEarned).toBe(55);
   });
+
+  test('4. Concurrent awardPointsForCompletedOrder calls credit cashback once and send only one WhatsApp message', async () => {
+    process.env.NODE_ENV = 'development';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        messaging_product: 'whatsapp',
+        messages: [{ id: 'wamid.concurrent_single_001' }],
+      }),
+    });
+
+    const order = await Order.create({
+      businessId,
+      orderNumber: 'ORD-CONCURRENT-1',
+      orderType: 'dineIn',
+      customerName: 'Chandan',
+      customerPhone: '9709593705',
+      items: [{ name: 'Farmhouse Pizza', price: 1000, quantity: 1 }],
+      subtotal: 1000,
+      totalAmount: 1000,
+      status: 'completed',
+      isPaid: true,
+    });
+
+    const [res1, res2] = await Promise.all([
+      loyaltyService.awardPointsForCompletedOrder(businessId, order),
+      loyaltyService.awardPointsForCompletedOrder(businessId, order),
+    ]);
+
+    const earnedCount = [res1, res2].filter((r) => r.earned === true).length;
+    expect(earnedCount).toBe(1);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    const earnTxs = await LoyaltyTransaction.find({ businessId, orderId: order._id, type: 'earn' });
+    expect(earnTxs).toHaveLength(1);
+    expect(earnTxs[0].discountAmount).toBe(100);
+
+    const profile = await CustomerLoyalty.findOne({ businessId, customerPhone: '9709593705' });
+    expect(profile.cashbackBalance).toBe(100);
+    expect(profile.totalCashbackEarned).toBe(100);
+  });
+
+  test('5. Meta webhook 130429 schedules automatic cashback retry without double-crediting', async () => {
+    process.env.NODE_ENV = 'development';
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        messaging_product: 'whatsapp',
+        messages: [{ id: 'wamid.rate_130429_1' }],
+      }),
+    });
+
+    const order = await Order.create({
+      businessId,
+      orderNumber: 'ORD-RATE-LIMIT-1',
+      orderType: 'dineIn',
+      customerName: 'Chandan',
+      customerPhone: '9709593705',
+      items: [{ name: 'Farmhouse Pizza', price: 500, quantity: 1 }],
+      subtotal: 500,
+      totalAmount: 500,
+      status: 'completed',
+      isPaid: true,
+    });
+
+    const earnRes = await loyaltyService.awardPointsForCompletedOrder(businessId, order);
+    expect(earnRes.whatsappNotification.messageId).toBe('wamid.rate_130429_1');
+
+    await loyaltyService.processWebhookStatusUpdate({
+      messageId: 'wamid.rate_130429_1',
+      status: 'failed',
+      timestamp: new Date(),
+      errors: [
+        {
+          code: 130429,
+          title: 'Rate limit hit',
+          error_data: {
+            details: 'Message failed to send because there were too many messages sent from this phone number in a short period of time.',
+          },
+        },
+      ],
+    });
+
+    let tx = await LoyaltyTransaction.findById(earnRes.transactionId);
+    expect(tx.whatsappStatus).toBe('failed');
+    expect(tx.whatsappErrorCode).toBe('130429');
+    expect(tx.whatsappMetadata.nextRetryAt).toBeTruthy();
+    expect(tx.whatsappMetadata.autoRetryCount).toBe(1);
+
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        messaging_product: 'whatsapp',
+        messages: [{ id: 'wamid.rate_130429_retry_ok' }],
+      }),
+    });
+
+    const processed = await loyaltyService.processPendingCashbackRetries(new Date(Date.now() + 6 * 60 * 1000));
+    expect(processed).toBe(1);
+
+    tx = await LoyaltyTransaction.findById(earnRes.transactionId);
+    expect(tx.whatsappStatus).toBe('accepted');
+    expect(tx.whatsappMessageId).toBe('wamid.rate_130429_retry_ok');
+
+    const profile = await CustomerLoyalty.findOne({ businessId, customerPhone: '9709593705' });
+    expect(profile.cashbackBalance).toBe(50);
+  });
+
+  test('6. sendLoyaltyRedemptionOtp never exposes OTP in message or otpDebug outside test env', async () => {
+    await CustomerLoyalty.create({
+      businessId,
+      customerPhone: '9876501234',
+      customerName: 'Customer',
+      cashbackBalance: 200,
+      totalCashbackEarned: 200,
+    });
+
+    process.env.NODE_ENV = 'production';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ messages: [{ id: 'wamid.otp_1' }] }),
+    });
+
+    const res = await loyaltyService.sendLoyaltyRedemptionOtp(businessId, '9876501234', {
+      stageId: 'cashback_custom',
+      pointsToRedeem: 50,
+      amountToRedeem: 50,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.otpDebug).toBeUndefined();
+    expect(res.message).not.toMatch(/OTP generated:/i);
+    expect(res.message).not.toMatch(/\b\d{4}\b/);
+  });
 });

@@ -3,6 +3,8 @@ const Campaign = require('../models/Campaign');
 const Coupon = require('../models/Coupon');
 const wallet = require('./walletService');
 const transport = require('./mobileCampaignTransport');
+const { setTimeout: delay } = require('node:timers/promises');
+const rateLimitCooldownMs = 5 * 60 * 1000;
 
 function countStatuses(statuses) {
   return { $size: { $filter: { input: '$audience.recipients', as: 'r', cond: { $in: ['$$r.status', statuses] } } } };
@@ -34,6 +36,9 @@ async function receipt(campaign, update) {
   const fields = { 'audience.recipients.$.status': status };
   if (status === 'failed') fields['audience.recipients.$.error'] = require('./whatsappService').formatCampaignFailure(update.errors?.[0]);
   else fields['audience.recipients.$.deliveredAt'] = update.timestamp || new Date();
+  if (status === 'failed' && Number(update.errors?.[0]?.code) === 130429) {
+    fields['mobileStudio.rateLimitedUntil'] = new Date(Date.now() + rateLimitCooldownMs);
+  }
   await Campaign.updateOne({ ...filter, 'audience.recipients': { $elemMatch: { messageId: update.messageId, status: { $in: previous } } } }, { $set: fields });
   await recount(filter);
   if (status === 'failed') await reconcileCompleted(campaign);
@@ -125,19 +130,30 @@ async function run(campaign) {
       'cost.remaining': 0, 'mobileStudio.note': 'Sending messages', couponId: coupon?._id || null } });
     if (coupon) await Coupon.updateOne({ businessId: c.businessId, _id: coupon._id }, { $set: { isActive: true } });
 
+    let attempted = false;
     for (const recipient of batch) {
       if (recipient.status !== 'pending') continue;
+      if (attempted) await delay(1000);
       if (c.couponSettings.expiryDate <= new Date()) break;
+      const cooling = await Campaign.findOne({ ...lock, 'mobileStudio.rateLimitedUntil': { $gt: new Date() } })
+        .select('mobileStudio.rateLimitedUntil').lean();
+      if (cooling) {
+        await recount(lock);
+        return await release('scheduled', 'WhatsApp rate limit reached. Remaining sends will resume after cooldown.',
+          { 'mobileStudio.nextCheckAt': cooling.mobileStudio.rateLimitedUntil });
+      }
       // Claim before I/O. After a worker dies, an uncertain send is never repeated.
       const claim = await Campaign.updateOne({ ...lock, 'audience.recipients': { $elemMatch: { _id: recipient._id, status: 'pending' } } },
         { $set: { 'audience.recipients.$.status': 'sending' } });
       if (!claim.modifiedCount) continue;
+      attempted = true;
       let fields;
       try {
         const messageId = await transport.send(c, credentials, recipient);
         fields = { 'audience.recipients.$.status': 'sent', 'audience.recipients.$.messageId': messageId, 'audience.recipients.$.sentAt': new Date() };
       } catch (err) {
         fields = { 'audience.recipients.$.status': 'failed', 'audience.recipients.$.error': err.message };
+        if (err.metaCode === 130429) fields['mobileStudio.rateLimitedUntil'] = new Date(Date.now() + rateLimitCooldownMs);
       }
       await Campaign.updateOne({ ...lock, 'audience.recipients._id': recipient._id }, { $set: fields });
     }

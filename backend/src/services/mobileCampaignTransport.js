@@ -45,6 +45,7 @@ async function graph(credentials, path, payload, queryParams) {
       ? whatsapp.formatCampaignFailure(data.error)
       : whatsapp.formatMetaErrorMessage(data, 'WhatsApp request failed'));
     err.transient = response.status === 429 || response.status >= 500;
+    err.metaCode = Number(data.error?.code);
     throw err;
   }
   return data;

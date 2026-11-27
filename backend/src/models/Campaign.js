@@ -195,6 +195,7 @@ const campaignSchema = new mongoose.Schema(
       consentConfirmedAt: Date,
       sendAuthorizedAt: Date,
       batchStart: Number,
+      rateLimitedUntil: Date,
       batchKey: String,
       batchPriorSpend: Number,
       reservedCode: String,

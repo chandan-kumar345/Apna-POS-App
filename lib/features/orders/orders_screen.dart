@@ -123,6 +123,37 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
   }
 
+  Future<void> _acceptPendingOrderAndPrintKot(OrderModel order) async {
+    if (order.isWhatsAppOrder) {
+      unawaited(OrderService().acceptWhatsAppOrder(order.id, prepTimeMinutes: 20));
+    }
+    unawaited(db.updateOrderStatus(order.id, OrderStatus.preparing));
+    if (mounted) {
+      setState(() {
+        _selectedStatusFilter = 'Preparing';
+      });
+    }
+
+    bool kotPrinted = false;
+    try {
+      kotPrinted = await BluetoothPrinterService().printKotIfConnected(
+        order: order.copyWith(status: OrderStatus.preparing),
+        restaurant: db.restaurant,
+      );
+    } catch (_) {}
+
+    if (mounted && kotPrinted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Order #${order.orderNumber} accepted & KOT printed!'),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   Future<void> _refreshOrders() async {
     setState(() => _isManualRefreshing = true);
     await db.syncOrdersOnly();
@@ -2319,13 +2350,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     InkWell(
                       onTap: () {
                         if (effectiveStatus == OrderStatus.pending) {
-                          if (order.isWhatsAppOrder) {
-                            unawaited(OrderService().acceptWhatsAppOrder(order.id, prepTimeMinutes: 20));
-                          }
-                          db.updateOrderStatus(order.id, OrderStatus.preparing);
-                          setState(() {
-                            _selectedStatusFilter = 'Preparing';
-                          });
+                          unawaited(_acceptPendingOrderAndPrintKot(order));
                         } else if (effectiveStatus == OrderStatus.preparing) {
                           db.updateOrderStatus(order.id, OrderStatus.ready);
                           setState(() {

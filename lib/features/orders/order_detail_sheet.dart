@@ -6,6 +6,7 @@ import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
 import '../pos/payment_modal.dart';
 import '../pos/receipt_dialog.dart';
+import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/services/order_service.dart';
 
 class OrderDetailSheet extends StatefulWidget {
@@ -398,10 +399,20 @@ class _OrderDetailSheetState extends State<OrderDetailSheet> {
         await _db.updateOrderStatus(order.id, OrderStatus.preparing);
       }
       await _loadOrder();
+      final printedOrder = (_order ?? order).copyWith(status: OrderStatus.preparing);
+      bool kotPrinted = false;
+      try {
+        kotPrinted = await BluetoothPrinterService().printKotIfConnected(
+          order: printedOrder,
+          restaurant: _db.restaurant,
+        );
+      } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Order #${order.orderNumber} accepted! Status updated to Preparing.'),
+            content: Text(
+              'Order #${order.orderNumber} accepted!${kotPrinted ? ' (KOT Printed)' : ''} Status updated to Preparing.',
+            ),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),

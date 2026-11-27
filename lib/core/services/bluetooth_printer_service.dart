@@ -32,6 +32,29 @@ class BluetoothPrinterService {
   bool _isConnecting = false;
   bool get isConnecting => _isConnecting;
 
+  /// Optional test overrides for verifying connected vs disconnected auto-KOT printing
+  @visibleForTesting
+  Future<bool> Function()? testAutoPrintIsConnected;
+
+  @visibleForTesting
+  Future<bool> Function(OrderModel order, RestaurantModel? restaurant, String? kotNumber)?
+      testAutoPrintKot;
+
+  static const List<String> _virtualWindowsPrinterKeywords = [
+    'microsoft print to pdf',
+    'microsoft xps document writer',
+    'onenote',
+    'fax',
+    'adobe pdf',
+    'foxit',
+    'cutepdf',
+  ];
+
+  bool _isVirtualWindowsPrinter(WindowsPrinterInfo printer) {
+    final lower = printer.name.toLowerCase();
+    return _virtualWindowsPrinterKeywords.any(lower.contains);
+  }
+
   // In-Memory Fast Cache for instant UI loading
   List<BluetoothInfo>? _cachedBondedDevices;
   Map<String, String?>? _cachedSavedPrinter;
@@ -1123,6 +1146,137 @@ class BluetoothPrinterService {
       return await PrintBluetoothThermal.writeBytes(bytes);
     } catch (e) {
       if (kDebugMode) print('Error sending KOT to thermal printer: $e');
+      return false;
+    }
+  }
+
+  /// Auto-prints a KOT when an incoming order (Storefront, Dine-In, or WhatsApp)
+  /// is accepted, ONLY if a printer is actually connected/configured.
+  /// Returns true if KOT was printed; returns false cleanly without dialogs or errors
+  /// when no printer is connected so order acceptance always succeeds.
+  Future<bool> printKotIfConnected({
+    required OrderModel order,
+    RestaurantModel? restaurant,
+    String? kotNumber,
+  }) async {
+    if (order.items.isEmpty) return false;
+    if (!order.items.any((i) => i.hasPendingKot)) return false;
+
+    try {
+      bool printed = false;
+
+      if (testAutoPrintIsConnected != null) {
+        final connected = await testAutoPrintIsConnected!();
+        if (!connected) return false;
+        printed = testAutoPrintKot != null
+            ? await testAutoPrintKot!(order, restaurant, kotNumber)
+            : true;
+      } else {
+        if (kIsWeb) return false;
+        if (defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux) {
+          return false;
+        }
+
+        if (defaultTargetPlatform == TargetPlatform.windows) {
+          final winPrinterSvc = WindowsPrinterService();
+          final printers = await winPrinterSvc.getInstalledPrinters();
+          if (printers.isEmpty) return false;
+
+          final savedName = await winPrinterSvc.getSavedPrinterName();
+          WindowsPrinterInfo? target;
+
+          if (savedName != null && savedName.trim().isNotEmpty) {
+            final cleanSaved = savedName.trim().toLowerCase();
+            for (final p in printers) {
+              if (p.name.toLowerCase() == cleanSaved ||
+                  (p.portName.isNotEmpty && p.portName.toLowerCase() == cleanSaved)) {
+                target = p;
+                break;
+              }
+            }
+            target ??= printers
+                .where(
+                  (p) =>
+                      p.name.toLowerCase().contains(cleanSaved) ||
+                      cleanSaved.contains(p.name.toLowerCase()),
+                )
+                .firstOrNull;
+          }
+
+          if (target == null) {
+            final defaultPrinter = printers.where((p) => p.isDefault).firstOrNull;
+            if (defaultPrinter != null && !_isVirtualWindowsPrinter(defaultPrinter)) {
+              target = defaultPrinter;
+            } else {
+              target = printers
+                  .where((p) => p.isBluetooth || !_isVirtualWindowsPrinter(p))
+                  .firstOrNull;
+            }
+          }
+
+          if (target == null) return false;
+          printed = await printKOT(
+            order: order,
+            restaurant: restaurant,
+            kotNumber: kotNumber,
+            windowsPrinter: target,
+          );
+        } else {
+          // Android / iOS Bluetooth Thermal Flow
+          bool connected = await isConnected();
+          if (!connected) {
+            final btOn = await isBluetoothOn();
+            final saved = await getSavedPrinter();
+            final savedAddr = (saved['address'] ?? '').trim();
+            if (!btOn || savedAddr.isEmpty) {
+              return false;
+            }
+            try {
+              connected = await PrintBluetoothThermal.connect(
+                macPrinterAddress: savedAddr,
+              ).timeout(const Duration(milliseconds: 2200), onTimeout: () => false);
+              if (connected) {
+                _selectedDevice = BluetoothInfo(
+                  name: (saved['name'] ?? '').trim().isNotEmpty
+                      ? saved['name']!.trim()
+                      : 'Saved Printer',
+                  macAdress: savedAddr,
+                );
+              }
+            } catch (_) {
+              connected = false;
+            }
+          }
+
+          if (!connected) return false;
+
+          final profile = await getCapabilityProfile();
+          final generator = Generator(PaperSize.mm58, profile);
+          final bytes = _buildKotBytes(
+            generator: generator,
+            order: order,
+            restaurant: restaurant,
+            kotNumber: kotNumber,
+          );
+          printed = await PrintBluetoothThermal.writeBytes(bytes)
+              .timeout(const Duration(seconds: 3), onTimeout: () => false);
+        }
+      }
+
+      if (printed) {
+        for (final item in order.items) {
+          if (item.kotQuantity < item.quantity) {
+            item.kotQuantity = item.quantity;
+          }
+        }
+        if (order.id.isNotEmpty) {
+          DatabaseService().upsertOrderLocally(order);
+        }
+      }
+      return printed;
+    } catch (e) {
+      if (kDebugMode) print('[printKotIfConnected] Skipped safely on error: $e');
       return false;
     }
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'mobile_campaign_data.dart';
-import 'campaign_style.dart';
 
 class CampaignAudienceDialog extends StatefulWidget {
   const CampaignAudienceDialog({
@@ -186,8 +185,8 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                             center: Alignment.topRight,
                             radius: 0.9,
                             colors: [
-                              const Color(0xFFE8F5E9).withValues(alpha: 0.8),
-                              const Color(0xFFF0FDF4).withValues(alpha: 0.2),
+                              const Color(0xFFE0F2FE).withValues(alpha: 0.8),
+                              const Color(0xFFF0F9FF).withValues(alpha: 0.2),
                               Colors.white.withValues(alpha: 0.0),
                             ],
                           ),
@@ -224,14 +223,14 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                 width: 40,
                                 height: 40,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFE8F5E9),
+                                  color: const Color(0xFFE0F2FE),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Icon(
                                   widget.resend
                                       ? Icons.replay_rounded
                                       : Icons.person_add_alt_1_rounded,
-                                  color: const Color(0xFF00A86B),
+                                  color: const Color(0xFF0077B6),
                                   size: 20,
                                 ),
                               ),
@@ -258,7 +257,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                     Text(
                                       widget.resend
                                           ? 'Resend to previous or failed recipients'
-                                          : 'Add customers to send this campaign',
+                                          : 'Choose new or previous customers',
                                       style: const TextStyle(
                                         fontFamily: 'Roboto',
                                         fontSize: 11,
@@ -354,7 +353,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
                                   borderSide: const BorderSide(
-                                    color: Color(0xFF00A86B),
+                                    color: Color(0xFF0077B6),
                                     width: 1.5,
                                   ),
                                 ),
@@ -368,10 +367,10 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                                     decoration: BoxDecoration(
-                                      color: mode == 'failed' ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                                      color: mode == 'failed' ? const Color(0xFFF0F9FF) : const Color(0xFFF8FAFC),
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
-                                        color: mode == 'failed' ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0),
+                                        color: mode == 'failed' ? const Color(0xFF7DD3FC) : const Color(0xFFE2E8F0),
                                         width: 1,
                                       ),
                                     ),
@@ -380,7 +379,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                         Icon(
                                           mode == 'failed' ? Icons.check_circle_rounded : Icons.replay_rounded,
                                           size: 15,
-                                          color: mode == 'failed' ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                                          color: mode == 'failed' ? const Color(0xFF0284C7) : const Color(0xFF64748B),
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
@@ -389,7 +388,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                             style: TextStyle(
                                               fontFamily: 'Roboto',
                                               fontSize: 12,
-                                              color: mode == 'failed' ? const Color(0xFF15803D) : const Color(0xFF0F172A),
+                                              color: mode == 'failed' ? const Color(0xFF0369A1) : const Color(0xFF0F172A),
                                               fontWeight: mode == 'failed' ? FontWeight.w700 : FontWeight.w600,
                                             ),
                                           ),
@@ -404,10 +403,10 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                                     decoration: BoxDecoration(
-                                      color: mode == 'all' ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                                      color: mode == 'all' ? const Color(0xFFF0F9FF) : const Color(0xFFF8FAFC),
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
-                                        color: mode == 'all' ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0),
+                                        color: mode == 'all' ? const Color(0xFF7DD3FC) : const Color(0xFFE2E8F0),
                                         width: 1,
                                       ),
                                     ),
@@ -416,7 +415,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                         Icon(
                                           mode == 'all' ? Icons.check_circle_rounded : Icons.people_outline_rounded,
                                           size: 15,
-                                          color: mode == 'all' ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                                          color: mode == 'all' ? const Color(0xFF0284C7) : const Color(0xFF64748B),
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
@@ -425,7 +424,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                             style: TextStyle(
                                               fontFamily: 'Roboto',
                                               fontSize: 12,
-                                              color: mode == 'all' ? const Color(0xFF15803D) : const Color(0xFF0F172A),
+                                              color: mode == 'all' ? const Color(0xFF0369A1) : const Color(0xFF0F172A),
                                               fontWeight: mode == 'all' ? FontWeight.w700 : FontWeight.w600,
                                             ),
                                           ),
@@ -486,7 +485,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
                                   borderSide: const BorderSide(
-                                    color: Color(0xFF00A86B),
+                                    color: Color(0xFF0077B6),
                                     width: 1.5,
                                   ),
                                 ),
@@ -613,7 +612,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
                                   borderSide: const BorderSide(
-                                    color: Color(0xFF00A86B),
+                                    color: Color(0xFF0077B6),
                                     width: 1.5,
                                   ),
                                 ),
@@ -678,12 +677,12 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                                       decoration: BoxDecoration(
                                         color: group == g['id'].toString()
-                                            ? const Color(0xFFF0FDF4)
+                                            ? const Color(0xFFF0F9FF)
                                             : const Color(0xFFF8FAFC),
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
                                           color: group == g['id'].toString()
-                                              ? const Color(0xFF86EFAC)
+                                              ? const Color(0xFF7DD3FC)
                                               : const Color(0xFFE2E8F0),
                                           width: 1,
                                         ),
@@ -696,7 +695,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                                 : Icons.group_rounded,
                                             size: 15,
                                             color: group == g['id'].toString()
-                                                ? const Color(0xFF16A34A)
+                                                ? const Color(0xFF0284C7)
                                                 : const Color(0xFF64748B),
                                           ),
                                           const SizedBox(width: 8),
@@ -708,7 +707,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                                 fontFamily: 'Roboto',
                                                 fontSize: 12,
                                                 color: group == g['id'].toString()
-                                                    ? const Color(0xFF15803D)
+                                                    ? const Color(0xFF0369A1)
                                                     : const Color(0xFF0F172A),
                                                 fontWeight: group == g['id'].toString()
                                                     ? FontWeight.w700
@@ -737,7 +736,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                   style: const TextStyle(
                                     fontFamily: 'Roboto',
                                     fontSize: 11,
-                                    color: Color(0xFF00A86B),
+                                    color: Color(0xFF0077B6),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -754,15 +753,15 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                 vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF0FDF4),
+                                color: const Color(0xFFF0F9FF),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFF86EFAC)),
+                                border: Border.all(color: const Color(0xFF7DD3FC)),
                               ),
                               child: Row(
                                 children: [
                                   const Icon(
                                     Icons.check_circle_rounded,
-                                    color: Color(0xFF16A34A),
+                                    color: Color(0xFF0284C7),
                                     size: 18,
                                   ),
                                   const SizedBox(width: 8),
@@ -776,7 +775,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                             fontFamily: 'Roboto',
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
-                                            color: Color(0xFF15803D),
+                                            color: Color(0xFF0369A1),
                                           ),
                                         ),
                                         Text(
@@ -784,7 +783,7 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                           style: const TextStyle(
                                             fontFamily: 'Roboto',
                                             fontSize: 10.5,
-                                            color: Color(0xFF166534),
+                                            color: Color(0xFF075985),
                                           ),
                                         ),
                                       ],
@@ -872,11 +871,17 @@ class _AudienceState extends State<CampaignAudienceDialog> {
                                 flex: 3,
                                 child: SizedBox(
                                   height: 40,
-                                  child: Material(
-                                    color: canSubmit
-                                        ? const Color(0xFF00A86B)
-                                        : const Color(0xFFCBD5E1),
-                                    borderRadius: BorderRadius.circular(20),
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCBD5E1),
+                                      gradient: canSubmit
+                                          ? const LinearGradient(colors: [
+                                              Color(0xFF00B4D8),
+                                              Color(0xFF0077B6),
+                                            ])
+                                          : null,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(20),
                                       onTap: canSubmit ? submit : null,
@@ -962,7 +967,7 @@ class _PaperPlaneFlightGraphic extends StatelessWidget {
               angle: 0.25,
               child: const Icon(
                 Icons.send_rounded,
-                color: Color(0xFF00A86B),
+                color: Color(0xFF0077B6),
                 size: 20,
               ),
             ),
@@ -977,7 +982,7 @@ class _DashedFlightTrailPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF00A86B).withValues(alpha: 0.7)
+      ..color = const Color(0xFF0077B6).withValues(alpha: 0.7)
       ..strokeWidth = 1.6
       ..style = PaintingStyle.stroke;
 

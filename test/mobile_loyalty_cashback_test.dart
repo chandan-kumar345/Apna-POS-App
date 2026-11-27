@@ -2,9 +2,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:apna_pos/core/models/loyalty_program_model.dart';
+import 'package:apna_pos/core/services/loyalty_service.dart';
 import 'package:apna_pos/features/loyalty/screens/loyalty_landing_screen.dart';
 import 'package:apna_pos/features/loyalty/screens/create_loyalty_program_screen.dart';
 import 'package:apna_pos/features/loyalty/screens/loyalty_program_details_screen.dart';
+import 'package:apna_pos/features/loyalty/widgets/loyalty_redemption_dialog.dart';
+
+class _FakeRedeemLoyaltyService extends Fake implements LoyaltyService {
+  @override
+  Future<CustomerLoyaltyModel?> getCustomerLoyalty(String phone, {String? name}) async {
+    return CustomerLoyaltyModel(
+      customerPhone: phone,
+      customerName: name ?? 'Chandan',
+      pointsBalance: 130,
+      cashbackBalance: 48,
+      totalCashbackEarned: 444,
+      totalCashbackRedeemed: 381,
+      totalVisits: 13,
+      totalPointsEarned: 130,
+      totalPointsRedeemed: 0,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> sendRedemptionOtp({
+    required String phone,
+    String? stageId,
+    double? pointsToRedeem,
+    double? amountToRedeem,
+  }) async {
+    return {
+      'success': true,
+      'message': 'OTP generated: 7391',
+      'otpDebug': '7391',
+    };
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -383,6 +416,37 @@ void main() {
       }
 
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('LoyaltyRedemptionDialog never displays OTP in UI or SnackBar', (tester) async {
+      tester.view.physicalSize = const Size(480, 915);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+      addTearDown(() => tester.view.resetDevicePixelRatio());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LoyaltyRedemptionDialog(
+              customerPhone: '9709593705',
+              customerName: 'Chandan',
+              currentOrderTotal: 200,
+              loyaltyService: _FakeRedeemLoyaltyService(),
+              onDiscountApplied: (_, _, _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Apply Cashback'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Verify Authorization OTP'), findsOneWidget);
+      expect(find.textContaining('7391'), findsNothing);
+      expect(find.textContaining('Test OTP'), findsNothing);
+      expect(find.textContaining('OTP generated:'), findsNothing);
+      expect(find.text('OTP sent to customer mobile/WhatsApp'), findsOneWidget);
     });
   });
 }

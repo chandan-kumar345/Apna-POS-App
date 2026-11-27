@@ -70,21 +70,21 @@ test('performance counts actual POS and storefront orders once and excludes canc
 test('follow-up quotes deduplicate numbers and groups, queue once, and retain earlier receipts', async () => {
   await save(); await approve(); await launch(); await cron.processScheduledCampaignsJob();
   const first = { requestId:String(oid()), mode:'new',groupId:form.groupId,phones:['9898989898','+919898989898'],
-    confirmedOptIn:true,confirmedCount:1 };
-  expect(await service.followUp(businessId,key,{...first,preview:true},owner._id)).toMatchObject({count:1});
+    confirmedOptIn:true,confirmedCount:2 };
+  expect(await service.followUp(businessId,key,{...first,preview:true},owner._id)).toMatchObject({count:2});
   await service.followUp(businessId,key,first,owner._id);
   await service.followUp(businessId,key,first,owner._id);
   expect(transport.send).toHaveBeenCalledTimes(1);
   transport.send.mockRejectedValueOnce(new Error('unreachable'));
   await cron.processScheduledCampaignsJob();
-  const retry = {...first,requestId:String(oid()),mode:'failed'};
+  const retry = {...first,requestId:String(oid()),mode:'failed',confirmedCount:1};
   expect(await service.followUp(businessId,key,{...retry,preview:true},owner._id)).toMatchObject({count:1});
   await service.followUp(businessId,key,retry,owner._id);
   await cron.processScheduledCampaignsJob();
-  expect(transport.send).toHaveBeenCalledTimes(3);
+  expect(transport.send).toHaveBeenCalledTimes(4);
   const c = await Campaign.findById(key);
-  expect(c.audience.recipients.map(r => r.status)).toEqual(['sent','failed','sent']);
-  expect(c.cost.spentSoFar).toBeCloseTo(3.18);
+  expect(c.audience.recipients.map(r => r.status)).toEqual(['sent','failed','sent','sent']);
+  expect(c.cost.spentSoFar).toBeCloseTo(4.24);
 });
 
 test('image upload uses the authenticated restaurant folder and returns its public URL', async () => {
@@ -162,6 +162,19 @@ test('last failed receipt updates a completed campaign and keeps the provider re
   expect(c.status).toBe('failed');
   expect(c.stats.failed).toBe(1);
   expect(c.audience.recipients[0].error).toBe('Rate limit hit (WhatsApp code 130429)');
+  expect(c.mobileStudio.rateLimitedUntil.getTime()).toBeGreaterThan(Date.now());
+  const followUp = { requestId:String(oid()), mode:'new',groupId:form.groupId,
+    confirmedOptIn:true,confirmedCount:1 };
+  await service.followUp(businessId,key,followUp,owner._id);
+  await cron.processScheduledCampaignsJob();
+  expect(transport.send).toHaveBeenCalledTimes(1);
+  const paused = await Campaign.findById(key);
+  expect(paused.status).toBe('scheduled');
+  expect(paused.audience.recipients[1].status).toBe('pending');
+  await Campaign.updateOne({_id:key},{$set:{'mobileStudio.rateLimitedUntil':new Date(0),'mobileStudio.nextCheckAt':new Date(0)}});
+  await cron.processScheduledCampaignsJob();
+  expect(transport.send).toHaveBeenCalledTimes(2);
+  expect((await wallet.getOrCreateWallet(businessId)).balance).toBeCloseTo(97.88);
 });
 
 test.each([

@@ -24,6 +24,9 @@ const loyaltyTransactionSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    earnKey: {
+      type: String,
+    },
     type: {
       type: String,
       enum: ['earn', 'redeem', 'adjustment'],
@@ -120,6 +123,14 @@ const loyaltyTransactionSchema = new mongoose.Schema(
 );
 
 loyaltyTransactionSchema.index({ whatsappMessageId: 1 }, { sparse: true });
+loyaltyTransactionSchema.index(
+  { businessId: 1, earnKey: 1 },
+  { unique: true, partialFilterExpression: { earnKey: { $exists: true } } }
+);
+loyaltyTransactionSchema.index(
+  { whatsappStatus: 1, 'whatsappMetadata.nextRetryAt': 1 },
+  { sparse: true }
+);
 
 const LoyaltyTransaction = mongoose.model('LoyaltyTransaction', loyaltyTransactionSchema);
 

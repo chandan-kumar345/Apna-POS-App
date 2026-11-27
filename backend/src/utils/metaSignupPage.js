@@ -1,8 +1,10 @@
 const crypto = require('crypto');
+const signupConfig = require('../config/metaSignup');
 
 module.exports = function metaSignupPage(req, res) {
   const nonce = crypto.randomBytes(18).toString('base64');
-  const config = JSON.stringify({ appId: process.env.META_APP_ID || '', configId: process.env.META_EMBEDDED_SIGNUP_CONFIG_ID || '',
+  const config = JSON.stringify({ appId: signupConfig.appId, configId: signupConfig.configId,
+    setup: process.env.META_PARTNER_SOLUTION_ID ? { solutionID: process.env.META_PARTNER_SOLUTION_ID } : {},
     version: process.env.META_GRAPH_VERSION || 'v23.0' }).replace(/</g, '\\u003c');
   res.set('Cache-Control', 'no-store');
   res.set('Referrer-Policy', 'no-referrer');
@@ -36,8 +38,8 @@ window.addEventListener('message',event=>{
 window.fbAsyncInit=()=>{FB.init({appId:config.appId,version:config.version,cookie:false,xfbml:false});
  button.disabled=!sessionToken||!config.appId||!config.configId;
  status.textContent=button.disabled?'Open a new connection session from Apna POS.':'Ready to connect your business.';};
-button.onclick=()=>{code=null;assets=null;status.textContent='Complete the steps in the Meta window.';FB.login(result=>{
- code=result.authResponse?.code;if(code)finish();else status.textContent='Signup cancelled. Your account was not changed.';
-},{config_id:config.configId,auth_type:'rerequest',response_type:'code',override_default_response_type:true,extras:{setup:{}}});};
+button.onclick=()=>{button.disabled=true;code=null;assets=null;status.textContent='Complete the steps in the Facebook window.';FB.login(result=>{
+ code=result.authResponse?.code;if(code)finish();else {button.disabled=false;status.textContent='Facebook login cancelled. You can try again.';}
+},{config_id:config.configId,auth_type:'rerequest',response_type:'code',override_default_response_type:true,extras:{setup:config.setup}});};
 </script><script nonce="${nonce}" async defer src="https://connect.facebook.net/en_US/sdk.js"></script></html>`);
 };

@@ -9,6 +9,7 @@ class LoyaltyRedemptionDialog extends StatefulWidget {
   final String customerName;
   final double currentOrderTotal;
   final void Function(double discountAmount, String stageId, int pointsToRedeem) onDiscountApplied;
+  final LoyaltyService? loyaltyService;
 
   const LoyaltyRedemptionDialog({
     super.key,
@@ -16,6 +17,7 @@ class LoyaltyRedemptionDialog extends StatefulWidget {
     this.customerName = '',
     required this.currentOrderTotal,
     required this.onDiscountApplied,
+    this.loyaltyService,
   });
 
   static Future<void> show(
@@ -44,7 +46,7 @@ class LoyaltyRedemptionDialog extends StatefulWidget {
 }
 
 class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
-  final LoyaltyService _loyaltyService = LoyaltyService();
+  late final LoyaltyService _loyaltyService = widget.loyaltyService ?? LoyaltyService();
   static const Color _primaryGreen = Color(0xFF047857);
 
   bool _isLoading = true;
@@ -60,7 +62,6 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
   bool _isSendingOtp = false;
   bool _isVerifyingOtp = false;
   String? _otpError;
-  String? _debugOtp;
   int _resendCountdown = 60;
   Timer? _countdownTimer;
 
@@ -250,7 +251,6 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
       _isSendingOtp = true;
       _customRedeemAmount = _redeemAmount;
       _otpError = null;
-      _debugOtp = null;
     });
 
     try {
@@ -261,23 +261,22 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
         amountToRedeem: _redeemAmount,
       );
 
-      final extractedOtp = res['otpDebug']?.toString() ??
-          (res['message']?.toString().contains('OTP generated:') == true
-              ? res['message'].toString().split('OTP generated:').last.trim()
-              : null);
+      final rawMsg = res['message']?.toString().trim() ?? '';
+      final safeMsg = (rawMsg.isEmpty || rawMsg.contains('OTP generated:'))
+          ? 'OTP sent to customer mobile/WhatsApp'
+          : rawMsg;
 
       if (mounted) {
         setState(() {
           _isSendingOtp = false;
           _isOtpStep = true;
-          _debugOtp = extractedOtp;
         });
         _startCountdown();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              res['message']?.toString() ?? 'OTP sent to customer mobile/WhatsApp',
+              safeMsg,
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
             ),
             backgroundColor: _primaryGreen,
@@ -1175,18 +1174,20 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
               ),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Verify Authorization OTP',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                ),
-                Text(
-                  'Redeem ₹${_customRedeemAmount.toStringAsFixed(2)} cashback',
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Verify Authorization OTP',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                  ),
+                  Text(
+                    'Redeem ₹${_customRedeemAmount.toStringAsFixed(2)} cashback',
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1243,42 +1244,7 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _primaryGreen, width: 2)),
           ),
         ),
-        const SizedBox(height: 10),
-
-        if (_debugOtp != null && _debugOtp!.isNotEmpty)
-          InkWell(
-            onTap: () {
-              setState(() {
-                _otpController.text = _debugOtp!;
-              });
-            },
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFCD34D)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.developer_mode_rounded, size: 14, color: Color(0xFFB45309)),
-                  const SizedBox(width: 6),
-                  Text(
-                    '🧪 Test OTP: $_debugOtp (Tap to autofill)',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF92400E),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
 
         SizedBox(
           width: double.infinity,

@@ -33,5 +33,19 @@ test('browser bridge has no app secret and uses exact trusted origins and nonce 
   expect(result.text).toContain("['www.facebook.com','web.facebook.com','business.facebook.com'].includes(origin.hostname)");
   expect(result.text).toContain("history.replaceState(null,'',location.pathname)");
   expect(result.text).not.toContain('sessionInfoVersion');
-  expect(result.text).toContain('extras:{setup:{}}');
+  expect(result.text).toContain('extras:{setup:config.setup}');
+});
+
+test('Facebook login uses Apna POS identifiers and the configured partner solution', async () => {
+  delete process.env.META_APP_ID;
+  delete process.env.META_EMBEDDED_SIGNUP_CONFIG_ID;
+  process.env.META_PARTNER_SOLUTION_ID = '123456';
+  try {
+    const result = await request(app).get('/meta-partner/onboarding');
+    expect(result.text).toContain('"appId":"3643190475832679"');
+    expect(result.text).toContain('"configId":"1659729462561672"');
+    expect(result.text).toContain('"setup":{"solutionID":"123456"}');
+  } finally {
+    delete process.env.META_PARTNER_SOLUTION_ID;
+  }
 });

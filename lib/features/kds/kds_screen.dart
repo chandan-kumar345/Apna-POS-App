@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
+import '../../core/services/bluetooth_printer_service.dart';
 
 class KdsScreen extends StatefulWidget {
   const KdsScreen({super.key});
@@ -184,7 +186,16 @@ class _KdsScreenState extends State<KdsScreen> {
               color: themeColor,
               height: 36,
               onPressed: () {
+                final bool wasPending = order.status == OrderStatus.pending;
                 db.updateOrderStatus(order.id, nextStatus);
+                if (wasPending && nextStatus == OrderStatus.preparing) {
+                  unawaited(
+                    BluetoothPrinterService().printKotIfConnected(
+                      order: order.copyWith(status: OrderStatus.preparing),
+                      restaurant: db.restaurant,
+                    ),
+                  );
+                }
                 setState(() {});
               },
             ),

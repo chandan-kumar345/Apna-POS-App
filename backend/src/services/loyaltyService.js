@@ -11,6 +11,10 @@ const Notification = NotificationModule.Notification || NotificationModule;
 const ApiError = require('../utils/ApiError');
 
 class LoyaltyService {
+  constructor() {
+    this._orderAwardLocks = new Map();
+  }
+
   /**
    * Helper to normalize phone variants across national & international formats:
    * e.g. '9709593705' -> ['9709593705', '919709593705', '+919709593705', '+91 9709593705']
@@ -714,12 +718,42 @@ class LoyaltyService {
     const orderMongoId = mongoose.Types.ObjectId.isValid(order._id)
       ? order._id
       : (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null);
+    const orderNumber = order.orderNumber ? String(order.orderNumber).trim() : '';
+    const lockIdentifier = orderMongoId ? String(orderMongoId) : orderNumber;
+
+    if (!lockIdentifier) {
+      return this._awardPointsForCompletedOrderLocked(businessId, order, '');
+    }
+
+    const fullLockKey = `${String(businessId)}:${lockIdentifier}`;
+    if (!this._orderAwardLocks) this._orderAwardLocks = new Map();
+    const prior = this._orderAwardLocks.get(fullLockKey) || Promise.resolve();
+    const runTask = prior
+      .catch(() => {})
+      .then(() => this._awardPointsForCompletedOrderLocked(businessId, order, lockIdentifier));
+    this._orderAwardLocks.set(fullLockKey, runTask);
+    try {
+      return await runTask;
+    } finally {
+      if (this._orderAwardLocks.get(fullLockKey) === runTask) {
+        this._orderAwardLocks.delete(fullLockKey);
+      }
+    }
+  }
+
+  async _awardPointsForCompletedOrderLocked(businessId, order, lockIdentifier = '') {
+    const cleanPhone = order.customerPhone.trim();
+    const orderMongoId = mongoose.Types.ObjectId.isValid(order._id)
+      ? order._id
+      : (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null);
+    const earnKey = lockIdentifier ? `earn:${lockIdentifier}` : undefined;
 
     const existingEarnTx = (orderMongoId || order.orderNumber)
       ? await LoyaltyTransaction.findOne({
           businessId,
           type: 'earn',
           $or: [
+            ...(earnKey ? [{ earnKey }] : []),
             ...(orderMongoId ? [{ orderId: orderMongoId }] : []),
             ...(order.orderNumber ? [{ orderNumber: order.orderNumber }] : []),
           ],
@@ -902,31 +936,74 @@ class LoyaltyService {
 
     const earnProgramId = appliedCashbackPrograms.length > 0 ? appliedCashbackPrograms[0].id : 'prog_visit_made';
     const resolvedCustomerName = order.customerName || customerLoyalty.customerName || 'Valued Customer';
-    const earnTx = await LoyaltyTransaction.create({
-      businessId,
-      customerPhone: cleanPhone,
-      orderId: order._id || (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null),
-      orderNumber: order.orderNumber || '',
-      type: 'earn',
-      programId: earnProgramId,
-      points: pointsAwarded > 0 ? pointsAwarded : totalCashbackAwarded,
-      discountAmount: totalCashbackAwarded,
-      balanceAfter: customerLoyalty.pointsBalance,
-      messageHeader: 'APNA POS',
-      message: msg,
-      whatsappStatus: totalCashbackAwarded > 0 ? 'pending' : 'not_applicable',
-      whatsappMetadata:
-        totalCashbackAwarded > 0
-          ? {
-              customerName: resolvedCustomerName,
-              businessName: programName || 'Apna POS',
-              cashbackEarned: totalCashbackAwarded,
-              availableBalance: customerLoyalty.cashbackBalance,
-              orderNumber: order.orderNumber || '',
-              attemptErrors: [],
-            }
-          : {},
-    });
+    let earnTx;
+    try {
+      earnTx = await LoyaltyTransaction.create({
+        businessId,
+        customerPhone: cleanPhone,
+        orderId: order._id || (mongoose.Types.ObjectId.isValid(order.id) ? order.id : null),
+        orderNumber: order.orderNumber || '',
+        ...(earnKey ? { earnKey } : {}),
+        type: 'earn',
+        programId: earnProgramId,
+        points: pointsAwarded > 0 ? pointsAwarded : totalCashbackAwarded,
+        discountAmount: totalCashbackAwarded,
+        balanceAfter: customerLoyalty.pointsBalance,
+        messageHeader: 'APNA POS',
+        message: msg,
+        whatsappStatus: totalCashbackAwarded > 0 ? 'pending' : 'not_applicable',
+        whatsappMetadata:
+          totalCashbackAwarded > 0
+            ? {
+                customerName: resolvedCustomerName,
+                businessName: programName || 'Apna POS',
+                cashbackEarned: totalCashbackAwarded,
+                availableBalance: customerLoyalty.cashbackBalance,
+                orderNumber: order.orderNumber || '',
+                attemptErrors: [],
+              }
+            : {},
+      });
+    } catch (createErr) {
+      if (createErr && createErr.code === 11000) {
+        // Another worker awarded this order simultaneously — roll back local increments cleanly
+        if (pointsAwarded > 0) {
+          customerLoyalty.pointsBalance = Math.max(0, (customerLoyalty.pointsBalance || 0) - pointsAwarded);
+          customerLoyalty.totalPointsEarned = Math.max(0, (customerLoyalty.totalPointsEarned || 0) - pointsAwarded);
+        }
+        if (totalCashbackAwarded > 0) {
+          customerLoyalty.cashbackBalance = Math.max(0, (customerLoyalty.cashbackBalance || 0) - totalCashbackAwarded);
+          customerLoyalty.totalCashbackEarned = Math.max(0, (customerLoyalty.totalCashbackEarned || 0) - totalCashbackAwarded);
+          if (loyaltyDoc && loyaltyDoc.dashboardMetrics) {
+            loyaltyDoc.dashboardMetrics.totalCashback = Math.max(0, (loyaltyDoc.dashboardMetrics.totalCashback || 0) - totalCashbackAwarded);
+            loyaltyDoc.markModified('dashboardMetrics');
+            await loyaltyDoc.save().catch(() => {});
+          }
+        }
+        customerLoyalty.totalVisits = Math.max(0, (customerLoyalty.totalVisits || 1) - 1);
+        await customerLoyalty.save().catch(() => {});
+
+        const duplicateWinner = await LoyaltyTransaction.findOne({
+          businessId,
+          type: 'earn',
+          $or: [
+            ...(earnKey ? [{ earnKey }] : []),
+            ...(orderMongoId ? [{ orderId: orderMongoId }] : []),
+            ...(order.orderNumber ? [{ orderNumber: order.orderNumber }] : []),
+          ],
+        });
+        return {
+          earned: false,
+          reason: 'Points already awarded for this order',
+          transactionId: duplicateWinner ? String(duplicateWinner._id) : null,
+          whatsappStatus: duplicateWinner?.whatsappStatus || 'not_applicable',
+          whatsappMessageId: duplicateWinner?.whatsappMessageId || null,
+          whatsappError: duplicateWinner?.whatsappError || '',
+          whatsappErrorCode: duplicateWinner?.whatsappErrorCode || '',
+        };
+      }
+      throw createErr;
+    }
 
     // Send automated WhatsApp notification for earned cashback & record result
     let whatsappNotification = null;
@@ -1070,37 +1147,35 @@ class LoyaltyService {
 
     await customerLoyalty.save();
 
-    const otpMessage = redemptionType === 'cashback'
-      ? `[APNA POS] Your OTP to redeem ₹${discountValue} cashback at ${storeName} is ${otp}. Valid for 10 minutes.`
-      : `[APNA POS] Your OTP to redeem ₹${discountValue} OFF (${requiredPoints} ${visitConfig.pointsName || 'Cookies'}) at ${storeName} is ${otp}. Valid for 10 minutes.`;
+    const otpSummary = redemptionType === 'cashback'
+      ? `[APNA POS] Loyalty redemption OTP dispatched for ₹${discountValue} cashback at ${storeName}.`
+      : `[APNA POS] Loyalty redemption OTP dispatched for ₹${discountValue} OFF (${requiredPoints} ${visitConfig.pointsName || 'Cookies'}) at ${storeName}.`;
 
-    console.log('\n================================================================');
-    console.log('🔑 [LOYALTY REDEEM OTP TEST - TERMINAL OUTPUT]');
-    console.log(`📱 Customer Phone : ${cleanPhone}`);
-    console.log(`🔢 OTP Code       : >>> ${otp} <<<`);
-    console.log(`🎁 Reward Discount: ₹${discountValue}`);
-    console.log(`💰 Points/Cashback: ${requiredPoints} (${redemptionType})`);
-    console.log('================================================================\n');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[LoyaltyService.sendLoyaltyRedemptionOtp] Phone: ${cleanPhone} | Discount: ₹${discountValue} (${redemptionType})`);
+    }
 
     try {
       await Notification.create({
         businessId,
         type: 'whatsapp_message',
         title: '[APNA POS] Loyalty Redemption OTP',
-        message: otpMessage,
+        message: otpSummary,
         isRead: false,
         entityType: 'system',
-        metadata: { recipientPhone: cleanPhone, otp, stageId: effectiveStageId, discountValue, pointsToRedeem: requiredPoints, redemptionType },
+        metadata: { recipientPhone: cleanPhone, stageId: effectiveStageId, discountValue, pointsToRedeem: requiredPoints, redemptionType },
       });
     } catch (e) {
       // Non-blocking
     }
 
+    let whatsappDispatched = false;
+    let whatsappError = '';
     // Send WhatsApp OTP to customer
     try {
       const waCreds = await this._resolveStoreWhatsAppContext(businessId, storeName);
       const whatsappService = require('./whatsappService');
-      await whatsappService.sendOtpMessage({
+      const otpDispatch = await whatsappService.sendOtpMessage({
         to: cleanPhone,
         otpCode: otp,
         purpose: 'loyalty_redemption',
@@ -1110,19 +1185,25 @@ class LoyaltyService {
         accessToken: waCreds.accessToken,
         appSecret: waCreds.appSecret,
       });
+      whatsappDispatched = Boolean(otpDispatch && otpDispatch.success !== false);
     } catch (waErr) {
-      console.warn('[sendLoyaltyRedemptionOtp] WhatsApp OTP dispatch notice:', waErr.message);
+      whatsappError = waErr.message || 'WhatsApp OTP dispatch failed';
+      console.warn('[sendLoyaltyRedemptionOtp] WhatsApp OTP dispatch notice:', whatsappError);
     }
 
     return {
       success: true,
-      message: `OTP generated: ${otp}`,
+      message: whatsappDispatched
+        ? 'OTP sent to customer WhatsApp'
+        : 'Verification OTP sent to customer mobile/WhatsApp',
       phone: cleanPhone,
       stageId: effectiveStageId,
       discountValue,
       pointsToRedeem: requiredPoints,
       redemptionType,
-      otpDebug: otp,
+      whatsappDispatched,
+      ...(whatsappError ? { whatsappError } : {}),
+      ...(process.env.NODE_ENV === 'test' ? { otpDebug: otp } : {}),
     };
   }
 
@@ -2218,15 +2299,30 @@ class LoyaltyService {
     } else if (incoming === 'failed') {
       const whatsappService = require('./whatsappService');
       const firstErr = Array.isArray(update.errors) ? update.errors[0] : update.errors;
+      const errCodeStr = firstErr?.code != null ? String(firstErr.code) : 'WEBHOOK_FAILED';
+      const isTransientRateLimit = ['130429', '131048', '131056'].includes(errCodeStr);
+      const prevAutoRetries = Number(tx.whatsappMetadata?.autoRetryCount || 0);
+      const scheduleRetry =
+        isTransientRateLimit &&
+        tx.type === 'earn' &&
+        prevAutoRetries < 2 &&
+        Number(tx.whatsappAttempts || 1) < 4;
+
       tx.whatsappStatus = 'failed';
       tx.whatsappError = firstErr
         ? whatsappService.formatCampaignFailure(firstErr)
         : 'WhatsApp delivery failed asynchronously';
-      tx.whatsappErrorCode = firstErr?.code != null ? String(firstErr.code) : 'WEBHOOK_FAILED';
+      tx.whatsappErrorCode = errCodeStr;
       tx.whatsappMetadata = {
         ...(tx.whatsappMetadata || {}),
         webhookError: firstErr || null,
         webhookFailedAt: update.timestamp || new Date(),
+        ...(scheduleRetry
+          ? {
+              autoRetryCount: prevAutoRetries + 1,
+              nextRetryAt: new Date(Date.now() + 5 * 60 * 1000),
+            }
+          : {}),
       };
       tx.markModified('whatsappMetadata');
       modified = true;
@@ -2236,6 +2332,41 @@ class LoyaltyService {
       await tx.save();
     }
     return tx;
+  }
+
+  /**
+   * Process scheduled automatic retries for cashback WhatsApp messages throttled by Meta rate limits
+   */
+  async processPendingCashbackRetries(now = new Date()) {
+    const due = await LoyaltyTransaction.find({
+      type: 'earn',
+      whatsappStatus: 'failed',
+      'whatsappMetadata.nextRetryAt': { $lte: now },
+    })
+      .select('_id businessId')
+      .limit(10)
+      .lean();
+
+    let processed = 0;
+    for (const entry of due) {
+      const locked = await LoyaltyTransaction.findOneAndUpdate(
+        {
+          _id: entry._id,
+          whatsappStatus: 'failed',
+          'whatsappMetadata.nextRetryAt': { $lte: now },
+        },
+        { $unset: { 'whatsappMetadata.nextRetryAt': 1 } },
+        { new: true }
+      );
+      if (!locked) continue;
+      try {
+        await this.retryCashbackNotification(entry.businessId, String(entry._id), { force: false });
+        processed++;
+      } catch (err) {
+        console.warn('[LoyaltyService.processPendingCashbackRetries] Retry failed:', err.message);
+      }
+    }
+    return processed;
   }
 
   /**

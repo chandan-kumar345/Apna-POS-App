@@ -5,6 +5,7 @@ const Message = require('../models/WhatsAppMessage');
 const Chat = require('../models/WhatsAppChat');
 const ApiError = require('../utils/ApiError');
 const Signup = require('../models/MetaSignupSession');
+const signupConfig = require('../config/metaSignup');
 const graphVersion = () => process.env.META_GRAPH_VERSION || 'v23.0';
 const catalog = [
   { name: 'order_confirmation', category: 'UTILITY', displayName: 'Order confirmation', description: 'Your order has been accepted. We will let you know when it is ready.' },
@@ -85,7 +86,7 @@ class MetaPartnerService {
       email: settings.email || '', website: settings.website || '', connectedAt: settings.connectedAt || null,
       metaPartnerVerified: false, canSend: false, pinRegistered: !!primary?.pinRegistered,
       webhookSubscribed: !!primary?.webhookSubscribed,
-      signupAvailable: !!(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_EMBEDDED_SIGNUP_CONFIG_ID && process.env.META_PUBLIC_BASE_URL),
+      signupAvailable: !!(process.env.META_APP_SECRET && signupConfig.publicBaseUrl),
     };
     if (configured) {
       try {
@@ -296,9 +297,8 @@ class MetaPartnerService {
   }
   async startEmbeddedSignup(businessId, { userId }) {
     await this._business(businessId);
-    const { META_APP_ID, META_APP_SECRET, META_EMBEDDED_SIGNUP_CONFIG_ID, META_PUBLIC_BASE_URL } = process.env;
-    if (!META_APP_ID || !META_APP_SECRET || !META_EMBEDDED_SIGNUP_CONFIG_ID || !META_PUBLIC_BASE_URL) throw new ApiError(503, 'Meta signup is not configured on the server. Ask your administrator to configure the app and signup configuration.');
-    const base = new URL(META_PUBLIC_BASE_URL);
+    if (!process.env.META_APP_SECRET || !signupConfig.publicBaseUrl) throw new ApiError(503, 'Facebook login is not configured. Set META_APP_SECRET and the public HTTPS backend URL on the server.');
+    const base = new URL(signupConfig.publicBaseUrl);
     if (base.protocol !== 'https:' && process.env.NODE_ENV !== 'test') throw new ApiError(503, 'Meta signup requires a public HTTPS backend URL.');
     const sessionToken = crypto.randomBytes(32).toString('hex');
     await Signup.create({ tokenHash: crypto.createHash('sha256').update(sessionToken).digest('hex'), businessId, userId,
@@ -324,7 +324,7 @@ class MetaPartnerService {
 
   async exchangeEmbeddedSignupOAuth(businessId, { code, wabaId, phoneNumberId }) {
     if (!code || !wabaId || !phoneNumberId) throw new ApiError(400, 'Meta code and selected account IDs are required.');
-    const appId = process.env.META_APP_ID, secret = process.env.META_APP_SECRET;
+    const appId = signupConfig.appId, secret = process.env.META_APP_SECRET;
     if (!appId || !secret) throw new ApiError(503, 'Meta app credentials are not configured on the server.');
     const params = new URLSearchParams({ client_id: appId, client_secret: secret, code });
     let data;

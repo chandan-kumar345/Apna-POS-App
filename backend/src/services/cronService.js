@@ -378,8 +378,14 @@ class CronService {
       const currentMinute = now.getMinutes();
       const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 
-      // Check and execute scheduled campaigns every minute
-      await Promise.all([this.processScheduledCampaignsJob(), this.processCampaignReviewsJob()]);
+      // Check and execute scheduled campaigns and due loyalty cashback retries every minute
+      await Promise.all([
+        this.processScheduledCampaignsJob(),
+        this.processCampaignReviewsJob(),
+        require('./loyaltyService').processPendingCashbackRetries(now).catch((err) => {
+          console.error('[CronService] Cashback WhatsApp retry job failed:', err.message);
+        }),
+      ]);
 
       // Run once at 00:00 (12:00 AM midnight)
       if (currentHour === 0 && currentMinute === 0 && lastRunDate !== todayStr) {
